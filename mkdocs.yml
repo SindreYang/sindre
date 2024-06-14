@@ -1,0 +1,43 @@
+site_name: 项目文档
+site_author: sindre
+use_directory_urls: True
+
+nav:
+  - 主页: index.md
+
+theme:
+  name: material
+  language: zh
+  features:
+    - navigation.tabs
+    - search.highlight
+  palette:
+    - scheme: slate
+      primary: orange
+      accent: orange
+      toggle:
+        icon: material/toggle-switch-off-outline
+        name: Switch to dark mode
+    - scheme: default
+      primary: blue
+      accent: blue
+      toggle:
+        icon: material/toggle-switch
+        name: Switch to light mode
+
+
+plugins:
+  - mkdocstrings:
+      handlers:
+        python:
+          paths: [ src ]
+        options:
+          show_source: false
+  - search:
+      lang:
+        - en
+        - zh
+
+
+extra:
+  generator: false
