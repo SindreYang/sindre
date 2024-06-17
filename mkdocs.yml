@@ -10,6 +10,7 @@ nav:
     - LMDB集成: lmdb.md
     - Win工具: win_tools.md
     - 3D: 3d.md
+    - 字典转报告: report.md
 
 # 主题
 theme:
