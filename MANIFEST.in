@@ -1,0 +1,3 @@
+recursive-exclude * __pycache__
+include sindre/bin/123
+include sindre/Resources/123
