@@ -53,9 +53,12 @@ import shutil
 import subprocess
 import zipfile
 
+import requests
 from setuptools import Extension, setup
 from Cython.Build import cythonize
 from collections import Counter
+
+from tqdm import tqdm
 
 """
 def py2pyd(source_path: str, copy_dir: bool = False, clear_py=False):
@@ -359,7 +362,7 @@ def exe2nsis(work_dir: str,
 !define INSTALL_7Z_PATH 	   		"{work_dir}\\app.7z"
 !define INSTALL_7Z_NAME 	   		"app.7z"
 !define INSTALL_RES_PATH       		"skin.zip"
-!define INSTALL_LICENCE_FILENAME    "{os.path.join(config_path, "license.txt") if license == "" else licence}"
+!define INSTALL_LICENCE_FILENAME    "{os.path.join(config_path, "license.txt") if license == "" else license}"
 !define INSTALL_ICO 				"{os.path.join(config_path, "logo.ico") if icon_old == "" else icon_old}"
 
 
