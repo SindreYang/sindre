@@ -140,6 +140,7 @@ tools.exe2nsis(work_dir=r"C:/55555",
          files_to_compress=[f"C:/55555/{i}" for i in  ["app", "app.exe", "app.py"]],
          exe_name="app.exe")
 ```
+将生成![exe2nsis.png](img/exe2nsis.png)
 
 ## 3. API:
 
