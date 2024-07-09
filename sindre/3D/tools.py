@@ -45,14 +45,12 @@
 """
 __author__ = 'sindre'
 
-
-
 try:
     import json
     import trimesh
     import vedo
     import numpy as np
-    from typing import Union
+    from typing import *
     from sklearn.decomposition import PCA
 
 except ImportError:
@@ -256,7 +254,7 @@ def get_pca_transform(mesh: vedo.Mesh) -> np.array:
     return transform
 
 
-def apply_pac_transform(vertices: np.array, transform: np.array)->np.array:
+def apply_pac_transform(vertices: np.array, transform: np.array) -> np.array:
     """
         对pca获得4*4矩阵进行应用
 
@@ -380,7 +378,7 @@ class NpEncoder(json.JSONEncoder):
         return super(NpEncoder, self).default(obj)
 
 
-def save_np_json(output_path: str, obj: any) -> None:
+def save_np_json(output_path: str, obj) -> None:
     """
     保存np形式的json
 
@@ -393,3 +391,216 @@ def save_np_json(output_path: str, obj: any) -> None:
 
     with open(output_path, 'w') as fp:
         json.dump(obj, fp, cls=NpEncoder)
+
+
+def get_obb_box(x_pts: np.array, z_pts: np.array, vertices: np.array) -> Tuple[list, list, np.array]:
+    """
+    给定任意2个轴向交点及顶点，返回定向包围框mesh
+    Args:
+        x_pts: x轴交点
+        z_pts: z轴交点
+        vertices: 所有顶点
+
+    Returns:
+        包围框的顶点， 面片索引，3*3旋转矩阵
+
+    """
+
+    # 计算中心
+    center = np.mean(vertices, axis=0)
+    print(center)
+
+    # 定义三个射线
+    x_axis = np.array(x_pts - center).reshape(3)
+    z_axis = np.array(z_pts - center).reshape(3)
+    x_axis = x_axis / np.linalg.norm(x_axis)
+    z_axis = z_axis / np.linalg.norm(z_axis)
+    y_axis = np.cross(z_axis, x_axis).reshape(3)
+
+    # 计算AABB
+    x_project = np.dot(vertices, x_axis)
+    y_project = np.dot(vertices, y_axis)
+    z_project = np.dot(vertices, z_axis)
+    z_max_pts = vertices[np.argmax(z_project)]
+    z_min_pts = vertices[np.argmin(z_project)]
+    x_max_pts = vertices[np.argmax(x_project)]
+    x_min_pts = vertices[np.argmin(x_project)]
+    y_max_pts = vertices[np.argmax(y_project)]
+    y_min_pts = vertices[np.argmin(y_project)]
+
+    # 计算最大边界
+    z_max = np.dot(z_max_pts - center, z_axis)
+    z_min = np.dot(z_min_pts - center, z_axis)
+    x_max = np.dot(x_max_pts - center, x_axis)
+    x_min = np.dot(x_min_pts - center, x_axis)
+    y_max = np.dot(y_max_pts - center, y_axis)
+    y_min = np.dot(y_min_pts - center, y_axis)
+
+    # 计算最大边界位移
+    inv_x = x_min * x_axis
+    inv_y = y_min * y_axis
+    inv_z = z_min * z_axis
+    x = x_max * x_axis
+    y = y_max * y_axis
+    z = z_max * z_axis
+
+    # 绘制OBB
+    verts = [
+        center + x + y + z,
+        center + inv_x + inv_y + inv_z,
+
+        center + inv_x + inv_y + z,
+        center + x + inv_y + inv_z,
+        center + inv_x + y + inv_z,
+
+        center + x + y + inv_z,
+        center + x + inv_y + z,
+        center + inv_x + y + z,
+
+    ]
+
+    faces = [
+        [0, 6, 7],
+        [6, 7, 2],
+        [0, 6, 3],
+        [0, 5, 3],
+        [0, 7, 5],
+        [4, 7, 5],
+        [4, 7, 2],
+        [1, 2, 4],
+        [1, 2, 3],
+        [2, 3, 6],
+        [3, 5, 4],
+        [1, 3, 4]
+
+    ]
+    R = np.vstack([x_axis, y_axis, z_axis]).T
+    return verts, faces, R
+
+
+def get_obb_box_max_min(x_pts: np.array,
+                        z_pts: np.array,
+                        z_max_pts: np.array,
+                        z_min_pts: np.array,
+                        x_max_pts: np.array,
+                        x_min_pts: np.array,
+                        y_max_pts: np.array,
+                        y_min_pts: np.array,
+                        center: np.array) -> Tuple[list, list, np.array]:
+    """
+     给定任意2个轴向交点及最大/最小点，返回定向包围框mesh
+
+    Args:
+        x_pts: x轴交点
+        z_pts: z轴交点
+        z_max_pts: 最大z顶点
+        z_min_pts:最小z顶点
+        x_max_pts:最大x顶点
+        x_min_pts:最小x顶点
+        y_max_pts:最大y顶点
+        y_min_pts:最小y顶点
+        center: 中心点
+
+    Returns:
+        包围框的顶点， 面片索引，3*3旋转矩阵
+
+    """
+
+    # 定义三个射线
+    x_axis = np.array(x_pts - center).reshape(3)
+    z_axis = np.array(z_pts - center).reshape(3)
+    x_axis = x_axis / np.linalg.norm(x_axis)
+    z_axis = z_axis / np.linalg.norm(z_axis)
+    y_axis = np.cross(z_axis, x_axis).reshape(3)
+
+    # 计算最大边界
+    z_max = np.dot(z_max_pts - center, z_axis)
+    z_min = np.dot(z_min_pts - center, z_axis)
+    x_max = np.dot(x_max_pts - center, x_axis)
+    x_min = np.dot(x_min_pts - center, x_axis)
+    y_max = np.dot(y_max_pts - center, y_axis)
+    y_min = np.dot(y_min_pts - center, y_axis)
+
+    # 计算最大边界位移
+    inv_x = x_min * x_axis
+    inv_y = y_min * y_axis
+    inv_z = z_min * z_axis
+    x = x_max * x_axis
+    y = y_max * y_axis
+    z = z_max * z_axis
+
+    # 绘制OBB
+    verts = [
+        center + x + y + z,
+        center + inv_x + inv_y + inv_z,
+
+        center + inv_x + inv_y + z,
+        center + x + inv_y + inv_z,
+        center + inv_x + y + inv_z,
+
+        center + x + y + inv_z,
+        center + x + inv_y + z,
+        center + inv_x + y + z,
+
+    ]
+
+    faces = [
+        [0, 6, 7],
+        [6, 7, 2],
+        [0, 6, 3],
+        [0, 5, 3],
+        [0, 7, 5],
+        [4, 7, 5],
+        [4, 7, 2],
+        [1, 2, 4],
+        [1, 2, 3],
+        [2, 3, 6],
+        [3, 5, 4],
+        [1, 3, 4]
+
+    ]
+    R = np.vstack([x_axis, y_axis, z_axis]).T
+    return verts, faces, R
+
+
+def create_voxels(vertices, resolution: int = 256):
+    """
+        通过顶点创建阵列方格体素
+    Args:
+        vertices: 顶点
+        resolution:  分辨率
+
+    Returns:
+        返回 res**3 的顶点 , mc重建需要的缩放及位移
+
+    Notes:
+        v, f = mcubes.marching_cubes(data.reshape(256, 256, 256), 0)
+
+        m=vedo.Mesh([v*scale+translation, f])
+
+
+    """
+    vertices = np.array(vertices)
+    x_min, x_max = vertices[:, 0].min(), vertices[:, 0].max()
+    y_min, y_max = vertices[:, 1].min(), vertices[:, 1].max()
+    z_min, z_max = vertices[:, 2].min(), vertices[:, 2].max()
+
+    # 使用np.mgrid生成网格索引
+    i, j, k = np.mgrid[0:resolution, 0:resolution, 0:resolution]
+
+    # 计算步长（即网格单元的大小）
+    dx = (x_max - x_min) / resolution
+    dy = (y_max - y_min) / resolution
+    dz = (z_max - z_min) / resolution
+    scale = np.array([dx, dy, dz])
+
+    # 将索引转换为坐标值
+    x = x_min + i * dx
+    y = y_min + j * dy
+    z = z_min + k * dz
+    translation = np.array([x_min, y_min, z_min])
+
+    verts = np.stack((x.ravel(), y.ravel(), z.ravel()), axis=-1)
+    # print(verts.shape)
+    # vedo.show(vedo.Points(verts[::30]),self.crown).close()
+    return verts, scale, translation

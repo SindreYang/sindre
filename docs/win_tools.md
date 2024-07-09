@@ -142,9 +142,154 @@ tools.exe2nsis(work_dir=r"C:/55555",
 ```
 将生成![exe2nsis.png](img/exe2nsis.png)
 
+
+
+#### win32提示框
+* 针对不想安装其他gui包，但需要弹窗提示的现象
+
+```python
+
+import win32api,win32con
+ 
+ 
+##提醒OK消息框
+win32api.MessageBox(0, "这是一个测试提醒OK消息框", "提醒",win32con.MB_OK)
+ 
+##是否信息框
+win32api.MessageBox(0, "这是一个测试是否信息框", "提醒",win32con.MB_YESNO)
+ 
+##说明信息框
+win32api.MessageBox(0, "这是一个测试说明信息框", "提醒",win32con.MB_HELP)
+ 
+####警告信息框
+win32api.MessageBox(0, "这是一个测试警告信息框", "提醒",win32con.MB_ICONWARNING)
+ 
+##疑问信息框
+win32api.MessageBox(0, "这是一个测试疑问信息框", "提醒",win32con.MB_ICONQUESTION)
+ 
+##提示信息框
+win32api.MessageBox(0, "这是一个测试提示信息框", "提醒",win32con.MB_ICONASTERISK)
+ 
+##确认信息框
+win32api.MessageBox(0, "这是一个测试确认信息框", "提醒",win32con.MB_OKCANCEL)
+ 
+##重试信息框
+win32api.MessageBox(0, "这是一个测试重试信息框", "提醒",win32con.MB_RETRYCANCEL)
+ 
+##是否取消信息框
+win32api.MessageBox(0, "这是一个测试是否取消信息框", "提醒",win32con.MB_YESNOCANCEL)
+
+
+# 弹出带有三个按钮的消息框  
+result = win32api.MessageBox(0, "这是一个带有三个按钮的测试消息框", "标题", win32con.MB_YESNOCANCEL)
+
+# 检测用户点击的按钮  
+if result == win32con.IDYES:
+    print("用户点击了 Yes 按钮")
+elif result == win32con.IDNO:
+    print("用户点击了 No 按钮")
+elif result == win32con.IDCANCEL:
+    print("用户点击了 Cancel 按钮")
+```
+
+```
+WIN32CON.MB_OK = 0
+WIN32CON.MB_OKCANCEL = 1
+WIN32CON.MB_ABORTRETRYIGNORE = 2
+WIN32CON.MB_YESNOCANCEL = 3
+WIN32CON.MB_YESNO = 4
+WIN32CON.MB_RETRYCANCEL = 5
+WIN32CON.MB_ICONHAND = 16
+WIN32CON.MB_ICONQUESTION = 32
+WIN32CON.MB_ICONEXCLAMATION = 48
+WIN32CON.MB_ICONASTERISK = 64
+WIN32CON.MB_ICONWARNING = WIN32CON.MB_ICONEXCLAMATION
+WIN32CON.MB_ICONERROR = WIN32CON.MB_ICONHAND
+WIN32CON.MB_ICONINFORMATION = WIN32CON.MB_ICONASTERISK
+WIN32CON.MB_ICONSTOP = WIN32CON.MB_ICONHAND
+WIN32CON.MB_DEFBUTTON1 = 0
+WIN32CON.MB_DEFBUTTON2 = 256
+WIN32CON.MB_DEFBUTTON3 = 512
+WIN32CON.MB_DEFBUTTON4 = 768
+WIN32CON.MB_APPLMODAL = 0
+WIN32CON.MB_SYSTEMMODAL = 4096
+WIN32CON.MB_TASKMODAL = 8192
+WIN32CON.MB_HELP = 16384
+WIN32CON.MB_NOFOCUS = 32768
+WIN32CON.MB_SETFOREGROUND = 65536
+WIN32CON.MB_DEFAULT_DESKTOP_ONLY = 131072
+WIN32CON.MB_TOPMOST = 262144
+WIN32CON.MB_RIGHT = 524288
+WIN32CON.MB_RTLREADING = 1048576
+WIN32CON.MB_SERVICE_NOTIFICATION = 2097152
+WIN32CON.MB_TYPEMASK = 15
+WIN32CON.MB_USERICON = 128
+WIN32CON.MB_ICONMASK = 240
+WIN32CON.MB_DEFMASK = 3840
+WIN32CON.MB_MODEMASK = 12288
+WIN32CON.MB_MISCMASK = 49152
+
+```
+
+
+#### 快速创建托盘
+
+```python
+
+from sindre.win_tools import stray
+import time
+def setup_fun(icon):
+    icon.visible = True
+
+    i = 0
+    while icon.visible:
+        # Some payload code
+        print(i)
+        i += 1
+        time.sleep(5)
+def fun0():
+    print("fun0")
+
+
+def fun1():
+    print("fun1")
+
+
+def fun2():
+    print("fun2")
+
+
+def fun3():
+    print("fun3")
+
+
+if __name__ == '__main__':
+    data = [
+        # 不通知执行
+        {"按钮1": ["", fun1]},
+        # 通知执行
+        {"按钮0": ["执行fun0", fun0]},
+        # 二级嵌套
+        {"子菜单": [
+            {"按钮2": ["", fun2]},
+            {"按钮3": ["执行fun3", fun3]}
+        ]
+        }
+    ]
+    s = stray(data)
+    # 自定义函数启动
+    # s(setup_fun)
+    s()
+
+```
+
+
 ## 3. API:
 
 ::: win_tools.tools
+
 ::: win_tools.taskbar
+
+::: win_tools.stray
 
 

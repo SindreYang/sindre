@@ -50,7 +50,10 @@ __author__ = 'sindre'
 import glob
 import os
 import shutil
+import socket
 import subprocess
+import threading
+import time
 import zipfile
 
 import requests
@@ -314,12 +317,12 @@ def python_installer(install_dir: str, version: str = '3.9.6'):
 
 def exe2nsis(work_dir: str,
              files_to_compress: list,
-             exe_name:str,
+             exe_name: str,
              appname: str = "AI",
              version: str = "1.0.0.0",
              author: str = "SindreYang",
              license: str = "",
-             icon_old: str=""):
+             icon_old: str = ""):
     """
         将exe进行nsis封装成安装程序；
 
@@ -344,7 +347,12 @@ def exe2nsis(work_dir: str,
     config_path = os.path.abspath("./bin/config")
     print(exe_7z_path)
     # 压缩app目录
-    subprocess.run([f"{exe_7z_path}", "a", f"{work_dir}/app.7z"] + files_to_compress)
+    app_7z_path = f"{work_dir}/app.7z"
+    if os.path.exists(app_7z_path):
+        print(f"已存在{app_7z_path},跳过压缩步骤")
+    else:
+        print(f"不存在{app_7z_path},开始压缩步骤")
+        subprocess.run([f"{exe_7z_path}", "a", app_7z_path] + files_to_compress)
     # 替换文件
     nsis_code = f"""
 # ====================== 自定义宏 产品信息==============================
@@ -412,9 +420,287 @@ UninstallIcon     "uninst.ico"
         return False
 
 
-if __name__ == '__main__':
-    #py2pyd(r"C:\Users\sindre\Downloads\55555")
-    exe2nsis(work_dir=r"C:\Users\sindre\Downloads\55555",
-             files_to_compress=[f"C:/Users/sindre/Downloads/55555/{i}" for i in  ["app", "app.exe", "app.py"]],
-             exe_name="app.exe")
+def is_service_exists(service_name: str) -> bool:
+    """
+        使用sc query命令来查询服务
 
+    Args:
+        service_name: 服务名
+
+    Returns:
+        返回是否存在服务
+
+    """
+
+    # 使用sc query命令来查询服务
+    command = ['sc', 'query', service_name]
+    try:
+        # 运行命令并获取输出
+        result = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        # 检查命令是否成功执行（返回码为0）
+        if result.returncode == 0:
+            # 在标准输出中查找服务名，确认服务存在
+            if service_name in result.stdout:
+                return True
+    except Exception as e:
+        # 处理其他可能的异常
+        return False
+
+
+def check_port(port: int) -> bool:
+    """
+        检测win端口是否被占用
+
+    Args:
+        port: 端口号
+
+    Returns:
+        是否被占用
+
+    """
+    cmd = f"netstat -ano | findstr :{port} | findstr LISTENING"
+    result = subprocess.run(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    return len(result.stdout.strip()) > 0
+
+
+def download_url_file(url: str, package_path: str = "test.zip") -> bool:
+    """
+        下载网络文件
+
+    Args:
+        url: 文件下载地址
+        package_path:  保存路径
+
+    Returns:
+        下载是否成功
+
+    """
+
+    try:
+        # 发送下载请求
+        with requests.get(url, stream=True) as r, open(package_path, 'wb') as f:
+            total_size = int(r.headers.get('Content-Length', 0))
+            for data in r.iter_content(chunk_size=8192):
+                f.write(data)
+            return True
+    except Exception as e:
+        print(e)
+        return False
+
+
+def zip_extract(zip_path: str, install_dir: str) -> bool:
+    """
+         将zip文件解压
+    Args:
+        zip_path: zip文件路径
+        install_dir: 解压目录
+
+    Returns:
+        解压是否成功
+
+    """
+    try:
+        with zipfile.ZipFile(zip_path, 'r') as zip_ref:
+            zip_ref.extractall(install_dir)
+            return True
+    except Exception as e:
+        print(e)
+        return False
+
+
+def kill_process_using_port(server_port: int) -> bool:
+    """
+        请求管理员权限，并强制释放端口
+
+    Args:
+        server_port: 端口号
+
+    Returns:
+        端口是否成功释放
+
+    """
+
+    kill_code = rf"""
+@echo off  
+setlocal enabledelayedexpansion  
+  
+>nul 2>&1 "%SYSTEMROOT%\system32\cacls.exe" "%SYSTEMROOT%\system32\config\system"  
+if '%errorlevel%' NEQ '0' (  
+    goto UACPrompt  
+) else (  
+    goto gotAdmin  
+)  
+  
+:UACPrompt  
+echo Set UAC = CreateObject^("Shell.Application"^) > "%temp%\getadmin.vbs"  
+echo UAC.ShellExecute "%~s0", "", "", "runas", 1 >> "%temp%\getadmin.vbs"  
+"%temp%\getadmin.vbs"  
+exit /B  
+  
+:gotAdmin  
+if exist "%temp%\getadmin.vbs" (  
+    del "%temp%\getadmin.vbs"  
+)  
+pushd "%CD%"  
+CD /D "%~dp0"  
+  
+set PORT={server_port}
+set /a TIMEOUT=2  
+  
+echo Checking for processes running on port %PORT%...  
+for /f "tokens=5" %%a in ('netstat -ano ^| findstr :%PORT%') do (  
+    set PID=%%a  
+    goto foundProcess  
+)  
+echo No process found running on port %PORT%.  
+goto endScript  
+  
+:foundProcess  
+echo Found process with PID: !PID!  
+taskkill /F /PID !PID!  
+echo Process on port %PORT% has been killed.  
+
+  
+:endScript  
+timeout /t %TIMEOUT% >nul  
+echo Script will exit after %TIMEOUT% seconds...  
+endlocal  
+exit
+        """
+    with open("kill.bat", 'w') as f:
+        f.write(kill_code)
+    subprocess.Popen("kill.bat")  # 不显示cmd窗口
+    time.sleep(5)
+    if os.path.isfile("kill.bat"):
+        os.remove("kill.bat")
+    if check_port(server_port):
+        return False
+    return True
+
+
+class tcp_mapping_qt(threading.Thread):
+    """
+    TCP 传输线程
+    """
+
+    def __init__(self, conn_receiver, conn_sender):
+        super(tcp_mapping_qt, self).__init__()
+        self.conn_receiver, self.conn_sender = conn_receiver, conn_sender
+
+    def run(self):
+        while True:
+            try:
+                # 接收数据缓存大小
+                print("接收数据缓存大小")
+                data = self.conn_receiver.recv(32768)
+                if not data:
+                    break
+                print("接收数据缓存大小", len(data))
+            except Exception as e:
+                print("[-] 关闭: 映射请求已关闭.", e)
+                break
+
+            try:
+                print("sendall", len(data))
+                self.conn_sender.sendall(data)
+                print("sendall")
+            except Exception as e:
+                print("[-] 错误: 发送数据时出错.", e)
+                break
+            if self.conn_receiver and self.conn_sender:
+                print("[+] 映射请求: {} ---> 传输到: {} ---> {} bytes".format(self.conn_receiver.getpeername(),
+                                                                              self.conn_sender.getpeername(),
+                                                                              len(data)))
+        self.conn_receiver.close()
+        self.conn_sender.close()
+
+
+class ip_bind(threading.Thread):
+    """
+        实现本地0.0.0.0：8000 <--> 远程端口 内网穿透
+    """
+
+    def __init__(self):
+        super(ip_bind, self).__init__()
+        self.remote_conn = None
+        self.local_server = None
+        self.remote_ip = "192.168.1.53"  # 对端地址
+        self.remote_port = 8000  # 对端端口
+        self.local_ip = "0.0.0.0"  # 本机地址
+        self.local_port = 8000  # 本机端口
+        self.stat = True  # 线程开关
+        self.threads = []  # 线程列表
+
+    def run(self):
+        self.local_server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        # 允许地址重复使用
+        self.local_server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        self.local_server.bind((self.local_ip, self.local_port))
+        self.local_server.listen(5)
+
+        print("[*] 本地端口监听 {}:{}".format(self.local_ip, self.local_port))
+        while self.stat and self.local_server is not None:
+            try:
+                (local_conn, local_addr) = self.local_server.accept()
+                # 远程端口
+                self.remote_conn = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                self.remote_conn.connect((self.remote_ip, self.remote_port))
+                lr = tcp_mapping_qt(local_conn, self.remote_conn)
+                rl = tcp_mapping_qt(self.remote_conn, local_conn)
+                lr.start()
+                rl.start()
+                self.threads.append(lr)
+                self.threads.append(rl)
+            except Exception as e:
+                print(e)
+                break
+
+        self.local_server.close()
+
+    def on_mapping_thread_finished(self):
+        # 如果线程完成，则移除
+        self.threads.remove(threading.current_thread())
+
+    def close(self):
+        self.stat = False
+        for t in self.threads:
+            if t.isRuning():
+                t.join(2)
+        if self.remote_conn is not None:
+            self.remote_conn.close()
+        if self.local_server is not None:
+            self.local_server.close()
+
+    def set_ip(self, remote_ip: str, remote_port: str):
+        """
+            设置远程ip及端口
+
+        Args:
+            remote_ip: 远程ip
+            remote_port: 远程端口
+
+        Returns:
+
+        """
+
+        self.remote_ip = remote_ip  # 对端地址
+        self.remote_port = int(remote_port)  # 对端端口
+        print(f"[*] 端口映射 {self.local_ip}:{self.local_port}--->{self.remote_ip}:{self.remote_port}")
+
+
+if __name__ == '__main__':
+    # py2pyd(r"C:\Users\sindre\Downloads\55555")
+    # exe2nsis(work_dir=r"C:\Users\sindre\Desktop\test",
+    #          files_to_compress=[f"C:/Users/sindre/Desktop/test/t/{i}" for i in  ["app", "app.exe", "app.py"]],
+    #          exe_name="app.exe")
+
+    files = [f"C:/Users/sindre/Desktop/test/{i}" for i in ["AI",
+                                                           "AI_Services.exe",
+                                                           "kill.bat",
+                                                           "python38.dll",
+                                                           "7z.dll",
+                                                           "7z.exe",
+                                                           "curl.exe"]]
+    exe2nsis(work_dir=r"C:\Users\sindre\Desktop\test",
+             files_to_compress=files,
+             exe_name="AI_Services.exe")
