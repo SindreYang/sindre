@@ -10,9 +10,6 @@ jobs:
     steps:
       - name: Checkout main
         uses: actions/checkout@v2
-        with:
-            fetch-depth: 0
-            ref: 'refs/heads/*'
       
     #   - name: Set up Python 3.8
     #     uses: actions/setup-python@v4
@@ -24,6 +21,11 @@ jobs:
     #         python -m pip install -r requirements.txt
     #         python setup.py bdist_wheel
     #         mkdocs gh-deploy
+
+      - name: Checkout gh-pages
+        uses: actions/checkout@v2
+        with:
+            ref: gh-pages
       - name: Push Branch to Another Repository
         run: |
             git config --global user.name "SindreYang"
