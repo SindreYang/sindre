@@ -159,7 +159,7 @@ def py2pyd(source_path: str, clear_py: bool = False):
     """
     tmp_path = os.path.join(source_path, "tmp")
     if not os.path.exists(tmp_path):
-        print(f"创建临时目录:{tmp_path}")
+        print(f"mkdir tmp dir:{tmp_path}")
         os.mkdir(tmp_path)
 
     # 遍历目录下的所有文件
@@ -178,7 +178,7 @@ def py2pyd(source_path: str, clear_py: bool = False):
 
                         # 构建扩展模块对象
                         extension = Extension(module_name, sources=[file_path])
-                        print("编译：", extension)
+                        print("build:", extension)
 
                         setup(
                             ext_modules=cythonize(extension, compiler_directives={'language_level': "3"}, force=True),
@@ -194,21 +194,21 @@ def py2pyd(source_path: str, clear_py: bool = False):
                                     old_path = os.path.join(tmp_path, f_pyd)
                                     new_path = os.path.join(root, pyd_name)
                                     try:
-                                        print(f"移动{old_path}-->{new_path}：")
+                                        print(f"move{old_path}-->{new_path}：")
                                         os.rename(old_path, new_path)
                                         if clear_py:
-                                            print(f"清除{file_path}")
+                                            print(f"clear:{file_path}")
                                             os.remove(file_path)
                                     except Exception as e:
-                                        print("未知错误：", e)
+                                        print("Exception:", e)
 
                         # 删除.c文件
                         c_file = file_path.replace(".py", ".c")
-                        print("删除: ", c_file)
+                        print("del:", c_file)
                         os.remove(c_file)
 
     if os.path.exists(tmp_path):
-        print("删除临时目录：", tmp_path)
+        print("del tmp dir：", tmp_path)
         shutil.rmtree(tmp_path)
 
 
