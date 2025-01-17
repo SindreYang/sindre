@@ -18,15 +18,15 @@
       
       
       <link rel="icon" href="../assets/images/favicon.png">
-      <meta name="generator" content="mkdocs-1.6.0, mkdocs-material-9.5.27">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.5.49">
     
     
       
-        <title>3D - sindre库</title>
+        <title>三维算法 - sindre库</title>
       
     
     
-      <link rel="stylesheet" href="../assets/stylesheets/main.6543a935.min.css">
+      <link rel="stylesheet" href="../assets/stylesheets/main.6f8fc17f.min.css">
       
         
         <link rel="stylesheet" href="../assets/stylesheets/palette.06af60db.min.css">
@@ -50,7 +50,7 @@
     
       <link rel="stylesheet" href="../assets/_mkdocstrings.css">
     
-    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce((e,_)=>(e<<5)-e+_.charCodeAt(0),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
     
       
 
@@ -93,12 +93,12 @@
     <a href=".." title="sindre库" class="md-header__button md-logo" aria-label="sindre库" data-md-component="logo">
       
   
-  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54Z"/></svg>
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
 
     </a>
     <label class="md-header__button md-icon" for="__drawer">
       
-      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3V6m0 5h18v2H3v-2m0 5h18v2H3v-2Z"/></svg>
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
     </label>
     <div class="md-header__title" data-md-component="header-title">
       <div class="md-header__ellipsis">
@@ -110,7 +110,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              3D
+              三维算法
             
           </span>
         </div>
@@ -126,7 +126,7 @@
     <input class="md-option" data-md-color-media="" data-md-color-scheme="slate" data-md-color-primary="orange" data-md-color-accent="orange"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
     
       <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
-        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M17 6H7c-3.31 0-6 2.69-6 6s2.69 6 6 6h10c3.31 0 6-2.69 6-6s-2.69-6-6-6zm0 10H7c-2.21 0-4-1.79-4-4s1.79-4 4-4h10c2.21 0 4 1.79 4 4s-1.79 4-4 4zM7 9c-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3-1.34-3-3-3z"/></svg>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M17 6H7c-3.31 0-6 2.69-6 6s2.69 6 6 6h10c3.31 0 6-2.69 6-6s-2.69-6-6-6m0 10H7c-2.21 0-4-1.79-4-4s1.79-4 4-4h10c2.21 0 4 1.79 4 4s-1.79 4-4 4M7 9c-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3-1.34-3-3-3"/></svg>
       </label>
     
   
@@ -136,7 +136,7 @@
     <input class="md-option" data-md-color-media="" data-md-color-scheme="default" data-md-color-primary="blue" data-md-color-accent="blue"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
     
       <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
-        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M17 7H7a5 5 0 0 0-5 5 5 5 0 0 0 5 5h10a5 5 0 0 0 5-5 5 5 0 0 0-5-5m0 8a3 3 0 0 1-3-3 3 3 0 0 1 3-3 3 3 0 0 1 3 3 3 3 0 0 1-3 3Z"/></svg>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M17 7H7a5 5 0 0 0-5 5 5 5 0 0 0 5 5h10a5 5 0 0 0 5-5 5 5 0 0 0-5-5m0 8a3 3 0 0 1-3-3 3 3 0 0 1 3-3 3 3 0 0 1 3 3 3 3 0 0 1-3 3"/></svg>
       </label>
     
   
@@ -144,13 +144,13 @@
       
     
     
-      <script>var media,input,key,value,palette=__md_get("__palette");if(palette&&palette.color){"(prefers-color-scheme)"===palette.color.media&&(media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']"),palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent"));for([key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
     
     
     
       <label class="md-header__button md-icon" for="__search">
         
-        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.516 6.516 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5Z"/></svg>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
       </label>
       <div class="md-search" data-md-component="search" role="dialog">
   <label class="md-search__overlay" for="__search"></label>
@@ -159,15 +159,15 @@
       <input type="text" class="md-search__input" name="query" aria-label="搜索" placeholder="搜索" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
       <label class="md-search__icon md-icon" for="__search">
         
-        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.516 6.516 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5Z"/></svg>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
         
-        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11h12Z"/></svg>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
       </label>
       <nav class="md-search__options" aria-label="查找">
         
         <button type="reset" class="md-search__icon md-icon" title="清空当前内容" aria-label="清空当前内容" tabindex="-1">
           
-          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12 19 6.41Z"/></svg>
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
         </button>
       </nav>
       
@@ -262,7 +262,7 @@
     <a href=".." title="sindre库" class="md-nav__button md-logo" aria-label="sindre库" data-md-component="logo">
       
   
-  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54Z"/></svg>
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
 
     </a>
     sindre库
@@ -393,7 +393,7 @@
           
   
   <span class="md-ellipsis">
-    3D
+    三维算法
   </span>
   
 
@@ -404,7 +404,7 @@
         
   
   <span class="md-ellipsis">
-    3D
+    三维算法
   </span>
   
 
@@ -433,7 +433,7 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#3D.tools" class="md-nav__link">
+  <a href="#utils3d.tools" class="md-nav__link">
     <span class="md-ellipsis">
       tools
     </span>
@@ -442,7 +442,7 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#3D.tools.NpEncoder" class="md-nav__link">
+  <a href="#utils3d.tools.NpEncoder" class="md-nav__link">
     <span class="md-ellipsis">
       NpEncoder
     </span>
@@ -451,7 +451,7 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#3D.tools.apply_pac_transform" class="md-nav__link">
+  <a href="#utils3d.tools.apply_pac_transform" class="md-nav__link">
     <span class="md-ellipsis">
       apply_pac_transform
     </span>
@@ -460,7 +460,16 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#3D.tools.face_labels_to_vertex_labels" class="md-nav__link">
+  <a href="#utils3d.tools.create_voxels" class="md-nav__link">
+    <span class="md-ellipsis">
+      create_voxels
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#utils3d.tools.face_labels_to_vertex_labels" class="md-nav__link">
     <span class="md-ellipsis">
       face_labels_to_vertex_labels
     </span>
@@ -469,7 +478,7 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#3D.tools.get_axis_rotation" class="md-nav__link">
+  <a href="#utils3d.tools.get_axis_rotation" class="md-nav__link">
     <span class="md-ellipsis">
       get_axis_rotation
     </span>
@@ -478,7 +487,25 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#3D.tools.get_pca_rotation" class="md-nav__link">
+  <a href="#utils3d.tools.get_obb_box" class="md-nav__link">
+    <span class="md-ellipsis">
+      get_obb_box
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#utils3d.tools.get_obb_box_max_min" class="md-nav__link">
+    <span class="md-ellipsis">
+      get_obb_box_max_min
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#utils3d.tools.get_pca_rotation" class="md-nav__link">
     <span class="md-ellipsis">
       get_pca_rotation
     </span>
@@ -487,7 +514,7 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#3D.tools.get_pca_transform" class="md-nav__link">
+  <a href="#utils3d.tools.get_pca_transform" class="md-nav__link">
     <span class="md-ellipsis">
       get_pca_transform
     </span>
@@ -496,7 +523,7 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#3D.tools.restore_pca_transform" class="md-nav__link">
+  <a href="#utils3d.tools.restore_pca_transform" class="md-nav__link">
     <span class="md-ellipsis">
       restore_pca_transform
     </span>
@@ -505,7 +532,7 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#3D.tools.rotation_crown" class="md-nav__link">
+  <a href="#utils3d.tools.rotation_crown" class="md-nav__link">
     <span class="md-ellipsis">
       rotation_crown
     </span>
@@ -514,7 +541,7 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#3D.tools.save_np_json" class="md-nav__link">
+  <a href="#utils3d.tools.save_np_json" class="md-nav__link">
     <span class="md-ellipsis">
       save_np_json
     </span>
@@ -523,7 +550,7 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#3D.tools.tooth_labels_to_color" class="md-nav__link">
+  <a href="#utils3d.tools.tooth_labels_to_color" class="md-nav__link">
     <span class="md-ellipsis">
       tooth_labels_to_color
     </span>
@@ -532,7 +559,7 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#3D.tools.vertex_labels_to_face_labels" class="md-nav__link">
+  <a href="#utils3d.tools.vertex_labels_to_face_labels" class="md-nav__link">
     <span class="md-ellipsis">
       vertex_labels_to_face_labels
     </span>
@@ -611,7 +638,7 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#3D.tools" class="md-nav__link">
+  <a href="#utils3d.tools" class="md-nav__link">
     <span class="md-ellipsis">
       tools
     </span>
@@ -620,7 +647,7 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#3D.tools.NpEncoder" class="md-nav__link">
+  <a href="#utils3d.tools.NpEncoder" class="md-nav__link">
     <span class="md-ellipsis">
       NpEncoder
     </span>
@@ -629,7 +656,7 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#3D.tools.apply_pac_transform" class="md-nav__link">
+  <a href="#utils3d.tools.apply_pac_transform" class="md-nav__link">
     <span class="md-ellipsis">
       apply_pac_transform
     </span>
@@ -638,7 +665,16 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#3D.tools.face_labels_to_vertex_labels" class="md-nav__link">
+  <a href="#utils3d.tools.create_voxels" class="md-nav__link">
+    <span class="md-ellipsis">
+      create_voxels
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#utils3d.tools.face_labels_to_vertex_labels" class="md-nav__link">
     <span class="md-ellipsis">
       face_labels_to_vertex_labels
     </span>
@@ -647,7 +683,7 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#3D.tools.get_axis_rotation" class="md-nav__link">
+  <a href="#utils3d.tools.get_axis_rotation" class="md-nav__link">
     <span class="md-ellipsis">
       get_axis_rotation
     </span>
@@ -656,7 +692,25 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#3D.tools.get_pca_rotation" class="md-nav__link">
+  <a href="#utils3d.tools.get_obb_box" class="md-nav__link">
+    <span class="md-ellipsis">
+      get_obb_box
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#utils3d.tools.get_obb_box_max_min" class="md-nav__link">
+    <span class="md-ellipsis">
+      get_obb_box_max_min
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#utils3d.tools.get_pca_rotation" class="md-nav__link">
     <span class="md-ellipsis">
       get_pca_rotation
     </span>
@@ -665,7 +719,7 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#3D.tools.get_pca_transform" class="md-nav__link">
+  <a href="#utils3d.tools.get_pca_transform" class="md-nav__link">
     <span class="md-ellipsis">
       get_pca_transform
     </span>
@@ -674,7 +728,7 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#3D.tools.restore_pca_transform" class="md-nav__link">
+  <a href="#utils3d.tools.restore_pca_transform" class="md-nav__link">
     <span class="md-ellipsis">
       restore_pca_transform
     </span>
@@ -683,7 +737,7 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#3D.tools.rotation_crown" class="md-nav__link">
+  <a href="#utils3d.tools.rotation_crown" class="md-nav__link">
     <span class="md-ellipsis">
       rotation_crown
     </span>
@@ -692,7 +746,7 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#3D.tools.save_np_json" class="md-nav__link">
+  <a href="#utils3d.tools.save_np_json" class="md-nav__link">
     <span class="md-ellipsis">
       save_np_json
     </span>
@@ -701,7 +755,7 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#3D.tools.tooth_labels_to_color" class="md-nav__link">
+  <a href="#utils3d.tools.tooth_labels_to_color" class="md-nav__link">
     <span class="md-ellipsis">
       tooth_labels_to_color
     </span>
@@ -710,7 +764,7 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#3D.tools.vertex_labels_to_face_labels" class="md-nav__link">
+  <a href="#utils3d.tools.vertex_labels_to_face_labels" class="md-nav__link">
     <span class="md-ellipsis">
       vertex_labels_to_face_labels
     </span>
@@ -733,7 +787,7 @@
                   
 
 
-  <h1>3D</h1>
+  <h1>三维算法</h1>
 
 <h2 id="api">API</h2>
 
@@ -742,10 +796,10 @@
 
 
 
-<a id="3D.tools"></a>
+<a id="utils3d.tools"></a>
     <div class="doc doc-contents first">
 
-      <pre><code>@path   ：sindre_package -&gt; tools.py
+        <pre><code>@path   ：sindre_package -&gt; tools.py
 @IDE    ：PyCharm
 @Author ：sindre
 @Email  ：yx@mviai.com
@@ -800,7 +854,7 @@
 
 
 
-<h2 id="3D.tools.NpEncoder" class="doc doc-heading">
+<h2 id="utils3d.tools.NpEncoder" class="doc doc-heading">
             <code>NpEncoder</code>
 
 
@@ -843,7 +897,7 @@
 <div class="doc doc-object doc-function">
 
 
-<h2 id="3D.tools.apply_pac_transform" class="doc doc-heading">
+<h2 id="utils3d.tools.apply_pac_transform" class="doc doc-heading">
             <code class="highlight language-python"><span class="n">apply_pac_transform</span><span class="p">(</span><span class="n">vertices</span><span class="p">,</span> <span class="n">transform</span><span class="p">)</span></code>
 
 </h2>
@@ -851,7 +905,7 @@
 
     <div class="doc doc-contents ">
 
-      <pre><code>对pca获得4*4矩阵进行应用
+        <pre><code>对pca获得4*4矩阵进行应用
 </code></pre>
 
 
@@ -927,7 +981,56 @@
 <div class="doc doc-object doc-function">
 
 
-<h2 id="3D.tools.face_labels_to_vertex_labels" class="doc doc-heading">
+<h2 id="utils3d.tools.create_voxels" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">create_voxels</span><span class="p">(</span><span class="n">vertices</span><span class="p">,</span> <span class="n">resolution</span><span class="o">=</span><span class="mi">256</span><span class="p">)</span></code>
+
+</h2>
+
+
+    <div class="doc doc-contents ">
+
+        <pre><code>通过顶点创建阵列方格体素
+</code></pre>
+<p>Args:
+    vertices: 顶点
+    resolution:  分辨率</p>
+
+
+    <p><span class="doc-section-title">Returns:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Type</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>返回 res**3 的顶点 , mc重建需要的缩放及位移</p>
+              </div>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+<details class="notes" open>
+  <summary>Notes</summary>
+  <p>v, f = mcubes.marching_cubes(data.reshape(256, 256, 256), 0)</p>
+<p>m=vedo.Mesh([v*scale+translation, f])</p>
+</details>
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h2 id="utils3d.tools.face_labels_to_vertex_labels" class="doc doc-heading">
             <code class="highlight language-python"><span class="n">face_labels_to_vertex_labels</span><span class="p">(</span><span class="n">vertices</span><span class="p">,</span> <span class="n">faces</span><span class="p">,</span> <span class="n">face_labels</span><span class="p">)</span></code>
 
 </h2>
@@ -935,7 +1038,7 @@
 
     <div class="doc doc-contents ">
 
-      <pre><code>将三角网格的面片标签转换成顶点标签
+        <pre><code>将三角网格的面片标签转换成顶点标签
 </code></pre>
 
 
@@ -953,7 +1056,7 @@
           <tr class="doc-section-item">
             <td><code>vertices</code></td>
             <td>
-                  <code><span title="typing.Union">Union</span>[<span title="numpy.array">array</span>, list]</code>
+                  <code>Union[<span title="numpy.array">array</span>, list]</code>
             </td>
             <td>
               <div class="doc-md-description">
@@ -967,7 +1070,7 @@
           <tr class="doc-section-item">
             <td><code>faces</code></td>
             <td>
-                  <code><span title="typing.Union">Union</span>[<span title="numpy.array">array</span>, list]</code>
+                  <code>Union[<span title="numpy.array">array</span>, list]</code>
             </td>
             <td>
               <div class="doc-md-description">
@@ -1025,7 +1128,7 @@
 <div class="doc doc-object doc-function">
 
 
-<h2 id="3D.tools.get_axis_rotation" class="doc doc-heading">
+<h2 id="utils3d.tools.get_axis_rotation" class="doc doc-heading">
             <code class="highlight language-python"><span class="n">get_axis_rotation</span><span class="p">(</span><span class="n">axis</span><span class="p">,</span> <span class="n">angle</span><span class="p">)</span></code>
 
 </h2>
@@ -1033,7 +1136,7 @@
 
     <div class="doc doc-contents ">
 
-      <pre><code>绕着指定轴获取3*3旋转矩阵
+        <pre><code>绕着指定轴获取3*3旋转矩阵
 </code></pre>
 
 
@@ -1109,7 +1212,232 @@
 <div class="doc doc-object doc-function">
 
 
-<h2 id="3D.tools.get_pca_rotation" class="doc doc-heading">
+<h2 id="utils3d.tools.get_obb_box" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">get_obb_box</span><span class="p">(</span><span class="n">x_pts</span><span class="p">,</span> <span class="n">z_pts</span><span class="p">,</span> <span class="n">vertices</span><span class="p">)</span></code>
+
+</h2>
+
+
+    <div class="doc doc-contents ">
+
+        <p>给定任意2个轴向交点及顶点，返回定向包围框mesh
+Args:
+    x_pts: x轴交点
+    z_pts: z轴交点
+    vertices: 所有顶点</p>
+
+
+    <p><span class="doc-section-title">Returns:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Type</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                  <code>Tuple[list, list, <span title="numpy.array">array</span>]</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>包围框的顶点， 面片索引，3*3旋转矩阵</p>
+              </div>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h2 id="utils3d.tools.get_obb_box_max_min" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">get_obb_box_max_min</span><span class="p">(</span><span class="n">x_pts</span><span class="p">,</span> <span class="n">z_pts</span><span class="p">,</span> <span class="n">z_max_pts</span><span class="p">,</span> <span class="n">z_min_pts</span><span class="p">,</span> <span class="n">x_max_pts</span><span class="p">,</span> <span class="n">x_min_pts</span><span class="p">,</span> <span class="n">y_max_pts</span><span class="p">,</span> <span class="n">y_min_pts</span><span class="p">,</span> <span class="n">center</span><span class="p">)</span></code>
+
+</h2>
+
+
+    <div class="doc doc-contents ">
+
+        <p>给定任意2个轴向交点及最大/最小点，返回定向包围框mesh</p>
+
+
+<p><span class="doc-section-title">Parameters:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Type</th>
+          <th>Description</th>
+          <th>Default</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td><code>x_pts</code></td>
+            <td>
+                  <code><span title="numpy.array">array</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>x轴交点</p>
+              </div>
+            </td>
+            <td>
+                <em>required</em>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td><code>z_pts</code></td>
+            <td>
+                  <code><span title="numpy.array">array</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>z轴交点</p>
+              </div>
+            </td>
+            <td>
+                <em>required</em>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td><code>z_max_pts</code></td>
+            <td>
+                  <code><span title="numpy.array">array</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>最大z顶点</p>
+              </div>
+            </td>
+            <td>
+                <em>required</em>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td><code>z_min_pts</code></td>
+            <td>
+                  <code><span title="numpy.array">array</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>最小z顶点</p>
+              </div>
+            </td>
+            <td>
+                <em>required</em>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td><code>x_max_pts</code></td>
+            <td>
+                  <code><span title="numpy.array">array</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>最大x顶点</p>
+              </div>
+            </td>
+            <td>
+                <em>required</em>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td><code>x_min_pts</code></td>
+            <td>
+                  <code><span title="numpy.array">array</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>最小x顶点</p>
+              </div>
+            </td>
+            <td>
+                <em>required</em>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td><code>y_max_pts</code></td>
+            <td>
+                  <code><span title="numpy.array">array</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>最大y顶点</p>
+              </div>
+            </td>
+            <td>
+                <em>required</em>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td><code>y_min_pts</code></td>
+            <td>
+                  <code><span title="numpy.array">array</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>最小y顶点</p>
+              </div>
+            </td>
+            <td>
+                <em>required</em>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td><code>center</code></td>
+            <td>
+                  <code><span title="numpy.array">array</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>中心点</p>
+              </div>
+            </td>
+            <td>
+                <em>required</em>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+    <p><span class="doc-section-title">Returns:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Type</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                  <code>Tuple[list, list, <span title="numpy.array">array</span>]</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>包围框的顶点， 面片索引，3*3旋转矩阵</p>
+              </div>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h2 id="utils3d.tools.get_pca_rotation" class="doc doc-heading">
             <code class="highlight language-python"><span class="n">get_pca_rotation</span><span class="p">(</span><span class="n">vertices</span><span class="p">)</span></code>
 
 </h2>
@@ -1117,7 +1445,7 @@
 
     <div class="doc doc-contents ">
 
-      <pre><code>通过pca分析顶点，获取3*3旋转矩阵，并应用到顶点；
+        <pre><code>通过pca分析顶点，获取3*3旋转矩阵，并应用到顶点；
 </code></pre>
 
 
@@ -1179,7 +1507,7 @@
 <div class="doc doc-object doc-function">
 
 
-<h2 id="3D.tools.get_pca_transform" class="doc doc-heading">
+<h2 id="utils3d.tools.get_pca_transform" class="doc doc-heading">
             <code class="highlight language-python"><span class="n">get_pca_transform</span><span class="p">(</span><span class="n">mesh</span><span class="p">)</span></code>
 
 </h2>
@@ -1187,7 +1515,7 @@
 
     <div class="doc doc-contents ">
 
-      <pre><code>将输入的顶点数据根据曲率及PCA分析得到的主成分向量，
+        <pre><code>将输入的顶点数据根据曲率及PCA分析得到的主成分向量，
 并转换成4*4变换矩阵。
 </code></pre>
 
@@ -1255,7 +1583,7 @@
 <div class="doc doc-object doc-function">
 
 
-<h2 id="3D.tools.restore_pca_transform" class="doc doc-heading">
+<h2 id="utils3d.tools.restore_pca_transform" class="doc doc-heading">
             <code class="highlight language-python"><span class="n">restore_pca_transform</span><span class="p">(</span><span class="n">vertices</span><span class="p">,</span> <span class="n">transform</span><span class="p">)</span></code>
 
 </h2>
@@ -1263,7 +1591,7 @@
 
     <div class="doc doc-contents ">
 
-      <pre><code>根据提供的顶点及矩阵，进行逆变换(还原应用矩阵之前的状态）
+        <pre><code>根据提供的顶点及矩阵，进行逆变换(还原应用矩阵之前的状态）
 </code></pre>
 
 
@@ -1339,7 +1667,7 @@
 <div class="doc doc-object doc-function">
 
 
-<h2 id="3D.tools.rotation_crown" class="doc doc-heading">
+<h2 id="utils3d.tools.rotation_crown" class="doc doc-heading">
             <code class="highlight language-python"><span class="n">rotation_crown</span><span class="p">(</span><span class="n">near_mesh</span><span class="p">,</span> <span class="n">jaw_mesh</span><span class="p">)</span></code>
 
 </h2>
@@ -1347,7 +1675,7 @@
 
     <div class="doc doc-contents ">
 
-      <pre><code>调整单冠的轴向
+        <pre><code>调整单冠的轴向
 </code></pre>
 
 
@@ -1431,7 +1759,7 @@
 <div class="doc doc-object doc-function">
 
 
-<h2 id="3D.tools.save_np_json" class="doc doc-heading">
+<h2 id="utils3d.tools.save_np_json" class="doc doc-heading">
             <code class="highlight language-python"><span class="n">save_np_json</span><span class="p">(</span><span class="n">output_path</span><span class="p">,</span> <span class="n">obj</span><span class="p">)</span></code>
 
 </h2>
@@ -1439,7 +1767,7 @@
 
     <div class="doc doc-contents ">
 
-      <p>保存np形式的json</p>
+        <p>保存np形式的json</p>
 
 
 <p><span class="doc-section-title">Parameters:</span></p>
@@ -1470,7 +1798,6 @@
           <tr class="doc-section-item">
             <td><code>obj</code></td>
             <td>
-                  <code>any</code>
             </td>
             <td>
               <div class="doc-md-description">
@@ -1491,7 +1818,7 @@
 <div class="doc doc-object doc-function">
 
 
-<h2 id="3D.tools.tooth_labels_to_color" class="doc doc-heading">
+<h2 id="utils3d.tools.tooth_labels_to_color" class="doc doc-heading">
             <code class="highlight language-python"><span class="n">tooth_labels_to_color</span><span class="p">(</span><span class="n">data</span><span class="p">)</span></code>
 
 </h2>
@@ -1499,7 +1826,7 @@
 
     <div class="doc doc-contents ">
 
-      <pre><code>将牙齿标签转换成RGBA颜色
+        <pre><code>将牙齿标签转换成RGBA颜色
 </code></pre>
 
 
@@ -1526,7 +1853,7 @@ lower_dict = [0, 48, 47, 46, 45, 44, 43, 42, 41, 31, 32, 33, 34, 35, 36, 37, 38]
           <tr class="doc-section-item">
             <td><code>data</code></td>
             <td>
-                  <code><span title="typing.Union">Union</span>[<span title="numpy.array">array</span>, list]</code>
+                  <code>Union[<span title="numpy.array">array</span>, list]</code>
             </td>
             <td>
               <div class="doc-md-description">
@@ -1570,7 +1897,7 @@ lower_dict = [0, 48, 47, 46, 45, 44, 43, 42, 41, 31, 32, 33, 34, 35, 36, 37, 38]
 <div class="doc doc-object doc-function">
 
 
-<h2 id="3D.tools.vertex_labels_to_face_labels" class="doc doc-heading">
+<h2 id="utils3d.tools.vertex_labels_to_face_labels" class="doc doc-heading">
             <code class="highlight language-python"><span class="n">vertex_labels_to_face_labels</span><span class="p">(</span><span class="n">faces</span><span class="p">,</span> <span class="n">vertex_labels</span><span class="p">)</span></code>
 
 </h2>
@@ -1578,7 +1905,7 @@ lower_dict = [0, 48, 47, 46, 45, 44, 43, 42, 41, 31, 32, 33, 34, 35, 36, 37, 38]
 
     <div class="doc doc-contents ">
 
-      <pre><code>将三角网格的顶点标签转换成面片标签，存在一个面片，多个属性，则获取出现最多的属性。
+        <pre><code>将三角网格的顶点标签转换成面片标签，存在一个面片，多个属性，则获取出现最多的属性。
 </code></pre>
 
 
@@ -1596,7 +1923,7 @@ lower_dict = [0, 48, 47, 46, 45, 44, 43, 42, 41, 31, 32, 33, 34, 35, 36, 37, 38]
           <tr class="doc-section-item">
             <td><code>faces</code></td>
             <td>
-                  <code><span title="typing.Union">Union</span>[<span title="numpy.array">array</span>, list]</code>
+                  <code>Union[<span title="numpy.array">array</span>, list]</code>
             </td>
             <td>
               <div class="doc-md-description">
@@ -1610,7 +1937,7 @@ lower_dict = [0, 48, 47, 46, 45, 44, 43, 42, 41, 31, 32, 33, 34, 35, 36, 37, 38]
           <tr class="doc-section-item">
             <td><code>vertex_labels</code></td>
             <td>
-                  <code><span title="typing.Union">Union</span>[<span title="numpy.array">array</span>, list]</code>
+                  <code>Union[<span title="numpy.array">array</span>, list]</code>
             </td>
             <td>
               <div class="doc-md-description">
@@ -1699,10 +2026,10 @@ lower_dict = [0, 48, 47, 46, 45, 44, 43, 42, 41, 31, 32, 33, 34, 35, 36, 37, 38]
     </div>
     
     
-    <script id="__config" type="application/json">{"base": "..", "features": ["navigation.tabs", "search.highlight"], "search": "../assets/javascripts/workers/search.b8dbb3d2.min.js", "translations": {"clipboard.copied": "\u5df2\u590d\u5236", "clipboard.copy": "\u590d\u5236", "search.result.more.one": "\u5728\u8be5\u9875\u4e0a\u8fd8\u6709 1 \u4e2a\u7b26\u5408\u6761\u4ef6\u7684\u7ed3\u679c", "search.result.more.other": "\u5728\u8be5\u9875\u4e0a\u8fd8\u6709 # \u4e2a\u7b26\u5408\u6761\u4ef6\u7684\u7ed3\u679c", "search.result.none": "\u6ca1\u6709\u627e\u5230\u7b26\u5408\u6761\u4ef6\u7684\u7ed3\u679c", "search.result.one": "\u627e\u5230 1 \u4e2a\u7b26\u5408\u6761\u4ef6\u7684\u7ed3\u679c", "search.result.other": "# \u4e2a\u7b26\u5408\u6761\u4ef6\u7684\u7ed3\u679c", "search.result.placeholder": "\u952e\u5165\u4ee5\u5f00\u59cb\u641c\u7d22", "search.result.term.missing": "\u7f3a\u5c11", "select.version": "\u9009\u62e9\u5f53\u524d\u7248\u672c"}}</script>
+    <script id="__config" type="application/json">{"base": "..", "features": ["navigation.tabs", "search.highlight"], "search": "../assets/javascripts/workers/search.6ce7567c.min.js", "translations": {"clipboard.copied": "\u5df2\u590d\u5236", "clipboard.copy": "\u590d\u5236", "search.result.more.one": "\u5728\u8be5\u9875\u4e0a\u8fd8\u6709 1 \u4e2a\u7b26\u5408\u6761\u4ef6\u7684\u7ed3\u679c", "search.result.more.other": "\u5728\u8be5\u9875\u4e0a\u8fd8\u6709 # \u4e2a\u7b26\u5408\u6761\u4ef6\u7684\u7ed3\u679c", "search.result.none": "\u6ca1\u6709\u627e\u5230\u7b26\u5408\u6761\u4ef6\u7684\u7ed3\u679c", "search.result.one": "\u627e\u5230 1 \u4e2a\u7b26\u5408\u6761\u4ef6\u7684\u7ed3\u679c", "search.result.other": "# \u4e2a\u7b26\u5408\u6761\u4ef6\u7684\u7ed3\u679c", "search.result.placeholder": "\u952e\u5165\u4ee5\u5f00\u59cb\u641c\u7d22", "search.result.term.missing": "\u7f3a\u5c11", "select.version": "\u9009\u62e9\u5f53\u524d\u7248\u672c"}}</script>
     
     
-      <script src="../assets/javascripts/bundle.ad660dcc.min.js"></script>
+      <script src="../assets/javascripts/bundle.88dd0f4e.min.js"></script>
       
     
   </body>
