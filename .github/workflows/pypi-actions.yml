@@ -30,7 +30,7 @@ jobs:
       - name: Deploy
         uses: peaceiris/actions-gh-pages@v4
         with:
-           deploy_key: ${{ secrets.ACTIONS_DEPLOY_KEY }}
+           deploy_key: ${{ secrets.ACTION_KEY }}
            external_repository: SindreYang/sindre
            publish_branch: gh-pages  
         
