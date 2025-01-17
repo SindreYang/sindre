@@ -27,12 +27,15 @@ jobs:
         with:
             ref: gh-pages
       - name: Push Branch to Another Repository
+        env:
+            ACCESS_TOKEN: ${{ secrets.ACCESS_TOKEN }}
         run: |
             git config --global user.name "SindreYang"
             git config --global user.email "yx@mviai.com"
             git config --global url."https://${{secrets.GH_TOKEN}}@github.com".insteadOf "https://github.com"
             git remote add target https://github.com/SindreYang/sindre.git
             git push target gh-pages:gh-pages
+        
 
     #   - name: Publish distribution to PyPI
     #     uses: pypa/gh-action-pypi-publish@release/v1
