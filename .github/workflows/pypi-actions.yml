@@ -8,8 +8,8 @@ jobs:
   deploy_pypi:
     runs-on: windows-latest
     steps:
-    #   - name: Checkout main
-    #     uses: actions/checkout@v2
+      - name: Checkout main
+        uses: actions/checkout@v2
       
     #   - name: Set up Python 3.8
     #     uses: actions/setup-python@v4
