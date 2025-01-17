@@ -16,23 +16,18 @@ jobs:
         with:
           python-version: 3.8
 
-      # - name: Build Wheel
-      #   run: |
-      #       python -m pip install -r requirements.txt
-      #       python setup.py bdist_wheel
-      #       mkdocs gh-deploy
+      - name: Build Wheel
+        run: |
+            python -m pip install mkdocs mkdocs-material mkdocstrings mkdocstrings-python
+            python -m mkdocs build
 
-      - name: Checkout gh-pages
-        uses: actions/checkout@v4
-        with:
-            ref: gh-pages
 
       - name: Deploy
         uses: peaceiris/actions-gh-pages@v3
         with:
            deploy_key: ${{secrets.SSH_KEY}}
            external_repository: SindreYang/sindre
-           publish_branch: gh-page
+           publish_branch: gh-pages
            publish_dir: ./site
         
 
@@ -41,3 +36,5 @@ jobs:
     #     with:
     #         password: ${{ secrets.PYPI_KEY }}
     #         packages-dir: dist/dist/
+
+    #     python setup.py bdist_wheel
