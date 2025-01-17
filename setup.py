@@ -1,42 +1,32 @@
 import os
-import shutil
 
 from setuptools import setup, find_packages
 import time
-
+import shutil
 from sindre.win_tools.tools import py2pyd
 
 # python setup.py bdist_wheel
 GFICLEE_VERSION = time.strftime("%Y.%m.%d", time.localtime())
 
-# 清理目录
-time.sleep(3)
-try:
-    os.remove("./sindre.egg-info")
-    os.remove("./build")
-    os.remove("./dist")
-except:
-    pass
 
-
-# 添加资源目录
-def find_files(path: str = '.') -> list:
+# 将目录转换成加密目录
+def sindre_py2pyd() -> list:
     """
-    查找路径下所有文件
-    Args:
-        path: 路径
-
-    Returns:
-        所有文件组成的list
 
     """
-    dir_files = []
-    for root, dirs, files in os.walk(path):
-        file_list = [os.path.join(root, file) for file in files]
-        if file_list:  # 仅添加包含文件的目录
-            dir_files.append((root, file_list))
-    print(dir_files)
-    return dir_files
+    dist_path= "dist/sindre"
+    if os.path.exists(dist_path):
+        shutil.rmtree(dist_path)
+    shutil.copytree("sindre",dist_path)
+    py2pyd(dist_path,True)
+    
+sindre_py2pyd()
+
+# 复制资源
+shutil.copy("README.md","dist/README.md")
+shutil.copy("MANIFEST.in","dist/MANIFEST.in")
+# 切换目录
+os.chdir("dist")
 
 
 
@@ -45,7 +35,14 @@ setup(
     version=GFICLEE_VERSION,
     packages=find_packages(),
     install_requires=[
-
+        "numpy",
+        "lmdb",
+        "msgpack",
+        'pywin32',
+        'Cython',
+        'tqdm',
+        'scikit-learn',
+        'vedo',
     ],
     #data_files=find_files("sindre\Resources"),
     url='https://github.com/SindreYang/sindre',
@@ -54,5 +51,6 @@ setup(
     description='自用脚本库',
     long_description=open('README.md', "r", encoding="utf-8").read(),
     long_description_content_type='text/markdown',
-    python_requires=">=3.4"
+    python_requires=">=3.4",
+    include_package_data = True #如果有符合MANIFEST.in的文件，会被打包
 )

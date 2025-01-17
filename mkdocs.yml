@@ -1,5 +1,6 @@
 site_name: sindre库
 site_author: sindreyang
+repo_url: https://github.com/SindreYang/sindre
 use_directory_urls: True
 
 

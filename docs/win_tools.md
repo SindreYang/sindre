@@ -290,6 +290,6 @@ if __name__ == '__main__':
 
 ::: win_tools.taskbar
 
-::: win_tools.stray
+<!-- ::: win_tools.stray -->
 
 

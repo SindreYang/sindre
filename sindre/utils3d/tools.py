@@ -45,16 +45,11 @@
 """
 __author__ = 'sindre'
 
-try:
-    import json
-    import trimesh
-    import vedo
-    import numpy as np
-    from typing import *
-    from sklearn.decomposition import PCA
-
-except ImportError:
-    raise ImportError("请安装：pip install numpy vedo trimesh scikit-learn")
+import json
+import vedo
+import numpy as np
+from typing import *
+from sklearn.decomposition import PCA
 
 
 def vertex_labels_to_face_labels(faces: Union[np.array, list], vertex_labels: Union[np.array, list]) -> np.array:
@@ -131,7 +126,8 @@ def tooth_labels_to_color(data: Union[np.array, list]) -> list:
                     '#dcbeff',
                     '#9A6324', '#fffac8', '#800000', '#aaffc3', '#000075', '#a9a9a9', '#ffffff', '#000000'
                     ]
-    colormap = [trimesh.visual.color.hex_to_rgba(i) for i in colormap_hex]
+    hex2rgb= lambda h: list(int(h.lstrip("#")[i : i + 2], 16) for i in (0, 2, 4))
+    colormap = [ hex2rgb(h) for h in colormap_hex]
     upper_dict = [0, 18, 17, 16, 15, 14, 13, 12, 11, 21, 22, 23, 24, 25, 26, 27, 28]
     lower_dict = [0, 48, 47, 46, 45, 44, 43, 42, 41, 31, 32, 33, 34, 35, 36, 37, 38]
 

@@ -1,13 +1,15 @@
-
-#######包依赖############
 numpy
 lmdb
 msgpack
+pywin32
+Cython 
+tqdm
+scikit-learn
+vedo
 
 
-###### 文档生成依赖 ######
-###### 设置文档范式 pycharm--->setting--->Tools--->python integrated Tools-->Google#############
 mkdocs
 mkdocs-material
 mkdocstrings
 mkdocstrings-python
+twine

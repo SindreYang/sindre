@@ -1,4 +1,4 @@
-from .tools import *
+from sindre.lmdb.tools import *
 
 try:
     import lmdb

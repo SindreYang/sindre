@@ -1,4 +1,4 @@
-name: Deploy to Github Pages
+name: Deploy Mkdocs to Github Pages
 on:
   push:
     branches:
@@ -6,15 +6,13 @@ on:
       - main
 jobs:
   deploy:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu - latest
     steps:
-      - uses: actions/checkout@v2
-      - uses: actions/setup-python@v2
-        with:
-          python-version: 3.8
-      - uses: actions/cache@v2
-        with:
-          key: ${{ github.ref }}
-          path: .cache
-      - run: pip install mkdocs mkdocs-material mkdocstrings mkdocstrings-python
-      - run: mkdocs gh-deploy --force
+    - uses: actions/checkout@v2
+    - uses: actions/setup - python@v2
+      with:
+        python - version: 3.x
+    - run: |
+        pip install mkdocs mkdocs - material
+        git config --global url."https://${{ secrets.GH_TOKEN }}@github.com".insteadOf "https://github.com"
+        mkdocs gh - deploy --remote - name target - origin

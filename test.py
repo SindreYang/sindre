@@ -46,19 +46,18 @@
 """
 __author__ = 'sindre'
 
-import time
 
-from sindre import lmdb
-from sindre.lmdb import  Reader
+import sindre
+print(dir(sindre))
+dir(sindre.utils3d.tools)
 def main():
     print(f"\t\t\033[0;33;40mYou cannot get success without failure! Come on!\033[0m\033[0;31;40m{__author__}!\033[0m")
-    #print(sindre.__path__)
-    print(dir(lmdb))
-    print(help(Reader))
+    print(sindre.__path__)
+    print(dir(sindre.lmdb))
+    print(help(sindre.lmdb.Reader))
 
 def win_tools_test():
-    from sindre.win_tools import taskbar
-    taskbar.set_windows_alpha(255)
+    sindre.win_tools.taskbar.set_windows_alpha(255)
 
 
 
@@ -66,5 +65,5 @@ def win_tools_test():
 
 
 if __name__ == '__main__':
-    #main()
+    main()
     win_tools_test()
