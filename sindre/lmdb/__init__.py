@@ -1,2 +1,1 @@
-# 导出lmdb目录函数
-from pylmdb import *
+import sindre.lmdb.pylmdb  as lmdb  

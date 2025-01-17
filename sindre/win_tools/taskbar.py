@@ -1,10 +1,8 @@
 
 
-try:
-    import win32gui
-    import win32con
-except ImportError:
-    raise ImportError("请安装：pip install win32gui win32con ")
+
+import win32gui
+import win32con
 
 
 def HEXtoRGBAint(HEX: str):

@@ -1,2 +1,2 @@
+graft sindre
 recursive-exclude * __pycache__
-include sindre/win_tools/bin

@@ -58,10 +58,13 @@ import zipfile
 
 import requests
 from setuptools import Extension, setup
-from Cython.Build import cythonize
+
 from collections import Counter
 
+from Cython.Build import cythonize
 from tqdm import tqdm
+
+
 
 """
 def py2pyd(source_path: str, copy_dir: bool = False, clear_py=False):

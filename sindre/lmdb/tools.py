@@ -1,7 +1,7 @@
 import numpy as np
 import os
 import sys
-import psutil
+
 
 def encode_str(string, encoding="utf-8", errors="strict"):
     """返回输入字符串的编码字节对象。
@@ -102,6 +102,7 @@ def check_filesystem_is_ext4(current_path:str)->bool:
         False: 当前不是ext4磁盘，不支持自适应容量分配
 
     """
+    import psutil
 
     current_path = os.path.abspath(current_path)
 

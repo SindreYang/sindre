@@ -37,7 +37,7 @@ pip install  sindre
 
 ```bash
 # 克隆项目   
-git clone https://github.com/SindreYang/sindre.git
+git clone https://github.com/SindreYang/sindre_page_private.git
 # 安装依赖   
 pip install -r requirements.txt
  ```   
@@ -51,15 +51,18 @@ python setup.py bdist_wheel
 
 ###### 生成文档
 
+* 设置文档范式 pycharm--->setting--->Tools--->python integrated Tools-->Google
+  
 ```bash
 mkdocs serve  -o  -c 
 ```
 
-###### xxxx
+###### 构建文档
 
 ```bash
-xxxx
+mkdocs  build
 ```
+
 
 ### 目录结构
 
@@ -70,13 +73,14 @@ xxxx
 ├── README.md               # 项目文档
 ├── requirements.txt        # 项目依赖
 ├── setup.py                # 发布脚本
-└── src                     # 项目代码
+└── sindre                  # sindre库项目代码
 
 ```
 
 ### 引文
 
 ```
+{
  @title={sindre},
   author={sindreyang},
   year={2024}

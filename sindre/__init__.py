@@ -1,19 +1,8 @@
-# -*- coding: UTF-8 -*-
-"""
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-@path   ：sindre -> __init__.py.py
-@IDE    ：PyCharm
-@Author ：sindre
-@Email  ：yx@mviai.com
-@Date   ：2024/6/14 16:00
-@Version: V0.1
-@License: (C)Copyright 2021-2023 , UP3D
-@Reference: 
-@History:
-- 2024/6/14 :
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-sindre 命名空间包
-"""
+# sindre库全局管理
+import sindre.lmdb.pylmdb as lmdb
+import sindre.report.report as report
+import sindre.win_tools as win_tools
+import sindre.utils3d as utils3d 
 
 
 
