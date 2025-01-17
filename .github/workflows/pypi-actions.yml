@@ -32,7 +32,6 @@ jobs:
         with:
            deploy_key: ${{ secrets.ACTION_KEY }}
            external_repository: SindreYang/sindre
-           publish_branch: gh-pages  
         
 
     #   - name: Publish distribution to PyPI
