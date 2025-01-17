@@ -31,6 +31,7 @@ jobs:
         uses: peaceiris/actions-gh-pages@v3
         with:
            deploy_key: ${{ secrets.ACTION_KEY }}
+           github_token: ${{ secrets.GITHUB_TOKEN }}
            external_repository: SindreYang/sindre
            publish_branch: gh-pages
         
