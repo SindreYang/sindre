@@ -11,16 +11,16 @@ jobs:
       - name: Checkout main
         uses: actions/checkout@v3
       
-    #   - name: Set up Python 3.8
-    #     uses: actions/setup-python@v4
-    #     with:
-    #       python-version: 3.8
+      - name: Set up Python 3.8
+        uses: actions/setup-python@v4
+        with:
+          python-version: 3.8
 
-    #   - name: Build Wheel
-    #     run: |
-    #         python -m pip install -r requirements.txt
-    #         python setup.py bdist_wheel
-    #         mkdocs gh-deploy
+      # - name: Build Wheel
+      #   run: |
+      #       python -m pip install -r requirements.txt
+      #       python setup.py bdist_wheel
+      #       mkdocs gh-deploy
 
       - name: Checkout gh-pages
         uses: actions/checkout@v4
@@ -32,7 +32,8 @@ jobs:
         with:
            deploy_key: ${{secrets.SSH_KEY}}
            external_repository: SindreYang/sindre
-           publish_branch: gh-pages
+           publish_branch: gh-page
+           publish_dir: ./site
         
 
     #   - name: Publish distribution to PyPI
