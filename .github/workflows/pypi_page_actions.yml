@@ -1,15 +1,16 @@
 name: Deploy sindre 
 on:
-  push:
-    branches:
-      - master
-      - main
+  release:
+    types: [created]
 jobs:
   deploy_win_amd64_pypi:
     runs-on: windows-latest
     steps:
       - name: Checkout main
         uses: actions/checkout@v3
+
+      - name: Set package version from release tag
+        run: echo "PACKAGE_VERSION=${{ github.event.release.tag_name }}"
       
       - name: Set up Python 3.8
         uses: actions/setup-python@v4
@@ -25,7 +26,7 @@ jobs:
         uses: actions/cache/save@v4
         with:
             path: dist/dist/
-            key: build
+            key: build_${{ github.event.release.tag_name }}
             enableCrossOsArchive: 'true'
 
 
@@ -36,6 +37,10 @@ jobs:
     steps:
       - name: Checkout main
         uses: actions/checkout@v3
+
+
+      - name: Set package version from release tag
+        run: echo "PACKAGE_VERSION=${{ github.event.release.tag_name }}"
       
       - name: Set up Python 3.8
         uses: actions/setup-python@v4
@@ -46,7 +51,7 @@ jobs:
         uses: actions/cache/restore@v4
         with:
             path: dist/dist/
-            key: build
+            key: build_${{ github.event.release.tag_name }}
             enableCrossOsArchive: 'true'
             fail-on-cache-miss: 'true'
 
@@ -56,6 +61,16 @@ jobs:
             python setup.py bdist_wheel --plat-name=manylinux1_x86_64
             ls dist/dist/
 
+
+      - name: Upload to Release
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ github.event.release.upload_url }}
+          asset_path: dist/dist/*.whl
+          asset_name: ${{ github.event.release.tag_name }}.whl
+          asset_content_type: application/zip
      
       - name: Publish distribution to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
