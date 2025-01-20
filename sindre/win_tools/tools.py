@@ -119,7 +119,7 @@ def py2pyd(source_path: str, clear_py: bool = False):
 
     Args:
         source_path: 源码目录
-        clear_py: 是否编译后清除py文件，注意备份。
+        clear_py: 是否编译后清除py文件,注意备份。
 
 
     """
