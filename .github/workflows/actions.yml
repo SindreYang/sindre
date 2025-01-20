@@ -5,34 +5,6 @@ on:
       - master
       - main
 jobs:
-  deploy_page:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout main
-        uses: actions/checkout@v3
-      
-      - name: Set up Python 3.8
-        uses: actions/setup-python@v4
-        with:
-          python-version: 3.8
-
-      - name: Build Mkdocs
-        run: |
-            python -m pip install mkdocs mkdocs-material mkdocstrings mkdocstrings-python
-            python -m mkdocs build
-
-
-      - name: Deploy
-        uses: peaceiris/actions-gh-pages@v3
-        with:
-           deploy_key: ${{secrets.SSH_KEY}}
-           external_repository: SindreYang/sindre
-           publish_branch: gh-pages
-           publish_dir: ./site
-
-
-
-
   deploy_win_amd64_pypi:
     runs-on: windows-latest
     steps:
@@ -49,8 +21,8 @@ jobs:
             python -m pip install cython wheel
             python setup.py bdist_wheel --plat-name=win_amd64
 
-      - name: Cache build artifacts
-        uses: actions/cache@v4
+      - name: Save Cache build
+        uses: actions/cache/save@v4
         with:
             path: dist/dist/
             key: build
@@ -69,12 +41,11 @@ jobs:
         with:
           python-version: 3.8
            
-      - name: Cache build artifacts
-        uses: actions/cache@v4
+      - name: Get Cache build 
+        uses: actions/cache/restore@v4
         with:
             path: dist/dist/
             key: build
-            restore-keys: build
             enableCrossOsArchive: 'true'
             fail-on-cache-miss: 'true'
 
@@ -90,6 +61,33 @@ jobs:
         with:
             password: ${{ secrets.PYPI_KEY }}
             packages-dir: dist/dist/
+
+
+            
+  deploy_page:
+      runs-on: ubuntu-latest
+      steps:
+        - name: Checkout main
+          uses: actions/checkout@v3
+        
+        - name: Set up Python 3.8
+          uses: actions/setup-python@v4
+          with:
+            python-version: 3.8
+
+        - name: Build Mkdocs
+          run: |
+              python -m pip install mkdocs mkdocs-material mkdocstrings mkdocstrings-python
+              python -m mkdocs build
+
+
+        - name: Deploy
+          uses: peaceiris/actions-gh-pages@v3
+          with:
+            deploy_key: ${{secrets.SSH_KEY}}
+            external_repository: SindreYang/sindre
+            publish_branch: gh-pages
+            publish_dir: ./site
 
 
 
