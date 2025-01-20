@@ -1,5 +1,5 @@
 import os
-
+import sys
 from setuptools import Extension, setup, find_packages
 from Cython.Build import cythonize
 import time
@@ -39,20 +39,38 @@ def py2pyd(source_path: str, clear_py: bool = False):
 
                         # 移动pyd
                         for f_pyd in os.listdir(tmp_path):
-                            if f_pyd.endswith('.pyd'):
-                                if f_pyd.split(".")[0] == module_name:
-                                    # 保证只一次只处理一个文件
-                                    pyd_name = f_pyd.split(".")[0] + ".pyd"
-                                    old_path = os.path.join(tmp_path, f_pyd)
-                                    new_path = os.path.join(root, pyd_name)
-                                    try:
-                                        print(f"move{old_path}-->{new_path}：")
-                                        os.rename(old_path, new_path)
-                                        if clear_py:
-                                            print(f"clear:{file_path}")
-                                            os.remove(file_path)
-                                    except Exception as e:
-                                        print("Exception:", e)
+                            if sys.platform.startswith('win32'):
+                                if f_pyd.endswith('.pyd'):
+                                    if f_pyd.split(".")[0] == module_name:
+                                        # 保证只一次只处理一个文件
+                                        pyd_name = f_pyd.split(".")[0] + ".pyd"
+                                        old_path = os.path.join(tmp_path, f_pyd)
+                                        new_path = os.path.join(root, pyd_name)
+                                        try:
+                                            print(f"move{old_path}-->{new_path}:")
+                                            os.rename(old_path, new_path)
+                                            if clear_py:
+                                                print(f"clear:{file_path}")
+                                                os.remove(file_path)
+                                        except Exception as e:
+                                            print("Exception:", e)
+                            else:
+                                 if f_pyd.endswith('.so'):
+                                    if f_pyd.split(".")[0] == module_name:
+                                        # 保证只一次只处理一个文件
+                                        pyd_name = f_pyd.split(".")[0] + ".so"
+                                        old_path = os.path.join(tmp_path, f_pyd)
+                                        new_path = os.path.join(root, pyd_name)
+                                        try:
+                                            print(f"move{old_path}-->{new_path}:")
+                                            os.rename(old_path, new_path)
+                                            if clear_py:
+                                                print(f"clear:{file_path}")
+                                                os.remove(file_path)
+                                        except Exception as e:
+                                            print("Exception:", e)
+    
+                                
 
                         # 删除.c文件
                         c_file = file_path.replace(".py", ".c")
