@@ -30,8 +30,11 @@ jobs:
            publish_branch: gh-pages
            publish_dir: ./site
 
-  deploy_pypi:
-    runs-on: ubuntu-latest
+
+
+
+  deploy_win_amd64_pypi:
+    runs-on: windows-latest
     steps:
       - name: Checkout main
         uses: actions/checkout@v3
@@ -44,13 +47,52 @@ jobs:
       - name: Build Wheel
         run: |
             python -m pip install cython wheel
-            python setup.py bdist_wheel
+            python setup.py bdist_wheel --plat-name=win_amd64
+
+      - name: Cache build artifacts
+        uses: actions/cache@v2
+        with:
+            path: dist/dist/
+            key: build
 
 
+
+  deploy_linux_pypi:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v3
+      
+      - name: Set up Python 3.8
+        uses: actions/setup-python@v4
+        with:
+          python-version: 3.8
+           
+      - name: Cache build artifacts
+        uses: actions/cache@v2
+        with:
+            path: dist/dist/
+            key: build
+        restore-keys: |
+            build
+
+      - name: Build Wheel
+        run: |
+            python -m pip install cython wheel
+            python setup.py bdist_wheel --plat-name=manylinux1_x86_64
+            ls dist/dist/
+
+     
       - name: Publish distribution to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
             password: ${{ secrets.PYPI_KEY }}
             packages-dir: dist/dist/
+
+
+
+
+
+
 
         
