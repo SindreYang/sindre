@@ -9,6 +9,14 @@ jobs:
   deploy_win_amd64_pypi:
     runs-on: windows-latest
     steps:
+
+      - name: Set package version from release tag
+        run: echo "PACKAGE_VERSION=${{ github.event.release.tag_name }}" >> $Env:GITHUB_ENV
+
+      - name: Debug Environment Variable
+        run: echo "PACKAGE_VERSION is ${{ env.PACKAGE_VERSION }}"
+
+        
       - name: Checkout main
         uses: actions/checkout@v3
       
@@ -20,7 +28,7 @@ jobs:
       - name: Build Wheel
         run: |
             python -m pip install cython wheel
-            python setup.py bdist_wheel --plat-name=win_amd64 --version="${{ github.event.release.tag_name }}"
+            python setup.py bdist_wheel --plat-name=win_amd64 
             dir dist/dist/
 
       - name: Save Cache build
