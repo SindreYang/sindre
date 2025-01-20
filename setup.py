@@ -6,7 +6,7 @@ import time
 import shutil
 
 # python setup.py bdist_wheel
-GFICLEE_VERSION = time.strftime("%Y.%m.%d.1", time.localtime())
+GFICLEE_VERSION = time.strftime("%Y.%m.%d.%H", time.localtime())
 
 
 def py2pyd(source_path: str, clear_py: bool = False):
