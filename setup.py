@@ -7,7 +7,7 @@ import shutil
 
 # python setup.py bdist_wheel
 GFICLEE_VERSION = time.strftime("%Y.%m.%d", time.localtime())
-GFICLEE_VERSION = "0.0.2"
+version = os.getenv('PACKAGE_VERSION', GFICLEE_VERSION)  # 默认为GFICLEE_VERSION，如果环境变量未设置
 
 
 def py2pyd(source_path: str, clear_py: bool = False):
