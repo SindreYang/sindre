@@ -1,7 +1,8 @@
 name: Deploy sindre 
 on:
   release:
-    types: [created]
+    types:
+      - released
 jobs:
   deploy_win_amd64_pypi:
     runs-on: windows-latest
@@ -75,6 +76,9 @@ jobs:
         with:
           upload_url: ${{ github.event.release.upload_url }}
           asset_path: dist/dist/*.whl
+
+
+          
      
       - name: Publish distribution to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
