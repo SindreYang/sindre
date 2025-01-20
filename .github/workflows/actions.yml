@@ -31,7 +31,7 @@ jobs:
            publish_dir: ./site
 
   deploy_pypi:
-    runs-on: windows-latest
+    runs-on: ubuntu-latest
     steps:
       - name: Checkout main
         uses: actions/checkout@v3
