@@ -1,12 +1,65 @@
 import os
 
-from setuptools import setup, find_packages
+from setuptools import Extension, setup, find_packages
+from Cython.Build import cythonize
 import time
 import shutil
-from sindre.win_tools.tools import py2pyd
 
 # python setup.py bdist_wheel
 GFICLEE_VERSION = time.strftime("%Y.%m.%d", time.localtime())
+
+
+def py2pyd(source_path: str, clear_py: bool = False):
+    tmp_path = os.path.join(source_path, "tmp")
+    if not os.path.exists(tmp_path):
+        os.mkdir(tmp_path)
+
+    # 遍历目录下的所有文件
+    for root, dirs, files in os.walk(source_path):
+        if dirs != "tmp":
+            for file in files:
+                # 判断文件名是否以 .py 结尾
+                if file.endswith('.py'):
+                    if file == "__init__.py":
+                        continue
+                    else:
+                        # 构建文件的完整路径
+                        file_path = os.path.join(root, file)
+                        # 构建扩展模块名称
+                        module_name = os.path.splitext(file)[0]
+
+                        # 构建扩展模块对象
+                        extension = Extension(module_name, sources=[file_path])
+                        print("build:", extension)
+
+                        setup(
+                            ext_modules=cythonize(extension, compiler_directives={'language_level': "3"}, force=True),
+                            script_args=["build_ext",  # "--inplace",
+                                         "--build-lib", f"{tmp_path}", "--build-temp", f"{tmp_path}", ])
+
+                        # 移动pyd
+                        for f_pyd in os.listdir(tmp_path):
+                            if f_pyd.endswith('.pyd'):
+                                if f_pyd.split(".")[0] == module_name:
+                                    # 保证只一次只处理一个文件
+                                    pyd_name = f_pyd.split(".")[0] + ".pyd"
+                                    old_path = os.path.join(tmp_path, f_pyd)
+                                    new_path = os.path.join(root, pyd_name)
+                                    try:
+                                        print(f"move{old_path}-->{new_path}：")
+                                        os.rename(old_path, new_path)
+                                        if clear_py:
+                                            print(f"clear:{file_path}")
+                                            os.remove(file_path)
+                                    except Exception as e:
+                                        print("Exception:", e)
+
+                        # 删除.c文件
+                        c_file = file_path.replace(".py", ".c")
+                        os.remove(c_file)
+
+    if os.path.exists(tmp_path):
+        shutil.rmtree(tmp_path)
 
 
 # 将目录转换成加密目录

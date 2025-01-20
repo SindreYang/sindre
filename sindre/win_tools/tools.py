@@ -174,7 +174,7 @@ def py2pyd(source_path: str, clear_py: bool = False):
                         os.remove(c_file)
 
     if os.path.exists(tmp_path):
-        print("del tmp dir：", tmp_path)
+        print("del tmp dir:", tmp_path)
         shutil.rmtree(tmp_path)
 
 
