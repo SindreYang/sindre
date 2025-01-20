@@ -16,7 +16,7 @@ jobs:
         run: $env:PACKAGE_VERSION="${{ github.event.release.tag_name }}"
 
       - name: Debug Environment Variable
-        run: $env:PACKAGE_VERSION
+        run: Write-Output "PACKAGE_VERSION is $env:PACKAGE_VERSION"
       
       - name: Set up Python 3.8
         uses: actions/setup-python@v4
@@ -43,7 +43,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           upload_url: ${{ github.event.release.upload_url }}
-          asset_path: dist/dist/*.whl
+          asset_path: dist/dist/sindre-${{ github.event.release.tag_name }}-py3-none-win_amd64.whl
           asset_name: sindre-${{ github.event.release.tag_name }}-py3-none-win_amd64.whl
           asset_content_type: application/zip
 
@@ -89,7 +89,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           upload_url: ${{ github.event.release.upload_url }}
-          asset_path: dist/dist/*.whl
+          asset_path: dist/dist/sindre-${{ github.event.release.tag_name }}-py3-none-manylinux1_x86_64.whl
           asset_name: sindre-${{ github.event.release.tag_name }}-py3-none-manylinux1_x86_64.whl
           asset_content_type: application/zip
 
