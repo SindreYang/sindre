@@ -2,7 +2,6 @@ name: Deploy sindre
 on:
   release:
     types:
-      #- released
       - push
 
       
