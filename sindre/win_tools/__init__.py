@@ -1,3 +1,4 @@
+# -*- coding: UTF-8 -*-
 import sys
 if sys.platform.lower() == "win32":
     try:
