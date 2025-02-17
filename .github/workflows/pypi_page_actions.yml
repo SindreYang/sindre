@@ -117,7 +117,7 @@ jobs:
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
             password: ${{ secrets.PYPI_KEY }}
-            packages-dir: dist/dist/
+            packages-dir: dist/
 
 
             
