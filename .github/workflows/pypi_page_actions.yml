@@ -1,99 +1,98 @@
 name: Deploy sindre 
-# on:
-#   release:
-#     types:
-#       - released
 on:
-  push:
-    branches:
-    - main
-    - master
+  release:
+    types:
+      - released
+# on:
+#   push:
+#     branches:
+#     - main
+#     - master
 
       
 jobs:
-#   deploy_win_amd64_pypi:
-#     runs-on: windows-latest
-#     strategy:
-#       matrix:
-#         python-version: ["3.8","3.9","3.10","3.11","3.12"]
-#     steps:
+  deploy_win_amd64_pypi:
+    runs-on: windows-latest
+    strategy:
+      matrix:
+        python-version: ["3.8","3.9","3.10","3.11","3.12"]
+    steps:
 
-#       - name: Set package version from release tag
-#         run: echo "PACKAGE_VERSION=${{ github.event.release.tag_name }}" >> $Env:GITHUB_ENV
+      - name: Set package version from release tag
+        run: echo "PACKAGE_VERSION=${{ github.event.release.tag_name }}" >> $Env:GITHUB_ENV
 
-#       - name: Debug Environment Variable
-#         run: echo "PACKAGE_VERSION is ${{ env.PACKAGE_VERSION }}"
+      - name: Debug Environment Variable
+        run: echo "PACKAGE_VERSION is ${{ env.PACKAGE_VERSION }}"
 
         
-#       - name: Checkout main
-#         uses: actions/checkout@v3
+      - name: Checkout main
+        uses: actions/checkout@v3
       
-#       - name: Set up Python  ${{ matrix.python-version }}
-#         uses: actions/setup-python@v4
-#         with:
-#           python-version:  ${{ matrix.python-version }}
+      - name: Set up Python  ${{ matrix.python-version }}
+        uses: actions/setup-python@v4
+        with:
+          python-version:  ${{ matrix.python-version }}
 
-#       - name: Build Wheel
-#         run: |
-#             python -m pip install cython wheel setuptools
-#             python setup.py bdist_wheel 
-#             dir dist/dist/
+      - name: Build Wheel
+        run: |
+            python -m pip install cython wheel setuptools
+            python setup.py bdist_wheel 
+            dir dist/dist/
 
-#       - name: Save Cache build
-#         uses: actions/cache/save@v4
-#         with:
-#             path: dist/dist/
-#             key: build_win_${{ matrix.python-version }}
-#             enableCrossOsArchive: 'true'
-
-
-
-#   deploy_linux_pypi:
-#     needs: [deploy_win_amd64_pypi]
-#     runs-on: ubuntu-latest
-#     strategy:
-#       matrix:
-#         python-version: ["3.8","3.9","3.10","3.11","3.12"]
-#     steps:
-#       - name: Checkout main
-#         uses: actions/checkout@v3
+      - name: Save Cache build
+        uses: actions/cache/save@v4
+        with:
+            path: dist/dist/
+            key: build_win_${{ matrix.python-version }}
+            enableCrossOsArchive: 'true'
 
 
-#       - name: Set package version from release tag
-#         run: echo "PACKAGE_VERSION=${{ github.event.release.tag_name }}" >> $GITHUB_ENV
 
-#       - name: Debug Environment Variable
-#         run: echo "PACKAGE_VERSION is ${{ env.PACKAGE_VERSION }}"
+  deploy_linux_pypi:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.8","3.9","3.10","3.11","3.12"]
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v3
+
+
+      - name: Set package version from release tag
+        run: echo "PACKAGE_VERSION=${{ github.event.release.tag_name }}" >> $GITHUB_ENV
+
+      - name: Debug Environment Variable
+        run: echo "PACKAGE_VERSION is ${{ env.PACKAGE_VERSION }}"
       
-#       - name: Set up Python  ${{ matrix.python-version }}
-#         uses: actions/setup-python@v4
-#         with:
-#           python-version:  ${{ matrix.python-version }}
+      - name: Set up Python  ${{ matrix.python-version }}
+        uses: actions/setup-python@v4
+        with:
+          python-version:  ${{ matrix.python-version }}
            
 
-#       - name: Build Wheel
-#         run: |
-#             python -m pip install cython wheel setuptools
-#             python setup.py bdist_wheel 
-#             ls dist/dist/
+      - name: Build Wheel
+        run: |
+            python -m pip install cython wheel setuptools
+            python setup.py bdist_wheel 
+            ls dist/dist/
 
-#       - name: Save Cache build
-#         uses: actions/cache/save@v4
-#         with:
-#             path: dist/dist/
-#             key: build_linux_${{ matrix.python-version }}
-#             enableCrossOsArchive: 'true'
+      - name: Save Cache build
+        uses: actions/cache/save@v4
+        with:
+            path: dist/dist/
+            key: build_linux_${{ matrix.python-version }}
+            enableCrossOsArchive: 'true'
 
 
 
 
 
   upload_wheel:
-    #needs: [deploy_linux_pypi]
+    needs: [deploy_linux_pypi,deploy_win_amd64_pypi]
     runs-on: ubuntu-latest
     steps:
 
-      - name: Get multi cache (Linux)
+      - name: Get multi cache 
         uses: actions/cache/restore@v4
         with:
           path: dist/dist/
@@ -103,16 +102,6 @@ jobs:
             build_linux_3.10
             build_linux_3.11
             build_linux_3.12
-
-
-      - name: check files  
-        run : ls dist/dist/
-
-      - name: Get multi cache (Windows)
-        uses: actions/cache/restore@v4
-        with:
-          path: dist/dist/
-          key: |
             build_win_3.8
             build_win_3.9
             build_win_3.10
@@ -123,6 +112,7 @@ jobs:
       - name: check files  
         run : ls dist/dist/
 
+           
 
       - name: Upload to Release
         uses: alexellis/upload-assets@0.4.1
@@ -140,31 +130,31 @@ jobs:
 
 
             
-  # deploy_page:
-  #     needs: [upload_wheel]
-  #     runs-on: ubuntu-latest
-  #     steps:
-  #       - name: Checkout main
-  #         uses: actions/checkout@v3
+  deploy_page:
+      needs: [upload_wheel]
+      runs-on: ubuntu-latest
+      steps:
+        - name: Checkout main
+          uses: actions/checkout@v3
         
-  #       - name: Set up Python 3.8
-  #         uses: actions/setup-python@v4
-  #         with:
-  #           python-version: 3.8
+        - name: Set up Python 3.8
+          uses: actions/setup-python@v4
+          with:
+            python-version: 3.8
 
-  #       - name: Build Mkdocs
-  #         run: |
-  #             python -m pip install mkdocs mkdocs-material mkdocstrings mkdocstrings-python
-  #             python -m mkdocs build
+        - name: Build Mkdocs
+          run: |
+              python -m pip install mkdocs mkdocs-material mkdocstrings mkdocstrings-python
+              python -m mkdocs build
 
 
-  #       - name: Deploy
-  #         uses: peaceiris/actions-gh-pages@v3
-  #         with:
-  #           deploy_key: ${{secrets.SSH_KEY}}
-  #           external_repository: SindreYang/sindre
-  #           publish_branch: gh-pages
-  #           publish_dir: ./site
+        - name: Deploy
+          uses: peaceiris/actions-gh-pages@v3
+          with:
+            deploy_key: ${{secrets.SSH_KEY}}
+            external_repository: SindreYang/sindre
+            publish_branch: gh-pages
+            publish_dir: ./site
 
 
 
