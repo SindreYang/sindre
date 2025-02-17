@@ -2,10 +2,11 @@ name: Deploy sindre
 on:
   release:
     types:
+      #- released
       - push
 
       
-# jobs:
+jobs:
 #   deploy_win_amd64_pypi:
 #     runs-on: windows-latest
 #     strategy:
@@ -84,7 +85,7 @@ on:
 
 
   upload_wheel:
-    needs: [deploy_linux_pypi]
+    #needs: [deploy_linux_pypi]
     runs-on: ubuntu-latest
     steps:
 
