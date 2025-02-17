@@ -93,6 +93,8 @@ jobs:
         with:
             paths: dist/dist/
             keys: "'build_linux_3.8','build_linux_3.9','build_linux_3.10','build_linux_3.11','build_linux_3.12','build_win_3.8','build_win_3.9','build_win_3.10','build_win_3.11','build_win_3.12'"
+      
+      - name: check files  
         run : ls dist/dist/
 
 
