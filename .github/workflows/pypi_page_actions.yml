@@ -1,8 +1,12 @@
 name: Deploy sindre 
+# on:
+#   release:
+#     types:
+#       - released
 on:
-  release:
-    types:
-      - push
+  push:
+    branches:
+    - main
 
       
 jobs:
