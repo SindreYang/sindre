@@ -38,7 +38,7 @@ jobs:
         uses: actions/cache/save@v4
         with:
             path: dist/dist/
-            key: build_${{ github.event.release.tag_name }}
+            key: build_${{ matrix.python-version }}
             enableCrossOsArchive: 'true'
 
 
@@ -76,7 +76,7 @@ jobs:
         uses: actions/cache/save@v4
         with:
             path: dist/dist/
-            key: build_${{ github.event.release.tag_name }}
+            key: build_${{ matrix.python-version }}
             enableCrossOsArchive: 'true'
 
 
@@ -91,7 +91,7 @@ jobs:
         uses: actions/cache/restore@v4
         with:
             path: dist/dist/
-            key: build_${{ github.event.release.tag_name }}
+            key: "'build_3.8','build_3.9','build_3.10','build_3.11','build_3.12'"
             enableCrossOsArchive: 'true'
             fail-on-cache-miss: 'true'
 
