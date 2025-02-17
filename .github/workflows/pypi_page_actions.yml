@@ -6,40 +6,30 @@ on:
 
       
 jobs:
-  deploy_win_amd64_pypi:
+  build_win_amd64:
     runs-on: windows-latest
     strategy:
       matrix:
-        python-version: ["3.8","3.9","3.10","3.11","3.12"]
+        python-version: ["3.8", "3.9", "3.10", "3.11", "3.12"]
     steps:
-
       - name: Set package version from release tag
         run: echo "PACKAGE_VERSION=${{ github.event.release.tag_name }}" >> $Env:GITHUB_ENV
 
       - name: Debug Environment Variable
         run: echo "PACKAGE_VERSION is ${{ env.PACKAGE_VERSION }}"
 
-        
       - name: Checkout main
         uses: actions/checkout@v3
-      
-      - name: Set up Python  ${{ matrix.python-version }}
+
+      - name: Set up Python ${{ matrix.python-version }}
         uses: actions/setup-python@v4
         with:
-          python-version:  ${{ matrix.python-version }}
+          python-version: ${{ matrix.python-version }}
 
       - name: Build Wheel
         run: |
-            python -m pip install cython wheel
-            python setup.py bdist_wheel 
-            dir dist/dist/
-
-      - name: Save Cache build
-        uses: actions/cache/save@v4
-        with:
-            path: dist/dist/
-            key: build_${{ github.event.release.tag_name }}
-            enableCrossOsArchive: 'true'
+          python -m pip install cython wheel setuptools
+          python setup.py bdist_wheel
 
       - name: Generate wheel file name
         id: wheel-name
@@ -47,87 +37,114 @@ jobs:
           $python_tag = "cp$(python -c 'import sys; print(f"{sys.version_info.major}{sys.version_info.minor}")')"
           $wheel_name = "sindre-${{ env.PACKAGE_VERSION }}-${python_tag}-none-win_amd64.whl"
           echo "wheel_name=$wheel_name" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
-        shell: powershell 
+        shell: powershell
 
-      - name: Upload to Release
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Save Cache build
+        uses: actions/cache/save@v4
         with:
-          upload_url: ${{ github.event.release.upload_url }}
-          asset_path: dist/${{ steps.wheel-name.outputs.wheel_name }}
-          asset_name: ${{ steps.wheel-name.outputs.wheel_name }}
-          asset_content_type: application/x-wheel+zip
+          path: dist/${{ steps.wheel-name.outputs.wheel_name }}
+          key: win_${{ matrix.python-version }}_${{ github.event.release.tag_name }}
+          enableCrossOsArchive: 'true'
 
-
-
-  deploy_linux_pypi:
-    needs: [deploy_win_amd64_pypi]
+  build_linux:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        python-version: ["3.8","3.9","3.10","3.11","3.12"]
+        python-version: ["3.8", "3.9", "3.10", "3.11", "3.12"]
     steps:
+      - name: Set package version from release tag
+        run: echo "PACKAGE_VERSION=${{ github.event.release.tag_name }}" >> $GITHUB_ENV
+
+      - name: Debug Environment Variable
+        run: echo "PACKAGE_VERSION is ${{ env.PACKAGE_VERSION }}"
+
       - name: Checkout main
         uses: actions/checkout@v3
 
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Build Wheel
+        run: |
+          python -m pip install cython wheel setuptools
+          python setup.py bdist_wheel
+
+      - name: Generate wheel file name
+        id: wheel-name
+        run: |
+          python_tag="cp$(python -c 'import sys; print(f"{sys.version_info.major}{sys.version_info.minor}")')"
+          wheel_name="sindre-${{ env.PACKAGE_VERSION }}-${python_tag}-none-manylinux1_x86_64.whl"
+          echo "wheel_name=$wheel_name" >> $GITHUB_OUTPUT
+        shell: bash
+
+      - name: Save Cache build
+        uses: actions/cache/save@v4
+        with:
+          path: dist/${{ steps.wheel-name.outputs.wheel_name }}
+          key: linux_${{ matrix.python-version }}_${{ github.event.release.tag_name }}
+          enableCrossOsArchive: 'true'
+
+  upload_all:
+    needs: [build_win_amd64, build_linux]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v3
 
       - name: Set package version from release tag
         run: echo "PACKAGE_VERSION=${{ github.event.release.tag_name }}" >> $GITHUB_ENV
 
       - name: Debug Environment Variable
         run: echo "PACKAGE_VERSION is ${{ env.PACKAGE_VERSION }}"
-      
-      - name: Set up Python ${{ matrix.python-version }}
-        uses: actions/setup-python@v4
-        with:
-          python-version: ${{ matrix.python-version }}
-           
-      - name: Get Cache build 
+
+      - name: Create dist directory
+        run: mkdir -p dist
+
+      - name: Restore Windows wheels
+        strategy:
+          matrix:
+            python-version: ["3.8", "3.9", "3.10", "3.11", "3.12"]
         uses: actions/cache/restore@v4
         with:
-            path: dist/dist/
-            key: build_${{ github.event.release.tag_name }}
-            enableCrossOsArchive: 'true'
-            fail-on-cache-miss: 'true'
+          path: dist/sindre-${{ env.PACKAGE_VERSION }}-cp${{ matrix.python-version.replace('.', '') }}-none-win_amd64.whl
+          key: win_${{ matrix.python-version }}_${{ github.event.release.tag_name }}
+          enableCrossOsArchive: 'true'
 
-      - name: Build Wheel
-        run: |
-            python -m pip install cython wheel
-            python setup.py bdist_wheel 
-            ls dist/dist/
-
-
-      - name: Generate wheel file name
-        id: wheel-name
-        run: |
-            python_tag="cp$(python -c 'import sys; print(f"{sys.version_info.major}{sys.version_info.minor}")')"
-            wheel_name="sindre-${{ env.PACKAGE_VERSION }}-${python_tag}-none-manylinux1_x86_64.whl"
-            echo "wheel_name=$wheel_name" >> $GITHUB_OUTPUT
-        shell: bash
+      - name: Restore Linux wheels
+        strategy:
+          matrix:
+            python-version: ["3.8", "3.9", "3.10", "3.11", "3.12"]
+        uses: actions/cache/restore@v4
+        with:
+          path: dist/sindre-${{ env.PACKAGE_VERSION }}-cp${{ matrix.python-version.replace('.', '') }}-none-manylinux1_x86_64.whl
+          key: linux_${{ matrix.python-version }}_${{ github.event.release.tag_name }}
+          enableCrossOsArchive: 'true'
 
       - name: Upload to Release
+        strategy:
+          matrix:
+            os: [win_amd64, linux]
+            python-version: ["3.8", "3.9", "3.10", "3.11", "3.12"]
         uses: actions/upload-release-asset@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           upload_url: ${{ github.event.release.upload_url }}
-          asset_path: dist/${{ steps.wheel-name.outputs.wheel_name }}
-          asset_name: ${{ steps.wheel-name.outputs.wheel_name }}
+          asset_path: dist/sindre-${{ env.PACKAGE_VERSION }}-cp${{ matrix.python-version.replace('.', '') }}-none-${{ matrix.os == 'win_amd64' && 'win_amd64' || 'manylinux1_x86_64' }}.whl
+          asset_name: sindre-${{ env.PACKAGE_VERSION }}-cp${{ matrix.python-version.replace('.', '') }}-none-${{ matrix.os == 'win_amd64' && 'win_amd64' || 'manylinux1_x86_64' }}.whl
           asset_content_type: application/x-wheel+zip
 
-
-          
-     
       - name: Publish distribution to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
-            password: ${{ secrets.PYPI_KEY }}
-            packages-dir: dist/dist/
-
+          password: ${{ secrets.PYPI_KEY }}
+          packages-dir: dist
 
             
   deploy_page:
+      needs: [upload_all]
       runs-on: ubuntu-latest
       steps:
         - name: Checkout main
