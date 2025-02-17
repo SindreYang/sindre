@@ -1,4 +1,5 @@
 import os
+import platform
 import sys
 from setuptools import Extension, setup, find_packages
 from Cython.Build import cythonize
@@ -102,7 +103,13 @@ shutil.copy("MANIFEST.in","dist/MANIFEST.in")
 # 切换目录
 os.chdir("dist")
 
-
+# 获取系统版本信息
+if sys.platform.startswith('win'):
+    platform_tag = 'win_amd64'
+elif sys.platform.startswith('linux'):
+    platform_tag = 'manylinux1_x86_64'#f"linux_{platform.machine().lower()}"
+# 获取 Python 版本
+python_version = f"cp{sys.version_info.major}{sys.version_info.minor}"
 
 setup(
     name='sindre',
@@ -124,6 +131,12 @@ setup(
     description='自用脚本库',
     long_description=open('README.md', "r", encoding="utf-8").read(),
     long_description_content_type='text/markdown',
-    python_requires=">=3.4",
-    include_package_data = True #如果有符合MANIFEST.in的文件，会被打包
+    python_requires=">=3.8",
+    include_package_data = True, #如果有符合MANIFEST.in的文件，会被打包
+    options={
+        'bdist_wheel': {
+            'python_tag': python_version,
+            'plat_name': platform_tag
+        }
+    }
 )
