@@ -38,7 +38,7 @@ jobs:
         uses: actions/cache/save@v4
         with:
             path: dist/dist/
-            key: build_${{ matrix.python-version }}
+            key: build_win_${{ matrix.python-version }}
             enableCrossOsArchive: 'true'
 
 
@@ -76,7 +76,7 @@ jobs:
         uses: actions/cache/save@v4
         with:
             path: dist/dist/
-            key: build_${{ matrix.python-version }}
+            key: build_linux_${{ matrix.python-version }}
             enableCrossOsArchive: 'true'
 
 
@@ -87,16 +87,12 @@ jobs:
     needs: [deploy_linux_pypi]
     runs-on: ubuntu-latest
     steps:
-      - name: Get Cache build 
-        uses: actions/cache/restore@v4
+
+      - name: Get multi cache
+        uses: almahmoud/multi-cache-restore-action@main
         with:
-            path: dist/dist/
-            key: "'build_3.8','build_3.9','build_3.10','build_3.11','build_3.12'"
-            enableCrossOsArchive: 'true'
-            fail-on-cache-miss: 'true'
-
-
-      - name: check files
+            paths: dist/dist/
+            keys: "'build_linux_3.8','build_linux_3.9','build_linux_3.10','build_linux_3.11','build_linux_3.12','build_win_3.8','build_win_3.9','build_win_3.10','build_win_3.11','build_win_3.12'"
         run : ls dist/dist/
 
 
