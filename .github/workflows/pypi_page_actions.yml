@@ -39,12 +39,12 @@ jobs:
             python setup.py bdist_wheel 
             dir dist/dist/
 
-      - name: Save Cache build
-        uses: actions/cache/save@v4
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v3
         with:
-            path: dist/dist/
-            key: build_win_${{ matrix.python-version }}
-            enableCrossOsArchive: 'true'
+          name: build_win_${{ matrix.python-version }}
+          path: dist/dist/*.whl
 
 
 
@@ -76,12 +76,13 @@ jobs:
             python setup.py bdist_wheel 
             ls dist/dist/
 
-      - name: Save Cache build
-        uses: actions/cache/save@v4
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v3
         with:
-            path: dist/dist/
-            key: build_linux_${{ matrix.python-version }}
-            enableCrossOsArchive: 'true'
+          name: build_linux_${{ matrix.python-version }}
+          path: dist/dist/*.whl
+
+
 
 
 
@@ -92,25 +93,15 @@ jobs:
     runs-on: ubuntu-latest
     steps:
 
-      - name: Get multi cache 
-        uses: actions/cache/restore@v4
+      - name: Get multi files 
+        uses: actions/download-artifact@v4
         with:
-          path: dist/dist/
-          key: |
-            build_linux_3.8
-            build_linux_3.9
-            build_linux_3.10
-            build_linux_3.11
-            build_linux_3.12
-            build_win_3.8
-            build_win_3.9
-            build_win_3.10
-            build_win_3.11
-            build_win_3.12
-
+          path: dist
+          pattern: build_*_*
+          merge-multiple: true
 
       - name: check files  
-        run : ls dist/dist/
+        run : ls dist/
 
            
 
@@ -119,7 +110,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          asset_paths: '["dist/dist/*.whl"]'
+          asset_paths: '["dist/*.whl"]'
 
 
       - name: Publish distribution to PyPI
