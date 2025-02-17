@@ -112,7 +112,6 @@ setup(
         "numpy",
         "lmdb",
         "msgpack",
-        'pywin32',
         'Cython',
         'tqdm',
         'scikit-learn',
