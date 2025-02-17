@@ -102,23 +102,32 @@ jobs:
       - name: Create dist directory
         run: mkdir -p dist
 
+
+      - name: Generate wheel file name
+        id: wheel-name
+        run: |
+          python_tag="cp$(python -c 'import sys; print(f"{sys.version_info.major}{sys.version_info.minor}")')"
+          wheel_name="sindre-${{ env.PACKAGE_VERSION }}-${python_tag}-none-manylinux1_x86_64.whl"
+          echo "wheel_name=$wheel_name" >> $GITHUB_OUTPUT
+        shell: bash
+
       - name: Restore Windows wheels
         strategy:
           matrix:
-            python-version: ["3.8", "3.9", "3.10", "3.11", "3.12"]
+            python-version: ["38", "39", "310", "311", "312"]
         uses: actions/cache/restore@v4
         with:
-          path: dist/sindre-${{ env.PACKAGE_VERSION }}-cp${{ matrix.python-version.replace('.', '') }}-none-win_amd64.whl
+          path: dist/sindre-${{ env.PACKAGE_VERSION }}-cp${{ matrix.python-version}}-none-win_amd64.whl
           key: win_${{ matrix.python-version }}_${{ github.event.release.tag_name }}
           enableCrossOsArchive: 'true'
 
       - name: Restore Linux wheels
         strategy:
           matrix:
-            python-version: ["3.8", "3.9", "3.10", "3.11", "3.12"]
+            python-version: ["38", "39", "310", "311", "312"]
         uses: actions/cache/restore@v4
         with:
-          path: dist/sindre-${{ env.PACKAGE_VERSION }}-cp${{ matrix.python-version.replace('.', '') }}-none-manylinux1_x86_64.whl
+          path: dist/sindre-${{ env.PACKAGE_VERSION }}-cp${{ matrix.python-version}}-none-manylinux1_x86_64.whl
           key: linux_${{ matrix.python-version }}_${{ github.event.release.tag_name }}
           enableCrossOsArchive: 'true'
 
@@ -126,14 +135,14 @@ jobs:
         strategy:
           matrix:
             os: [win_amd64, linux]
-            python-version: ["3.8", "3.9", "3.10", "3.11", "3.12"]
+            python-version: ["38", "39", "310", "311", "312"]
         uses: actions/upload-release-asset@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           upload_url: ${{ github.event.release.upload_url }}
-          asset_path: dist/sindre-${{ env.PACKAGE_VERSION }}-cp${{ matrix.python-version.replace('.', '') }}-none-${{ matrix.os == 'win_amd64' && 'win_amd64' || 'manylinux1_x86_64' }}.whl
-          asset_name: sindre-${{ env.PACKAGE_VERSION }}-cp${{ matrix.python-version.replace('.', '') }}-none-${{ matrix.os == 'win_amd64' && 'win_amd64' || 'manylinux1_x86_64' }}.whl
+          asset_path: dist/sindre-${{ env.PACKAGE_VERSION }}-cp${{ matrix.python-version}}-none-${{ matrix.os == 'win_amd64' && 'win_amd64' || 'manylinux1_x86_64' }}.whl
+          asset_name: sindre-${{ env.PACKAGE_VERSION }}-cp${{ matrix.python-version }}-none-${{ matrix.os == 'win_amd64' && 'win_amd64' || 'manylinux1_x86_64' }}.whl
           asset_content_type: application/x-wheel+zip
 
       - name: Publish distribution to PyPI
