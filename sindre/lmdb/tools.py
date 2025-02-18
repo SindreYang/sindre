@@ -45,37 +45,44 @@ META_DB = encode_str("meta_db")
 NB_SAMPLES = encode_str("nb_samples")
 
 
-
+    
+    
 def encode_data(obj):
-    """Return a dictionary with information encoding the input data object.
+    """
+    返回一个字典，该字典包含对输入数据对象进行编码后的信息。
 
-    Parameter
-    ---------
-    obj : data object
-        If the incoming data object is neither a string nor an ordinary NumPy
-        array, then the object will simply be returned as is.
+    Args:
+        obj : 数据对象
+            如果传入的数据对象既不是字符串也不是普通的 NumPy 数组，
+            则该对象将按原样返回。
     """
     if isinstance(obj, str):
+        # 如果是字符串，返回一个字典，包含类型标识和字符串数据
         return {b"type": TYPES["str"], b"data": obj}
     elif isinstance(obj, np.ndarray):
+        if np.issubdtype(obj.dtype, np.str_) or np.issubdtype(obj.dtype, np.unicode_):
+            raise ValueError(f"\n  \033[91m\n输入array: \n\n{obj}\n\n中有字符串类型,由于会破坏np类型,请修正; \033[0m\n")
+            
         return {
             b"type": TYPES["ndarray"],
             b"dtype": obj.dtype.str,
             b"shape": obj.shape,
-            b"data": obj.tobytes(),
+            b"data": obj.tobytes()
         }
+    
     else:
-        # Assume the user know what they are doing
+        # 对于其他类型的对象，假设用户知道自己在做什么，按原样返回对象
         return obj
 
 
-def decode_data(obj):
-    """Decode a serialised data object.
 
-    Parameter
-    ---------
-    obj : Python dictionary
-        A dictionary describing a serialised data object.
+def decode_data(obj):
+    """
+    解码一个序列化的数据对象。
+
+    Args:
+        obj : Python 字典
+            一个描述序列化数据对象的字典。
     """
     try:
         if TYPES["str"] == obj[b"type"]:
@@ -83,10 +90,16 @@ def decode_data(obj):
         elif TYPES["ndarray"] == obj[b"type"]:
             return np.frombuffer(obj[b"data"], dtype=np.dtype(obj[b"dtype"])).reshape(obj[b"shape"])
         else:
-            # Assume the user know what they are doing
+            # # 对于其他类型的对象，假设用户知道自己在做什么，按原样返回对象
             return obj
+        
     except KeyError:
-        # Assume the user know what they are doing
+        return obj
+    except ValueError as ve:
+        print(f"解码时出现值错误: {ve}")
+        return obj
+    except TypeError as te:
+        print(f"解码时出现类型错误: {te}")
         return obj
 
 
@@ -119,3 +132,18 @@ def check_filesystem_is_ext4(current_path:str)->bool:
             else:
                 print(f"\n当前路径<<{current_path}>>的文件系统类型不是NTFS.\033[92m\n可将mapsize最大化,db大小会按实际大小变化\033[0m\n")
                 return False
+
+
+
+
+
+
+if __name__ == '__main__':
+    # 创建一个 numpy 包裹的字符串
+    arr_str = np.array(["是","ss",1,1e-4]).reshape(2,2)
+    encoded = encode_data(arr_str)
+    decoded =  decode_data(encoded)
+    print(type(arr_str))
+    #print(np.array(arr_str.tolist()))
+    print(encoded,"\n")
+    print(decoded)

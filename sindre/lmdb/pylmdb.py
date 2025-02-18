@@ -16,7 +16,7 @@ __all__ = ["Reader", "Writer", "merge_db", "repair_windows_size", "check_filesys
 
 class Reader(object):
     """
-    用于读取包含张量（`numpy.ndarray`）数据集的对象。
+    用于读取包含张量(`numpy.ndarray`)数据集的对象。
     这些张量是通过使用MessagePack从Lightning Memory-Mapped Database (LMDB)中读取的。
 
 
@@ -28,7 +28,7 @@ class Reader(object):
 
         Args:
             dirpath : 包含LMDB的目录路径。
-            lock : 是否在读取器上使用锁定阻塞方法。如果为False，则确保在读取数据集时没有并发写入。
+            lock : 是否在读取器上使用锁定阻塞方法。如果为False,则确保在读取数据集时没有并发写入。
 
         """
 
@@ -108,7 +108,7 @@ class Reader(object):
     def get_data_keys(self, i: int = 0) -> list:
         """
         返回第i个样本在`data_db`中的所有键的列表。
-        如果所有样本包含相同的键，则只需要检查第一个样本，因此默认值为`i=0`
+        如果所有样本包含相同的键,则只需要检查第一个样本,因此默认值为`i=0`
 
         Args:
             i: 索引
@@ -126,7 +126,7 @@ class Reader(object):
 
         该值从`data_db`中检索。
 
-        因为每个样本都存储在一个msgpack中，所以在返回值之前，我们需要先读取整个msgpack。
+        因为每个样本都存储在一个msgpack中,所以在返回值之前,我们需要先读取整个msgpack。
 
         Args:
             i: 索引
@@ -139,7 +139,7 @@ class Reader(object):
         try:
             return self[i][key]
         except KeyError:
-            raise KeyError("键不存在：{}".format(key))
+            raise KeyError("键不存在:{}".format(key))
 
     def get_data_specification(self, i: int) -> dict:
         """
@@ -161,7 +161,7 @@ class Reader(object):
                 spec[key]["dtype"] = sample[key].dtype
                 spec[key]["shape"] = sample[key].shape
             except KeyError:
-                raise KeyError("键不存在：{}".format(key))
+                raise KeyError("键不存在:{}".format(key))
 
         return spec
 
@@ -177,17 +177,17 @@ class Reader(object):
         """
 
         if 0 > i or self.nb_samples <= i:
-            raise IndexError("所选样本编号超出范围： %d" % i)
+            raise IndexError("所选样本编号超出范围: %d" % i)
 
         # 将样本编号转换为带有尾随零的字符串
         key = encode_str("{:010}".format(i))
 
         obj = {}
         with self._lmdb_env.begin(db=self.data_db) as txn:
-            # 从LMDB读取msgpack，并解码其中的每个值
+            # 从LMDB读取msgpack,并解码其中的每个值
             _obj = msgpack.unpackb(txn.get(key), raw=False, use_list=True)
             for k in _obj:
-                # 如果键存储为字节对象，则必须对其进行解码
+                # 如果键存储为字节对象,则必须对其进行解码
                 if isinstance(k, bytes):
                     _k = decode_str(k)
                 else:
@@ -203,7 +203,7 @@ class Reader(object):
         返回从`i`到`i + size`的所有连续样本。
 
         Notes:
-         假设：
+         假设:
             * 从`i`到`i + size`的每个样本具有相同的键集。
             * 样本中的所有数据对象都是`numpy.ndarray`类型。
             * 与同一个键关联的值具有相同的张量形状和数据类型。
@@ -220,7 +220,7 @@ class Reader(object):
         """
         if 0 > i or self.nb_samples <= i + size - 1:
             raise IndexError(
-                "所选样本编号超出范围： %d 到 %d（大小：%d）" % (i, i + size, size)
+                "所选样本编号超出范围: %d 到 %d(大小:%d)" % (i, i + size, size)
             )
 
         # 基于第i个样本做出关于数据的假设
@@ -230,10 +230,10 @@ class Reader(object):
                 samples = {}
                 # 将样本编号转换为带有尾随零的字符串
                 key = encode_str("{:010}".format(_i))
-                # 从LMDB读取msgpack，解码其中的每个值，并将其添加到检索到的样本集合中
+                # 从LMDB读取msgpack,解码其中的每个值,并将其添加到检索到的样本集合中
                 obj = msgpack.unpackb(txn.get(key), raw=False, use_list=True)
                 for k in obj:
-                    # 如果键存储为字节对象，则必须对其进行解码
+                    # 如果键存储为字节对象,则必须对其进行解码
                     if isinstance(k, bytes):
                         _k = decode_str(k)
                     else:
@@ -261,12 +261,12 @@ class Reader(object):
             if 0 > _key:
                 _key += len(self)
             if 0 > _key or len(self) <= _key:
-                raise IndexError("所选样本超出范围：`{}`".format(key))
+                raise IndexError("所选样本超出范围:`{}`".format(key))
             return self.get_sample(_key)
         elif isinstance(key, slice):
             return [self[i] for i in range(*key.indices(len(self)))]
         else:
-            raise TypeError("无效的参数类型：`{}`".format(type(key)))
+            raise TypeError("无效的参数类型:`{}`".format(type(key)))
 
     def __len__(self) -> int:
         """
@@ -292,12 +292,12 @@ class Reader(object):
         out += "样本数量:\t{}\n".format(len(self))
         out += f"data_db所有键:\n\t{self.get_data_key_info()}\n"
         out += f"meta_db所有键:\n\t{self.get_meta_key_info()}\n"
-        out += "数据键（第0个样本）:"
+        out += "数据键(第0个样本):"
         for key in self.get_data_keys():
             out += "\n\t'{}' <- 数据类型: {}, 形状: {}".format(
                 key, spec[key]["dtype"], spec[key]["shape"]
             )
-        out += "\n\t提示：如果需要查看更多键类型可以使用-->get_data_specification(i=1)查看. "
+        out += "\n\t提示:如果需要查看更多键类型可以使用-->get_data_specification(i=1)查看. "
         out += "\033[0m\n"
         return out
 
@@ -314,7 +314,7 @@ class Reader(object):
 class Writer(object):
     """
     用于编写张量数据集的对象 ('numpy.ndarray')。
-    张量被写入闪电内存映射数据库 (LMDB)，并带有MessagePack的帮助。
+    张量被写入闪电内存映射数据库 (LMDB),并带有MessagePack的帮助。
     """
 
     def __init__(self, dirpath: str, map_size_limit: int, ram_gb_limit: float = 3):
@@ -323,7 +323,7 @@ class Writer(object):
 
         Args:
             dirpath:  应该写入LMDB的目录的路径。
-            map_size_limit: LMDB的map大小，单位为MB。必须足够大以捕获打算存储在LMDB中所有数据。
+            map_size_limit: LMDB的map大小,单位为MB。必须足够大以捕获打算存储在LMDB中所有数据。
             ram_gb_limit:  同时放入RAM的数据的最大大小。此对象尝试写入的数据大小不能超过此数字。默认为 3 GB。
         """
         self.dirpath = dirpath
@@ -339,7 +339,7 @@ class Writer(object):
             )
         if self.ram_gb_limit <= 0:
             raise ValueError(
-                "每次写入的RAM限制 (GB) 必须为为正：{}".format(self.ram_gb_limit)
+                "每次写入的RAM限制 (GB) 必须为为正:{}".format(self.ram_gb_limit)
             )
 
         # 将 `map_size_limit` 从 MB 转换到 B
@@ -363,7 +363,7 @@ class Writer(object):
         Args:
             key: 键
             value:  内容
-            safe_model: 安全模式，如果开启，则修改会提示；
+            safe_model: 安全模式,如果开启,则修改会提示;
 
 
         """
@@ -384,7 +384,7 @@ class Writer(object):
     def change_value(self, num_id: int, samples: dict):
         """
 
-        通过指定索引，修改内容
+        通过指定索引,修改内容
         Args:
             num_id: 索引
             samples: 内容
@@ -399,7 +399,7 @@ class Writer(object):
             # 所有数据对象的类型必须为`numpy.ndarray`
             if not isinstance(samples[key], np.ndarray):
                 raise ValueError(
-                    "不支持的数据类型：" "`numpy.ndarray` != %s" % type(samples[key])
+                    "不支持的数据类型:" "`numpy.ndarray` != %s" % type(samples[key])
                 )
             else:
                 gb_required += np.uint64(samples[key].nbytes)
@@ -411,7 +411,7 @@ class Writer(object):
                 "正在写入的数据大小大于`ram_gb_limit`,%d < %f" % (self.ram_gb_limit, gb_required)
             )
 
-        # 对于每个样本，构建一个msgpack并将其存储在LMDB中
+        # 对于每个样本,构建一个msgpack并将其存储在LMDB中
         with self._lmdb_env.begin(write=True, db=self.data_db) as txn:
             # 为每个数据对象构建一个msgpack
             msg_pkgs = {}
@@ -423,7 +423,7 @@ class Writer(object):
                 # 创建msgpack
                 msg_pkgs[key] = msgpack.packb(obj, use_bin_type=True, default=encode_data)
 
-                # LMDB键：样本编号作为带有尾随零的字符串
+                # LMDB键:样本编号作为带有尾随零的字符串
                 key = encode_str("{:010}".format(num_id))
 
                 # 构建最终的msgpack并将其存储在LMDB中
@@ -432,7 +432,7 @@ class Writer(object):
 
     def check_db_stats(self):
         """
-        检查lmdb是继续写，还是新写
+        检查lmdb是继续写,还是新写
 
         """
 
@@ -441,7 +441,7 @@ class Writer(object):
             if not _k:
                 self.db_stats = "create_stats"
                 print(
-                    f"\n\033[92m检测到{self.dirpath}数据库\033[93m<数据为空>,\033[92m 启动创建模式，键从<< {self.nb_samples} >>开始 \033[0m\n")
+                    f"\n\033[92m检测到{self.dirpath}数据库\033[93m<数据为空>,\033[92m 启动创建模式,键从<< {self.nb_samples} >>开始 \033[0m\n")
             else:
                 if isinstance(_k, bytes):
                     self.nb_samples = int(decode_str(_k))
@@ -456,9 +456,9 @@ class Writer(object):
         将传入内容的键和值放入`data_db` LMDB中。
 
         Notes:
-            函数假设所有值的第一个轴表示样本数。因此，单个样本必须在`numpy.newaxis`之前。
+            函数假设所有值的第一个轴表示样本数。因此,单个样本必须在`numpy.newaxis`之前。
 
-            作为Python字典：
+            作为Python字典:
 
                 put_samples({'key1': value1, 'key2': value2, ...})
 
@@ -473,7 +473,7 @@ class Writer(object):
             # 所有数据对象的类型必须为`numpy.ndarray`
             if not isinstance(samples[key], np.ndarray):
                 raise ValueError(
-                    "不支持的数据类型：" "`numpy.ndarray` != %s" % type(samples[key])
+                    "不支持的数据类型:" "`numpy.ndarray` != %s" % type(samples[key])
                 )
             else:
                 gb_required += np.uint64(samples[key].nbytes)
@@ -482,11 +482,11 @@ class Writer(object):
         gb_required = float(gb_required / 10 ** 9)
         if self.ram_gb_limit < gb_required:
             raise ValueError(
-                "正在写入的数据大小大于`ram_gb_limit`：%d < %f" % (self.ram_gb_limit, gb_required)
+                "正在写入的数据大小大于`ram_gb_limit`:%d < %f" % (self.ram_gb_limit, gb_required)
             )
 
         try:
-            # 对于每个样本，构建一个msgpack并将其存储在LMDB中
+            # 对于每个样本,构建一个msgpack并将其存储在LMDB中
             with self._lmdb_env.begin(write=True, db=self.data_db) as txn:
                 # 为每个数据对象构建一个msgpack
                 msg_pkgs = {}
@@ -498,7 +498,7 @@ class Writer(object):
                     # 创建msgpack
                     msg_pkgs[key] = msgpack.packb(obj, use_bin_type=True, default=encode_data)
 
-                    # LMDB键：样本编号作为带有尾随零的字符串
+                    # LMDB键:样本编号作为带有尾随零的字符串
                     key = encode_str("{:010}".format(self.nb_samples))
 
                     # 构建最终的msgpack并将其存储在LMDB中
@@ -509,7 +509,7 @@ class Writer(object):
                 self.nb_samples += 1
         except lmdb.MapFullError as e:
             raise AttributeError(
-                "LMDB 的map_size 太小：%s MB, %s" % (self.map_size_limit, e)
+                "LMDB 的map_size 太小:%s MB, %s" % (self.map_size_limit, e)
             )
 
         # 将当前样本数写入`meta_db`
@@ -553,18 +553,20 @@ class Writer(object):
     def close(self):
         """
         关闭环境。
-        在关闭之前，将样本数写入`meta_db`,使所有打开的迭代器、游标和事务无效。
+        在关闭之前,将样本数写入`meta_db`,使所有打开的迭代器、游标和事务无效。
 
-        """
-        """
         """
         self.set_meta_str(NB_SAMPLES, str(self.nb_samples))
         self._lmdb_env.close()
+        if sys.platform.startswith('win'):
+            print("检测到windows系统, 修复文件大小问题")
+            repair_windows_size(self.dirpath)
+            
 
 
 def repair_windows_size(dirpath: str):
     """
-    解决windows没法实时变化大小问题；
+    解决windows没法实时变化大小问题;
 
     Args:
         dirpath:  lmdb目录路径
@@ -598,14 +600,14 @@ def merge_db(merge_dirpath: str, A_dirpath: str, B_dirpath: str, map_size_limit:
     for i in range(A_db.nb_samples):
         merge_db.put_samples(A_db[i])
     for i in A_db.get_meta_key_info():
-        # nb_samples采用自增，不能强制覆盖
+        # nb_samples采用自增,不能强制覆盖
         if i != "nb_samples":
             merge_db.set_meta_str(i, A_db.get_meta_str(i))
 
     for i in range(B_db.nb_samples):
         merge_db.put_samples(B_db[i])
     for i in B_db.get_meta_key_info():
-        # nb_samples采用自增，不能强制覆盖
+        # nb_samples采用自增,不能强制覆盖
         if i != "nb_samples":
             merge_db.set_meta_str(i, B_db.get_meta_str(i))
 
