@@ -94,10 +94,11 @@ def sindre_py2pyd() -> list:
     if os.path.exists(dist_path):
         shutil.rmtree(dist_path)
     shutil.copytree("sindre",dist_path)
-    py2pyd(dist_path,True)
+    # 关闭cython转换
+    #py2pyd(dist_path,True)
     
-# 关闭cython转换
-#sindre_py2pyd()
+
+sindre_py2pyd()
 
 # 复制资源
 shutil.copy("README.md","dist/README.md")
