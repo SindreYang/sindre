@@ -317,7 +317,7 @@ class Writer(object):
     张量被写入闪电内存映射数据库 (LMDB),并带有MessagePack的帮助。
     """
 
-    def __init__(self, dirpath: str, map_size_limit: int, ram_gb_limit: float = 3):
+    def __init__(self, dirpath: str, map_size_limit: int, ram_gb_limit: int = 3):
         """
         初始化
 
@@ -342,8 +342,11 @@ class Writer(object):
                 "每次写入的RAM限制 (GB) 必须为为正:{}".format(self.ram_gb_limit)
             )
 
-        # 将 `map_size_limit` 从 MB 转换到 B
+        # 将 `map_size_limit` 从 B 转换到 MB
         map_size_limit <<= 20
+        
+         # 将 `map_size_limit` 从 B 转换到 GB
+        #map_size_limit <<= 30
 
         # 打开LMDB环境
         self._lmdb_env = lmdb.open(dirpath, map_size=map_size_limit, max_dbs=NB_DBS)
@@ -579,7 +582,7 @@ def repair_windows_size(dirpath: str):
     db.close()
 
 
-def merge_db(merge_dirpath: str, A_dirpath: str, B_dirpath: str, map_size_limit: int = 10):
+def merge_db(merge_dirpath: str, A_dirpath: str, B_dirpath: str, map_size_limit: int = 1024):
     """
     有序合并数据库
 
@@ -587,7 +590,7 @@ def merge_db(merge_dirpath: str, A_dirpath: str, B_dirpath: str, map_size_limit:
         merge_dirpath: 合并后lmdb目录路径
         A_dirpath:  需要合并数据库A的路径
         B_dirpath: 需要合并数据库B的路径
-        map_size_limit:  预先分配合并后数据库大小,默认为10GB,linux文件系统可以设置无限大。
+        map_size_limit:  预先分配合并后数据库大小,默认为1024MB,linux文件系统可以设置无限大。
 
     """
 
@@ -614,3 +617,48 @@ def merge_db(merge_dirpath: str, A_dirpath: str, B_dirpath: str, map_size_limit:
     A_db.close()
     B_db.close()
     merge_db.close()
+
+
+
+def split_db(source_dirpath: str, target_base_dirpath: str, num_samples_per_db: int, sub_map_size_limit: int = 1024):
+    """
+    拆分 LMDB 数据库
+
+    Args:
+        source_dirpath: 源 LMDB 数据库的路径
+        target_base_dirpath: 拆分后子数据库存储的基础目录路径
+        num_samples_per_db: 每个子数据库包含的样本数量
+        map_size_limit: 预先分配合并后数据库大小，默认为 1024MB,linux 文件系统可以设置无限大
+    """
+    # 确保目标基础目录存在
+    os.makedirs(target_base_dirpath, exist_ok=True)
+    source_db =Reader(dirpath=source_dirpath)
+    total_samples = source_db.nb_samples
+    num_sub_dbs = (total_samples + num_samples_per_db - 1) // num_samples_per_db
+
+    try:
+        # 循环创建并填充子数据库
+        for i in range(num_sub_dbs):
+            target_dirpath = os.path.join(target_base_dirpath, f'sub_db_{i}')
+            target_db = Writer(dirpath=target_dirpath, map_size_limit=sub_map_size_limit)
+
+            # 计算当前子数据库应包含的样本范围
+            start_index = i * num_samples_per_db
+            end_index = min((i + 1) * num_samples_per_db, total_samples)
+
+            # 将样本从源数据库复制到子数据库
+            for j in range(start_index, end_index):
+                target_db.put_samples(source_db[j])
+
+            # 复制源数据库的元数据到子数据库
+            for key in source_db.get_meta_key_info():
+                if key != "nb_samples":
+                    target_db.set_meta_str(key, source_db.get_meta_str(key))
+                    
+            target_db.close()
+
+    except Exception as e:
+        print(f"Error during database splitting: {e}")
+        
+    finally:
+        source_db.close()
