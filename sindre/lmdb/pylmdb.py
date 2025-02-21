@@ -567,8 +567,8 @@ class Writer(object):
         self.set_meta_str(NB_SAMPLES, str(self.nb_samples))
         self._lmdb_env.close()
         if sys.platform.startswith('win'):
-            print("检测到windows系统, 修复文件大小问题")
-            repair_windows_size(self.dirpath)
+            print(f"检测到windows系统, 请运行  repair_windows_size({self.dirpath}) 修复文件大小问题")
+           
             
 
 
