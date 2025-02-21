@@ -313,22 +313,37 @@ class Reader(object):
 
 class Writer(object):
     """
-    用于编写张量数据集的对象 ('numpy.ndarray')。
-    张量被写入闪电内存映射数据库 (LMDB),并带有MessagePack的帮助。
+    用于将数据集的对象 ('numpy.ndarray') 写入闪电内存映射数据库 (LMDB),并带有MessagePack压缩。
+    Note:
+    
+    
+        db =  sindre.lmdb.Writer(dirpath=r'datasets/lmdb', map_size_limit=1024*100,ram_gb_limit=3.0)
+        db.set_meta_str("描述信息", "xxxx")
+        
+        data = {xx:np.array(xxx)} # 尽量占用ram_gb_limit内存
+        
+        gb_required = db.check_sample_size(data) # 计算数据占用内存(GB)
+
+        db.put_samples(data) # 一次性写入,注意gb_required<ram_gb_limit限制
+            
+       
+        db.close()
+            
+    
     """
 
-    def __init__(self, dirpath: str, map_size_limit: int, ram_gb_limit: int = 3):
+    def __init__(self, dirpath: str, map_size_limit: int):
         """
         初始化
 
         Args:
             dirpath:  应该写入LMDB的目录的路径。
             map_size_limit: LMDB的map大小,单位为MB。必须足够大以捕获打算存储在LMDB中所有数据。
-            ram_gb_limit:  同时放入RAM的数据的最大大小。此对象尝试写入的数据大小不能超过此数字。默认为 3 GB。
+            ram_gb_limit(弃用):  同时放入RAM的数据的最大大小。此对象尝试写入的数据大小不能超过此数字。默认为 3 GB。
         """
         self.dirpath = dirpath
         self.map_size_limit = map_size_limit  # Megabytes (MB)
-        self.ram_gb_limit = ram_gb_limit  # Gigabytes (GB)
+        #self.ram_gb_limit = ram_gb_limit  # Gigabytes (GB)
         self.keys = []
         self.nb_samples = 0
 
@@ -337,10 +352,10 @@ class Writer(object):
             raise ValueError(
                 "LMDB map 大小必须为正:{}".format(self.map_size_limit)
             )
-        if self.ram_gb_limit <= 0:
-            raise ValueError(
-                "每次写入的RAM限制 (GB) 必须为为正:{}".format(self.ram_gb_limit)
-            )
+        # if self.ram_gb_limit <= 0:
+        #     raise ValueError(
+        #         "每次写入的RAM限制 (GB) 必须为为正:{}".format(self.ram_gb_limit)
+        #     )
 
         # 将 `map_size_limit` 从 B 转换到 MB
         map_size_limit <<= 20
@@ -395,25 +410,6 @@ class Writer(object):
         Returns:
 
         """
-
-        # 检查数据类型
-        gb_required = 0
-        for key in samples:
-            # 所有数据对象的类型必须为`numpy.ndarray`
-            if not isinstance(samples[key], np.ndarray):
-                raise ValueError(
-                    "不支持的数据类型:" "`numpy.ndarray` != %s" % type(samples[key])
-                )
-            else:
-                gb_required += np.uint64(samples[key].nbytes)
-
-        # 确保用户指定的假设RAM大小可以容纳要存储的样本数
-        gb_required = float(gb_required / 10 ** 9)
-        if self.ram_gb_limit < gb_required:
-            raise ValueError(
-                "正在写入的数据大小大于`ram_gb_limit`,%d < %f" % (self.ram_gb_limit, gb_required)
-            )
-
         # 对于每个样本,构建一个msgpack并将其存储在LMDB中
         with self._lmdb_env.begin(write=True, db=self.data_db) as txn:
             # 为每个数据对象构建一个msgpack
@@ -454,6 +450,34 @@ class Writer(object):
                 print(
                     f"\n\033[92m检测到{self.dirpath}数据库\033[93m<已有数据存在>,\033[92m启动自动增量更新模式,键从<< {self.nb_samples} >>开始\033[0m\n")
 
+
+    def check_sample_size(self,samples:dict):
+        """
+        检测sample字典的大小
+
+        Args:
+            samples (_type_): 字典类型数据
+            
+        Return:
+            gb_required : 字典大小(GB) 
+        """
+        # 检查数据类型
+        gb_required = 0
+        for key in samples:
+            # 所有数据对象的类型必须为`numpy.ndarray`
+            if not isinstance(samples[key], np.ndarray):
+                raise ValueError(
+                    "不支持的数据类型:" "`numpy.ndarray` != %s" % type(samples[key])
+                )
+            else:
+                gb_required += np.uint64(samples[key].nbytes)
+
+        # 确保用户指定的假设RAM大小可以容纳要存储的样本数
+        gb_required = float(gb_required / 10 ** 9)
+        
+        return gb_required
+
+
     def put_samples(self, samples: dict):
         """
         将传入内容的键和值放入`data_db` LMDB中。
@@ -469,25 +493,6 @@ class Writer(object):
             samples: 由字符串和numpy数组组成
 
         """
-
-        # 检查数据类型
-        gb_required = 0
-        for key in samples:
-            # 所有数据对象的类型必须为`numpy.ndarray`
-            if not isinstance(samples[key], np.ndarray):
-                raise ValueError(
-                    "不支持的数据类型:" "`numpy.ndarray` != %s" % type(samples[key])
-                )
-            else:
-                gb_required += np.uint64(samples[key].nbytes)
-
-        # 确保用户指定的假设RAM大小可以容纳要存储的样本数
-        gb_required = float(gb_required / 10 ** 9)
-        if self.ram_gb_limit < gb_required:
-            raise ValueError(
-                "正在写入的数据大小大于`ram_gb_limit`:%d < %f" % (self.ram_gb_limit, gb_required)
-            )
-
         try:
             # 对于每个样本,构建一个msgpack并将其存储在LMDB中
             with self._lmdb_env.begin(write=True, db=self.data_db) as txn:
@@ -547,7 +552,7 @@ class Writer(object):
         out += f"类名:\t\t\t{self.__class__.__name__}\n"
         out += f"位置:\t\t\t'{os.path.abspath(self.dirpath)}'\n"
         out += f"LMDB的map_size:\t\t{self.map_size_limit}MB\n"
-        out += f"RAM 限制:\t\t{self.ram_gb_limit}GB\n"
+        #out += f"每份数据RAM限制:\t\t{self.ram_gb_limit}GB\n"
         out += f"当前模式:\t\t{self.db_stats}\n"
         out += f"当前开始序号为:\t\t{self.nb_samples}\n"
         out += "\033[0m\n"

@@ -60,9 +60,6 @@ def encode_data(obj):
         # 如果是字符串，返回一个字典，包含类型标识和字符串数据
         return {b"type": TYPES["str"], b"data": obj}
     elif isinstance(obj, np.ndarray):
-        if np.issubdtype(obj.dtype, np.str_) or np.issubdtype(obj.dtype, np.unicode_):
-            raise ValueError(f"\n  \033[91m\n输入array: \n\n{obj}\n\n中有字符串类型,由于会破坏np类型,请修正; \033[0m\n")
-            
         return {
             b"type": TYPES["ndarray"],
             b"dtype": obj.dtype.str,
