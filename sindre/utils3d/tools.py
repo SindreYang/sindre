@@ -52,6 +52,50 @@ from typing import *
 from sklearn.decomposition import PCA
 
 
+def labels2colors(labels:np.array):
+    """
+    将labels转换成颜色标签
+    Args:
+        labels: numpy类型,形状(N)对应顶点的标签；
+
+    Returns:
+        RGBA颜色标签;
+    """
+
+    colormap = [
+        [230, 25, 75, 255],
+        [60, 180, 75, 255],
+        [255, 225, 25, 255],
+        [67, 99, 216, 255],
+        [245, 130, 49, 255],
+        [66, 212, 244, 255],
+        [240, 50, 230, 255],
+        [250, 190, 212, 255],
+        [70, 153, 144, 255],
+        [220, 190, 255, 255],
+        [154, 99, 36, 255],
+        [255, 250, 200, 255],
+        [128, 0, 0, 255],
+        [170, 255, 195, 255],
+        [0, 0, 117, 255],
+        [169, 169, 169, 255],
+        [255, 255, 255, 255],
+        [0, 0, 0, 255],
+        [255, 10, 0, 255],
+        [0, 255, 10, 255],
+        [0, 9, 255, 255],
+
+    ]
+
+    color_labels= np.zeros((len(labels),4))
+    for i in np.unique(labels):
+        color = colormap[int(i) % len(colormap)]
+        idx_i = np.argwhere(labels == i).reshape(-1)
+        color_labels[idx_i] = color
+
+    return color_labels
+
+
 def vertex_labels_to_face_labels(faces: Union[np.array, list], vertex_labels: Union[np.array, list]) -> np.array:
     """
         将三角网格的顶点标签转换成面片标签，存在一个面片，多个属性，则获取出现最多的属性。
