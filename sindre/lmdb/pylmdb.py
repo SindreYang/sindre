@@ -503,6 +503,9 @@ class Writer(object):
                     obj = samples[key]
                     if not isinstance(obj, np.ndarray):
                         obj = np.array(obj)
+                        # 检查是否存在 NaN 或 Inf
+                        if np.isnan(obj).any() or np.isinf(obj).any():
+                            assert ValueError("\033[91m 数据中包含 NaN 或 Inf,请检查数据.\033[0m\n")
                     # 创建msgpack
                     msg_pkgs[key] = msgpack.packb(obj, use_bin_type=True, default=encode_data)
 
