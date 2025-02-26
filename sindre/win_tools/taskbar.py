@@ -1,8 +1,14 @@
 
 # -*- coding: UTF-8 -*-
 
-import win32gui
-import win32con
+
+
+try:
+    import win32gui
+    import win32con
+except ImportError:
+    # 若导入模块时出现错误，捕获异常并输出错误信息
+    print("注意：导入 Windows 工具时出错,请 pip install pywin32")
 
 
 def HEXtoRGBAint(HEX: str):

@@ -50,7 +50,8 @@ import vedo
 import numpy as np
 from typing import *
 from sklearn.decomposition import PCA
-
+from scipy.spatial import cKDTree
+from scipy.linalg import eigh
 
 def labels2colors(labels:np.array):
     """
@@ -644,3 +645,60 @@ def create_voxels(vertices, resolution: int = 256):
     # print(verts.shape)
     # vedo.show(vedo.Points(verts[::30]),self.crown).close()
     return verts, scale, translation
+
+
+
+
+def compute_face_normals(vertices, faces):
+    """
+    计算三角形网格中每个面的法线
+    Args:
+        vertices: 顶点数组，形状为 (N, 3)
+        faces: 面数组，形状为 (M, 3)，每个面由三个顶点索引组成
+    Returns:
+        面法线数组，形状为 (M, 3)
+    """
+    v0 = vertices[faces[:, 0]]
+    v1 = vertices[faces[:, 1]]
+    v2 = vertices[faces[:, 2]]
+    edge1 = v1 - v0
+    edge2 = v2 - v0
+    face_normals = np.cross(edge1, edge2)
+    
+    # 处理退化面（法线长度为0的情况）
+    norms = np.linalg.norm(face_normals, axis=1, keepdims=True)
+    eps = 1e-8
+    norms = np.where(norms < eps, 1.0, norms)  # 避免除以零
+    face_normals = face_normals / norms
+    
+    return face_normals
+
+def compute_vertex_normals(vertices, faces):
+    """
+    计算三角形网格中每个顶点的法线
+    Args:
+        vertices: 顶点数组，形状为 (N, 3)
+        faces: 面数组，形状为 (M, 3)，每个面由三个顶点索引组成
+    Returns:
+        顶点法线数组，形状为 (N, 3)
+    """
+    v0 = vertices[faces[:, 0]]
+    v1 = vertices[faces[:, 1]]
+    v2 = vertices[faces[:, 2]]
+    edge1 = v1 - v0
+    edge2 = v2 - v0
+    
+    # 计算未归一化的面法线（叉积的模长为两倍三角形面积）
+    face_normals = np.cross(edge1, edge2)
+    
+    vertex_normals = np.zeros(vertices.shape)
+    # 累加面法线到对应的顶点
+    np.add.at(vertex_normals, faces.flatten(), np.repeat(face_normals, 3, axis=0))
+    
+    # 归一化顶点法线并处理零向量
+    lengths = np.linalg.norm(vertex_normals, axis=1, keepdims=True)
+    eps = 1e-8
+    lengths = np.where(lengths < eps, 1.0, lengths)  # 避免除以零
+    vertex_normals = vertex_normals / lengths
+    
+    return vertex_normals

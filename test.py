@@ -1,56 +1,15 @@
 # -*- coding: UTF-8 -*-
-"""
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-@path   ：sindre -> sindre_test.py
-@IDE    ：PyCharm
-@Author ：sindre
-@Email  ：yx@mviai.com
-@Date   ：2024/6/14 16:25
-@Version: V0.1
-@License: (C)Copyright 2021-2023 , UP3D
-@Reference: 
-@History:
-- 2024/6/14 :
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-(一)本代码的质量保证期（简称“质保期”）为上线内 1个月，质保期内乙方对所代码实行包修改服务。
-(二)本代码提供三包服务（包阅读、包编译、包运行）不包熟
-(三)本代码所有解释权归权归神兽所有，禁止未开光盲目上线
-(四)请严格按照保养手册对代码进行保养，本代码特点：
-      i. 运行在风电、水电的机器上
-     ii. 机器机头朝东，比较喜欢太阳的照射
-    iii. 集成此代码的人员，应拒绝黄赌毒，容易诱发本代码性能越来越弱
-声明：未履行将视为自主放弃质保期，本人不承担对此产生的一切法律后果
-如有问题，热线: 114
-
-                                                    __----~~~~~~~~~~~------___
-                                   .  .   ~~//====......          __--~ ~~         江城子 . 程序员之歌
-                   -.            \_|//     |||\\  ~~~~~~::::... /~
-                ___-==_       _-~o~  \/    |||  \\            _/~~-           十年生死两茫茫，写程序，到天亮。
-        __---~~~.==~||\=_    -_--~/_-~|-   |\\   \\        _/~                    千行代码，Bug何处藏。
-    _-~~     .=~    |  \\-_    '-~7  /-   /  ||    \      /                   纵使上线又怎样，朝令改，夕断肠。
-  .~       .~       |   \\ -_    /  /-   /   ||      \   /
- /  ____  /         |     \\ ~-_/  /|- _/   .||       \ /                     领导每天新想法，天天改，日日忙。
- |~~    ~~|--~~~~--_ \     ~==-/   | \~--===~~        .\                          相顾无言，惟有泪千行。
-          '         ~-|      /|    |-~\~~       __--~~                        每晚灯火阑珊处，夜难寐，加班狂。
-                      |-~~-_/ |    |   ~\_   _-~            /\
-                           /  \     \__   \/~                \__
-                       _--~ _/ | .-~~____--~-/                  ~~==.
-                      ((->/~   '.|||' -_|    ~~-/ ,              . _||
-                                 -_     ~\      ~~---l__i__i__i--~~_/
-                                 _-~-__   ~)  \--______________--~~
-                               //.-~~~-~_--~- |-------~~~~~~~~
-                                      //.-~~~--\
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-                              神兽保佑                                 永无BUG
-
-"""
 __author__ = 'sindre'
 
 
 import sindre
-print(dir(sindre))
-dir(sindre.utils3d.tools)
+import os
+import multiprocessing as mp
+
+
 def main():
+    print(dir(sindre))
+    dir(sindre.utils3d.tools)
     print(f"\t\t\033[0;33;40mYou cannot get success without failure! Come on!\033[0m\033[0;31;40m{__author__}!\033[0m")
     print(sindre.__path__)
     print(dir(sindre.lmdb))
@@ -61,9 +20,82 @@ def win_tools_test():
 
 
 
+def lmdb_test():
+    import numpy as np 
+    data = {"test":[1,23,4]}
+    db=sindre.lmdb.Writer("./test",1)
+    db.put_samples(data)
+    db.close()
+    
+    db_r= sindre.lmdb.Reader("./test")
+    print(db_r)
+    
 
+def write_worker(queue,dirpath,map_size_limit):
+    writer = sindre.lmdb.Writer(dirpath,map_size_limit=map_size_limit, multiprocessing=True)
+    try:
+        while True:
+            data = queue.get()
+            if data is None:  # 终止信号
+                break
+            
+            writer.put_samples(data)
+    except Exception as e:
+        print(f"写入失败: {e}")
+    writer.close()
+
+
+def lmdb_test_multi(data,dirpath="./multi.db",map_size_limit=100):
+    sindre.lmdb.Writer(dirpath, map_size_limit=map_size_limit).close() 
+    queue = mp.Queue()
+    writer_process = mp.Process(target=write_worker, args=(queue,dirpath,map_size_limit))
+    writer_process.start()
+
+    # 其他进程通过 queue.put(data) 发送数据
+    for item in data:
+        queue.put(item)
+    queue.put(None)  # 结束信号
+    writer_process.join()
+
+    
+def fun_worker(queue,dirpath,map_size_limit):
+    writer =sindre.lmdb.Writer(dirpath,map_size_limit=map_size_limit, multiprocessing=True)
+    try:
+        while True:
+            path = queue.get()
+            if path is None:  # 终止信号
+                break
+            
+            # 读入每个path，获取数据
+            data={path:[1,2]}   
+            # 假设做了大量处理，得到新数据
+            for i in range(10**3):
+                c=i*5
+            data = {path:[c]}
+            
+            # 写入数据
+            writer.put_samples(data)
+    except Exception as e:
+        print(f"写入失败: {e}")
+    writer.close()   
+    
+    
 
 
 if __name__ == '__main__':
-    main()
-    win_tools_test()
+    #main()
+    #win_tools_test()
+    #lmdb_test()
+    #lmdb_test_multi()
+    
+    
+
+    data = [i for  i  in range(10)]
+    #lmdb_test_multi(data)
+    sindre.lmdb.multiprocessing_writer([ str(path) for path  in range(12)],fun_worker)
+    print(sindre.lmdb.Reader("./multi.db"))
+          
+    
+        
+
+

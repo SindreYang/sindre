@@ -1,6 +1,6 @@
 # -*- coding: UTF-8 -*-
 from sindre.lmdb.tools import *
-
+import multiprocessing as mp
 try:
     import lmdb
     import msgpack
@@ -11,7 +11,7 @@ except ImportError:
         "instructions."
     )
 
-__all__ = ["Reader", "Writer", "merge_db", "repair_windows_size", "check_filesystem_is_ext4"]
+__all__ = ["Reader", "Writer", "merge_db", "repair_windows_size", "split_db","multiprocessing_writer",""]
 
 
 class Reader(object):
@@ -22,20 +22,33 @@ class Reader(object):
 
     """
 
-    def __init__(self, dirpath: str, lock: bool = True):
+    def __init__(self, dirpath: str,multiprocessing:bool=False):
         """
         初始化
 
         Args:
             dirpath : 包含LMDB的目录路径。
-            lock : 是否在读取器上使用锁定阻塞方法。如果为False,则确保在读取数据集时没有并发写入。
+            multiprocessing : 是否开启多进程读取。
 
         """
 
         self.dirpath = dirpath
 
         # 以只读模式打开LMDB环境
-        self._lmdb_env = lmdb.open(dirpath, readonly=True, max_dbs=NB_DBS, lock=lock)
+        if multiprocessing:
+            self._lmdb_env = lmdb.open(dirpath,
+                    readonly=True, 
+                    meminit=False,
+                    max_dbs=NB_DBS,
+                    max_spare_txns=32,
+                    subdir=False, 
+                    lock=False)
+        else:
+            self._lmdb_env = lmdb.open(dirpath,
+                                       readonly=True,
+                                       max_dbs=NB_DBS,
+                                       subdir=False, 
+                                       lock=True)
 
         # 打开与环境关联的默认数据库
         self.data_db = self._lmdb_env.open_db(DATA_DB)
@@ -332,20 +345,21 @@ class Writer(object):
     
     """
 
-    def __init__(self, dirpath: str, map_size_limit: int):
+    def __init__(self, dirpath: str, map_size_limit: int,multiprocessing:bool=False):
         """
         初始化
 
         Args:
             dirpath:  应该写入LMDB的目录的路径。
             map_size_limit: LMDB的map大小,单位为MB。必须足够大以捕获打算存储在LMDB中所有数据。
-            ram_gb_limit(弃用):  同时放入RAM的数据的最大大小。此对象尝试写入的数据大小不能超过此数字。默认为 3 GB。
+            multiprocessing: 是否开启多进程。
         """
         self.dirpath = dirpath
         self.map_size_limit = map_size_limit  # Megabytes (MB)
         #self.ram_gb_limit = ram_gb_limit  # Gigabytes (GB)
         self.keys = []
         self.nb_samples = 0
+        self.multiprocessing=multiprocessing
 
         # 检测参数
         if self.map_size_limit <= 0:
@@ -364,7 +378,24 @@ class Writer(object):
         #map_size_limit <<= 30
 
         # 打开LMDB环境
-        self._lmdb_env = lmdb.open(dirpath, map_size=map_size_limit, max_dbs=NB_DBS)
+        if multiprocessing:
+            self._lmdb_env = lmdb.open(
+                dirpath,
+                map_size=map_size_limit,
+                max_dbs=NB_DBS,
+                writemap=True,        # 启用写时内存映射
+                metasync=False,      # 关闭元数据同步
+                map_async=True,      # 异步内存映射刷新
+                lock=True,           # 启用文件锁
+                max_spare_txns=32,   # 事务缓存池大小
+                subdir=False         # 使用文件而非目录
+            )
+        
+        else:
+            self._lmdb_env = lmdb.open(dirpath,
+                                       map_size=map_size_limit,
+                                       max_dbs=NB_DBS,
+                                       subdir=False)
 
         # 打开与环境关联的默认数据库
         self.data_db = self._lmdb_env.open_db(DATA_DB)
@@ -447,7 +478,8 @@ class Writer(object):
                 else:
                     self.nb_samples = int(_k)
                 self.db_stats = "auto_update_stats"
-                print(
+                if not self.multiprocessing:
+                    print(
                     f"\n\033[92m检测到{self.dirpath}数据库\033[93m<已有数据存在>,\033[92m启动自动增量更新模式,键从<< {self.nb_samples} >>开始\033[0m\n")
 
 
@@ -569,11 +601,10 @@ class Writer(object):
         """
         self.set_meta_str(NB_SAMPLES, str(self.nb_samples))
         self._lmdb_env.close()
-        if sys.platform.startswith('win'):
+        if sys.platform.startswith('win') and not self.multiprocessing:
             print(f"检测到windows系统, 请运行  repair_windows_size({self.dirpath}) 修复文件大小问题")
            
             
-
 
 def repair_windows_size(dirpath: str):
     """
@@ -670,3 +701,51 @@ def split_db(source_dirpath: str, target_base_dirpath: str, num_samples_per_db: 
         
     finally:
         source_db.close()
+        
+        
+        
+
+
+
+
+def multiprocessing_writer(for_list,fun=None , dirpath="./multi.db",map_size_limit=100):
+    """多进程写入
+
+    Args:
+    
+        data : 循环list
+        fun : 需要实现单次处理函数
+        dirpath (str, optional): 写入路径. Defaults to "./multi.db".
+        map_size_limit (int, optional): db大小. Defaults to 100.
+        
+    Note:
+    
+        # fun实现
+        def write_worker(queue,dirpath,map_size_limit):
+            writer = Writer(dirpath,map_size_limit=map_size_limit, multiprocessing=True)
+            try:
+                while True:
+                    data = queue.get()
+                    if data is None:  # 终止信号
+                        break
+
+                    #这里实现复杂单次处理
+                    
+                    writer.put_samples(data)
+            except Exception as e:
+                print(f"写入失败: {e}")
+            writer.close()    
+    
+    """
+    Writer(dirpath, map_size_limit=map_size_limit).close() 
+    queue = mp.Queue()
+    writer_process = mp.Process(target=fun, args=(queue,dirpath,map_size_limit))
+    writer_process.start()
+
+    # 其他进程通过 queue.put(data) 发送数据
+    for item in for_list:
+        queue.put(item)
+    queue.put(None)  # 结束信号
+    writer_process.join()
+
+    
