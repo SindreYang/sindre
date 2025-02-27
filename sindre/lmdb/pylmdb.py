@@ -404,7 +404,7 @@ class Writer(object):
                                         max_dbs=NB_DBS,
                                         subdir=False)
         except lmdb.Error as e :
-            assert ValueError("\033[91m 磁盘空间不足!  map_size_limit设置是创建{map_size_limit/1024}GB 的数据库.\033[0m\n",e)
+            raise ValueError("\033[91m 磁盘空间不足!  map_size_limit设置是创建{map_size_limit/1024}GB 的数据库.\033[0m\n",e)
         
         # 打开与环境关联的默认数据库
         self.data_db = self._lmdb_env.open_db(DATA_DB)
@@ -546,8 +546,8 @@ class Writer(object):
                         obj = np.array(obj)
                         try:
                             # 检查是否存在 NaN 或 Inf
-                            if np.isnan(obj).any() or np.isinf(obj).any():
-                                assert ValueError("\033[91m 数据中包含 NaN 或 Inf,请检查数据.\033[0m\n")
+                            if np.isnan(obj).any() or np.isinf(obj).any() or obj.dtype==np.object_:
+                                raise ValueError("\033[91m 数据中包含 NaN 或 Inf 或 obj,请检查数据.\033[0m\n")
                         except Exception as e:
                             # 不支持校验
                             pass 
