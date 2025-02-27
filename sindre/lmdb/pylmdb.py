@@ -402,8 +402,7 @@ class Writer(object):
                                         max_dbs=NB_DBS,
                                         subdir=False)
         except lmdb.Error as e :
-            assert ValueError(f"磁盘空间不足,map_size_limit设置是创建{map_size_limit/1024}GB 的数据库")
-        
+            assert ValueError("\033[91m 磁盘空间不足!  map_size_limit设置是创建{map_size_limit/1024}GB 的数据库.\033[0m\n",e)
         
         # 打开与环境关联的默认数据库
         self.data_db = self._lmdb_env.open_db(DATA_DB)
@@ -758,7 +757,7 @@ def parallel_write(output_dir: str,
                         temp_root: str = "./tmp", 
                         cleanup_temp: bool = True):
     """
-    多进程处理JSON文件并写入LMDB（带可控临时目录）
+    多进程处理JSON文件并写入LMDB
 
     Args:
         output_dir: 最终输出LMDB路径
@@ -767,7 +766,7 @@ def parallel_write(output_dir: str,
         map_size_limit: 总LMDB的map大小限制(MB)
         num_processes: 进程数量
         multiprocessing: 是否启用多进程模式
-        temp_root: 临时目录根路径（默认./tmp）
+        temp_root: 临时目录根路径（默认./tmp，尽量写在SSD,方便快速转换
         cleanup_temp: 是否清理临时目录（默认True）
         
         
