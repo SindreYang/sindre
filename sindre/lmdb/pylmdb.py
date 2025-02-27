@@ -37,6 +37,7 @@ class Reader(object):
         """
 
         self.dirpath = dirpath
+        self.multiprocessing=multiprocessing
 
         # 以只读模式打开LMDB环境
         if multiprocessing:
@@ -307,8 +308,9 @@ class Reader(object):
         out += "类名:\t\t{}\n".format(self.__class__.__name__)
         out += "位置:\t\t'{}'\n".format(os.path.abspath(self.dirpath))
         out += "样本数量:\t{}\n".format(len(self))
-        out += f"data_db所有键:\n\t{self.get_data_key_info()}\n"
-        out += f"meta_db所有键:\n\t{self.get_meta_key_info()}\n"
+        if len(self)>100:
+            out += f"data_db所有键:\n\t{self.get_data_key_info()}\n"
+            out += f"meta_db所有键:\n\t{self.get_meta_key_info()}\n"
         out += "数据键(第0个样本):"
         for key in self.get_data_keys():
             out += "\n\t'{}' <- 数据类型: {}, 形状: {}".format(
