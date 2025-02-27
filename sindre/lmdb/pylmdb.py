@@ -893,11 +893,11 @@ def _worker_write(temp_dir: str,
             # 执行数据处理
             out = process(json_file)
             
-            # 添加原始文件名信息
-            out["source_file"] = os.path.basename(json_file)
-            
-            # 写入数据库
-            writer.put_samples(out)
+            if out:
+                # 写入数据库
+                writer.put_samples(out)
+            else:
+                print(f"函数返回值异常: {out}")
             processed_count += 1
             
             # 每处理10个文件报告一次进度
