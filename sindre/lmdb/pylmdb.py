@@ -1,4 +1,8 @@
 # -*- coding: UTF-8 -*-
+import shutil
+import time
+import traceback
+from tqdm import tqdm
 from sindre.lmdb.tools import *
 import multiprocessing as mp
 try:
@@ -11,7 +15,7 @@ except ImportError:
         "instructions."
     )
 
-__all__ = ["Reader", "Writer", "merge_db", "repair_windows_size", "split_db","multiprocessing_writer",""]
+__all__ = ["Reader", "Writer", "merge_lmdb", "repair_windows_size", "split_lmdb","parallel_write"]
 
 
 class Reader(object):
@@ -378,25 +382,29 @@ class Writer(object):
         #map_size_limit <<= 30
 
         # 打开LMDB环境
-        if multiprocessing:
-            self._lmdb_env = lmdb.open(
-                dirpath,
-                map_size=map_size_limit,
-                max_dbs=NB_DBS,
-                writemap=True,        # 启用写时内存映射
-                metasync=False,      # 关闭元数据同步
-                map_async=True,      # 异步内存映射刷新
-                lock=True,           # 启用文件锁
-                max_spare_txns=32,   # 事务缓存池大小
-                subdir=False         # 使用文件而非目录
-            )
+        try:
+            if multiprocessing:
+                self._lmdb_env = lmdb.open(
+                    dirpath,
+                    map_size=map_size_limit,
+                    max_dbs=NB_DBS,
+                    writemap=True,        # 启用写时内存映射
+                    metasync=False,      # 关闭元数据同步
+                    map_async=True,      # 异步内存映射刷新
+                    lock=True,           # 启用文件锁
+                    max_spare_txns=32,   # 事务缓存池大小
+                    subdir=False         # 使用文件而非目录
+                )
+            
+            else:
+                self._lmdb_env = lmdb.open(dirpath,
+                                        map_size=map_size_limit,
+                                        max_dbs=NB_DBS,
+                                        subdir=False)
+        except lmdb.Error as e :
+            assert ValueError(f"磁盘空间不足,map_size_limit设置是创建{map_size_limit/1024}GB 的数据库")
         
-        else:
-            self._lmdb_env = lmdb.open(dirpath,
-                                       map_size=map_size_limit,
-                                       max_dbs=NB_DBS,
-                                       subdir=False)
-
+        
         # 打开与环境关联的默认数据库
         self.data_db = self._lmdb_env.open_db(DATA_DB)
         self.meta_db = self._lmdb_env.open_db(META_DB)
@@ -535,9 +543,13 @@ class Writer(object):
                     obj = samples[key]
                     if not isinstance(obj, np.ndarray):
                         obj = np.array(obj)
-                        # 检查是否存在 NaN 或 Inf
-                        if np.isnan(obj).any() or np.isinf(obj).any():
-                            assert ValueError("\033[91m 数据中包含 NaN 或 Inf,请检查数据.\033[0m\n")
+                        try:
+                            # 检查是否存在 NaN 或 Inf
+                            if np.isnan(obj).any() or np.isinf(obj).any():
+                                assert ValueError("\033[91m 数据中包含 NaN 或 Inf,请检查数据.\033[0m\n")
+                        except Exception as e:
+                            # 不支持校验
+                            pass 
                     # 创建msgpack
                     msg_pkgs[key] = msgpack.packb(obj, use_bin_type=True, default=encode_data)
 
@@ -621,131 +633,285 @@ def repair_windows_size(dirpath: str):
     db.close()
 
 
-def merge_db(merge_dirpath: str, A_dirpath: str, B_dirpath: str, map_size_limit: int = 1024):
+
+def merge_lmdb(target_dir: str, source_dirs: list, map_size_limit: int, multiprocessing: bool = False):
     """
-    有序合并数据库
-
-    Args:
-        merge_dirpath: 合并后lmdb目录路径
-        A_dirpath:  需要合并数据库A的路径
-        B_dirpath: 需要合并数据库B的路径
-        map_size_limit:  预先分配合并后数据库大小,默认为1024MB,linux文件系统可以设置无限大。
-
-    """
-
-    merge_db = Writer(dirpath=merge_dirpath, map_size_limit=map_size_limit)
-    A_db = Reader(dirpath=A_dirpath)
-    B_db = Reader(dirpath=B_dirpath)
-
-    # 开始合并数据
-    # 将第一个数据库的数据复制到合并后的数据库
-    for i in range(A_db.nb_samples):
-        merge_db.put_samples(A_db[i])
-    for i in A_db.get_meta_key_info():
-        # nb_samples采用自增,不能强制覆盖
-        if i != "nb_samples":
-            merge_db.set_meta_str(i, A_db.get_meta_str(i))
-
-    for i in range(B_db.nb_samples):
-        merge_db.put_samples(B_db[i])
-    for i in B_db.get_meta_key_info():
-        # nb_samples采用自增,不能强制覆盖
-        if i != "nb_samples":
-            merge_db.set_meta_str(i, B_db.get_meta_str(i))
-
-    A_db.close()
-    B_db.close()
-    merge_db.close()
-
-
-
-def split_db(source_dirpath: str, target_base_dirpath: str, num_samples_per_db: int, sub_map_size_limit: int = 1024):
-    """
-    拆分 LMDB 数据库
-
-    Args:
-        source_dirpath: 源 LMDB 数据库的路径
-        target_base_dirpath: 拆分后子数据库存储的基础目录路径
-        num_samples_per_db: 每个子数据库包含的样本数量
-        map_size_limit: 预先分配合并后数据库大小，默认为 1024MB,linux 文件系统可以设置无限大
-    """
-    # 确保目标基础目录存在
-    os.makedirs(target_base_dirpath, exist_ok=True)
-    source_db =Reader(dirpath=source_dirpath)
-    total_samples = source_db.nb_samples
-    num_sub_dbs = (total_samples + num_samples_per_db - 1) // num_samples_per_db
-
-    try:
-        # 循环创建并填充子数据库
-        for i in range(num_sub_dbs):
-            target_dirpath = os.path.join(target_base_dirpath, f'sub_db_{i}')
-            target_db = Writer(dirpath=target_dirpath, map_size_limit=sub_map_size_limit)
-
-            # 计算当前子数据库应包含的样本范围
-            start_index = i * num_samples_per_db
-            end_index = min((i + 1) * num_samples_per_db, total_samples)
-
-            # 将样本从源数据库复制到子数据库
-            for j in range(start_index, end_index):
-                target_db.put_samples(source_db[j])
-
-            # 复制源数据库的元数据到子数据库
-            for key in source_db.get_meta_key_info():
-                if key != "nb_samples":
-                    target_db.set_meta_str(key, source_db.get_meta_str(key))
-                    
-            target_db.close()
-
-    except Exception as e:
-        print(f"Error during database splitting: {e}")
-        
-    finally:
-        source_db.close()
-        
-        
-        
-
-
-
-
-def multiprocessing_writer(for_list,fun=None , dirpath="./multi.db",map_size_limit=100):
-    """多进程写入
-
-    Args:
+    将多个源LMDB数据库合并到目标数据库
     
-        data : 循环list
-        fun : 需要实现单次处理函数
-        dirpath (str, optional): 写入路径. Defaults to "./multi.db".
-        map_size_limit (int, optional): db大小. Defaults to 100.
+    Args:
+        target_dir: 目标LMDB路径
+        source_dirs: 源LMDB路径列表
+        map_size_limit: 目标LMDB的map大小限制（MB）
+        multiprocessing: 是否启用多进程模式
         
-    Note:
+        
+    Example:
+        ```
+        # 合并示例
+        merge_lmdb(
+            target_dir="merged.db",
+            source_dirs=["db1", "db2"],
+            map_size_limit=1024  # 1GB
+        )
+        ```
+
+    """
+    # 计算总样本数
+    total_samples = 0
+    readers = []
+    for src_dir in source_dirs:
+        reader = Reader(src_dir)
+        readers.append(reader)
+        total_samples += len(reader)
     
-        # fun实现
-        def write_worker(queue,dirpath,map_size_limit):
-            writer = Writer(dirpath,map_size_limit=map_size_limit, multiprocessing=True)
-            try:
-                while True:
-                    data = queue.get()
-                    if data is None:  # 终止信号
+    # 创建目标Writer实例
+    writer = Writer(target_dir, map_size_limit=map_size_limit, multiprocessing=multiprocessing)
+    
+    # 带进度条的合并过程
+    with tqdm(total=total_samples, desc="合并数据库", unit="sample") as pbar:
+        for reader in readers:
+            for i in range(len(reader)):
+                sample = reader[i]
+                writer.put_samples(sample)
+                pbar.update(1)
+                pbar.set_postfix({"当前数据库": os.path.basename(reader.dirpath)})
+    
+    # 关闭所有Reader和Writer
+    for reader in readers:
+        reader.close()
+    writer.close()
+
+
+
+
+def split_lmdb(source_dir: str, target_dirs: list, map_size_limit: int, multiprocessing: bool = False):
+    """
+    将源LMDB数据库均匀拆分到多个目标数据库
+    
+    Args:
+        source_dir: 源LMDB路径
+        target_dirs: 目标LMDB路径列表
+        map_size_limit: 每个目标LMDB的map大小限制（MB）
+        multiprocessing: 是否启用多进程模式
+        
+    
+    Example:
+        ```
+        split_lmdb(
+        source_dir="large.db",
+        target_dirs=[f"split_{i}.db" for i in range(4)],
+        map_size_limit=256
+        )
+        ```
+    """
+    n = len(target_dirs)
+    writers = [Writer(d, map_size_limit=map_size_limit, multiprocessing=multiprocessing) for d in target_dirs]
+    
+    with Reader(source_dir) as reader:
+        total_samples = len(reader)
+        
+        # 带进度条的拆分过程
+        with tqdm(total=total_samples, desc="拆分数据库", unit="sample") as pbar:
+            samples_per_writer = total_samples // n
+            remainder = total_samples % n
+            
+            writer_idx = 0
+            count_in_writer = 0
+            
+            for i in range(total_samples):
+                sample = reader[i]
+                writers[writer_idx].put_samples(sample)
+                count_in_writer += 1
+                
+                # 更新进度条
+                pbar.update(1)
+                pbar.set_postfix({
+                    "目标库": os.path.basename(writers[writer_idx].dirpath),
+                    "进度": f"{writer_idx+1}/{n}"
+                })
+                
+                # 判断是否切换到下一个Writer
+                threshold = samples_per_writer + 1 if writer_idx < remainder else samples_per_writer
+                if count_in_writer >= threshold:
+                    writer_idx += 1
+                    count_in_writer = 0
+                    if writer_idx >= n:
                         break
+    
+    # 关闭所有Writer实例
+    for w in writers:
+        w.close()
 
-                    #这里实现复杂单次处理
-                    
-                    writer.put_samples(data)
-            except Exception as e:
-                print(f"写入失败: {e}")
-            writer.close()    
+
+        
+        
+
+
+
+
+def parallel_write(output_dir: str, 
+                        file_list: list, 
+                        process: callable, 
+                        map_size_limit: int, 
+                        num_processes: int, 
+                        multiprocessing: bool = False,
+                        temp_root: str = "./tmp", 
+                        cleanup_temp: bool = True):
+    """
+    多进程处理JSON文件并写入LMDB（带可控临时目录）
+
+    Args:
+        output_dir: 最终输出LMDB路径
+        file_list: 文件路径列表
+        process: 数据处理函数
+        map_size_limit: 总LMDB的map大小限制(MB)
+        num_processes: 进程数量
+        multiprocessing: 是否启用多进程模式
+        temp_root: 临时目录根路径（默认./tmp）
+        cleanup_temp: 是否清理临时目录（默认True）
+        
+        
+    Example:
+        ```
+        
+        def process(json_file):
+            with open(json_file,"r") as f:
+                data = json.loads(f.read())
+            id=data["id_patient"]
+            jaw = data["jaw"]
+            labels = data["labels"]
+            
+            mesh = vedo.load( json_file.replace(".json",".obj"))
+            vertices = mesh.vertices
+            faces = mesh.cells
+
+
+            out = {
+                'mesh_faces':faces,
+                'mesh_vertices':vertices,
+                'vertex_labels':labels,
+                "jaw":jaw,
+
+            }
+            return out
+    
+
+        
+        if __name__ == '__main__':
+            json_file_list = glob.glob("./*/*/*.json")
+            print(len(json_file_list))
+            
+            sindre.lmdb.parallel_write(
+                output_dir=dirpath,
+                file_list=json_file_list[:16],
+                process=process,
+                map_size_limit=map_size_limit,
+                num_processes=8,
+                temp_root="./processing_temp", 
+                cleanup_temp=False  
+            )
+    
+    
+        ```
+    
     
     """
-    Writer(dirpath, map_size_limit=map_size_limit).close() 
-    queue = mp.Queue()
-    writer_process = mp.Process(target=fun, args=(queue,dirpath,map_size_limit))
-    writer_process.start()
+    if os.path.exists(temp_root):
+        shutil.rmtree(temp_root)
+    os.makedirs(temp_root, exist_ok=True)
+    temp_dirs = [os.path.join(temp_root,f"process_{i}.db") for i in range(num_processes)]
 
-    # 其他进程通过 queue.put(data) 发送数据
-    for item in for_list:
-        queue.put(item)
-    queue.put(None)  # 结束信号
-    writer_process.join()
+    # 启动进程
+    manager = mp.Manager()
+    progress_queue = manager.Queue()
+    processes = []
+    
+    try:
+        for i in range(num_processes):
+            p = mp.Process(
+                target=_worker_write,
+                args=(temp_dirs[i], file_list, process, 
+                     map_size_limit//num_processes, multiprocessing, i, 
+                     num_processes, progress_queue)
+            )
+            processes.append(p)
+            p.start()
 
+        # 主进度条
+        with tqdm(total=len(file_list), desc="多进程处理", unit="file") as main_pbar:
+            while any(p.is_alive() for p in processes):
+                while not progress_queue.empty():
+                    main_pbar.update(progress_queue.get())
+                time.sleep(0.1)
+
+        # 合并临时数据库
+        merge_lmdb(
+                    target_dir=output_dir,
+                    source_dirs=temp_dirs,
+                    map_size_limit=map_size_limit, 
+                    multiprocessing=multiprocessing
+                )
+
+    finally:
+        # 清理进程资源
+        for p in processes:
+            p.join()
+        
+        # 按需清理临时目录
+        if cleanup_temp:
+            for d in temp_dirs:
+                if os.path.exists(d):
+                    shutil.rmtree(d, ignore_errors=True)
+            print(f"已清理临时目录: {temp_root}")
+        else:
+            print(f"保留临时目录: {temp_root}")
+            
+            
+            
+def _worker_write(temp_dir: str, 
+                json_file_list: list, 
+                process: callable, 
+                map_size_limit: int, 
+                multiprocessing: bool,
+                process_id: int, 
+                num_processes: int, 
+                progress_queue):
+    """
+    子进程处理函数 (适配你的数据处理逻辑)
+    """
+    writer = Writer(temp_dir, map_size_limit=map_size_limit, multiprocessing=multiprocessing)
+    
+    # 带错误处理的处理流程
+    processed_count = 0
+    for idx, json_file in enumerate(json_file_list):
+        # 分配任务给当前进程
+        if idx % num_processes != process_id:
+            continue
+        
+        try:
+            # 执行数据处理
+            out = process(json_file)
+            
+            # 添加原始文件名信息
+            out["source_file"] = os.path.basename(json_file)
+            
+            # 写入数据库
+            writer.put_samples(out)
+            processed_count += 1
+            
+            # 每处理10个文件报告一次进度
+            if processed_count % 10 == 0:
+                progress_queue.put(10)
+                
+        except Exception as e:
+            print(f"\n处理失败: {json_file}")
+            print(f"错误信息: {str(e)}")
+            traceback.print_exc()
+            continue
+    
+    # 报告剩余进度
+    if processed_count % 10 != 0:
+        progress_queue.put(processed_count % 10)
+    
+    writer.close()
     
