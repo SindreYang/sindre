@@ -40,19 +40,20 @@ class Reader(object):
         self.multiprocessing=multiprocessing
 
         # 以只读模式打开LMDB环境
+        subdir_bool = True if os.path.isdir(dirpath)  else False
         if multiprocessing:
             self._lmdb_env = lmdb.open(dirpath,
                     readonly=True, 
                     meminit=False,
                     max_dbs=NB_DBS,
                     max_spare_txns=32,
-                    subdir=False, 
+                    subdir=subdir_bool, 
                     lock=False)
         else:
             self._lmdb_env = lmdb.open(dirpath,
                                        readonly=True,
                                        max_dbs=NB_DBS,
-                                       subdir=False, 
+                                       subdir=subdir_bool, 
                                        lock=True)
 
         # 打开与环境关联的默认数据库
