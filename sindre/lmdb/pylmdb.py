@@ -385,6 +385,7 @@ class Writer(object):
         #map_size_limit <<= 30
 
         # 打开LMDB环境
+        subdir_bool = True if os.path.isdir(dirpath)  else False
         try:
             if multiprocessing:
                 self._lmdb_env = lmdb.open(
@@ -396,16 +397,16 @@ class Writer(object):
                     map_async=True,      # 异步内存映射刷新
                     lock=True,           # 启用文件锁
                     max_spare_txns=32,   # 事务缓存池大小
-                    subdir=False         # 使用文件而非目录
+                    subdir=subdir_bool         # 使用文件而非目录
                 )
             
             else:
                 self._lmdb_env = lmdb.open(dirpath,
                                         map_size=map_size_limit,
                                         max_dbs=NB_DBS,
-                                        subdir=False)
+                                        subdir=subdir_bool)
         except lmdb.Error as e :
-            raise ValueError("\033[91m 磁盘空间不足!  map_size_limit设置是创建{map_size_limit/1024}GB 的数据库.\033[0m\n",e)
+            raise ValueError(f"\033[91m 磁盘空间不足!  map_size_limit设置是创建{map_size_limit/1024}GB 的数据库.\033[0m\n",e)
         
         # 打开与环境关联的默认数据库
         self.data_db = self._lmdb_env.open_db(DATA_DB)

@@ -52,6 +52,7 @@ from typing import *
 from sklearn.decomposition import PCA
 from scipy.spatial import cKDTree
 from scipy.linalg import eigh
+import vtk
 
 def labels2colors(labels:np.array):
     """
@@ -702,3 +703,36 @@ def compute_vertex_normals(vertices, faces):
     vertex_normals = vertex_normals / lengths
     
     return vertex_normals
+
+
+
+def cut_mesh_point_loop(mesh,pts:vedo.Points,invert=False):
+    """ 
+    
+    基于vtk+dijkstra实现的基于线的分割;
+    
+    线支持在网格上或者网格外；
+
+    Args:
+        mesh (_type_): 待切割网格
+        pts (vedo.Points): 切割线
+        invert (bool, optional): 选择保留最大/最小模式. Defaults to False.
+
+    Returns:
+        _type_: 切割后的网格
+    """
+    
+    # 切割网格并设置EdgeSearchMode
+    selector = vtk.vtkSelectPolyData()
+    selector.SetInputData(mesh.dataset)  # 直接获取VTK数据
+    selector.SetLoop(pts.dataset.GetPoints())
+    selector.GenerateSelectionScalarsOff()
+    selector.SetEdgeSearchModeToDijkstra()  # 设置搜索模式
+    if invert:
+        selector.SetSelectionModeToLargestRegion()
+    else:
+        selector.SetSelectionModeToSmallestRegion()
+    selector.Update()
+    
+    cut_mesh = vedo.Mesh(selector.GetOutput()).clean()
+    return cut_mesh
