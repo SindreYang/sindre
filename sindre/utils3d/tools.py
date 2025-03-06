@@ -44,15 +44,18 @@
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 """
 __author__ = 'sindre'
-
-import json
-import vedo
-import numpy as np
-from typing import *
-from sklearn.decomposition import PCA
-from scipy.spatial import cKDTree
-from scipy.linalg import eigh
-import vtk
+try:
+    import json
+    import vedo
+    import numpy as np
+    from typing import *
+    from sklearn.decomposition import PCA
+    from scipy.spatial import cKDTree
+    from scipy.linalg import eigh
+    import vtk
+    import pymeshlab
+except:
+    pass
 
 def labels2colors(labels:np.array):
     """
@@ -647,9 +650,6 @@ def create_voxels(vertices, resolution: int = 256):
     # vedo.show(vedo.Points(verts[::30]),self.crown).close()
     return verts, scale, translation
 
-
-
-
 def compute_face_normals(vertices, faces):
     """
     计算三角形网格中每个面的法线
@@ -704,8 +704,6 @@ def compute_vertex_normals(vertices, faces):
     
     return vertex_normals
 
-
-
 def cut_mesh_point_loop(mesh,pts:vedo.Points,invert=False):
     """ 
     
@@ -722,6 +720,20 @@ def cut_mesh_point_loop(mesh,pts:vedo.Points,invert=False):
         _type_: 切割后的网格
     """
     
+    # 去除不相关的联通体
+    regions = mesh.split()
+    
+    def batch_closest_dist(vertices, curve_pts):
+        # 将曲线点集转为矩阵（n×3）
+        curve_matrix = np.array(curve_pts)
+        # 计算顶点到曲线点的所有距离（矩阵运算）
+        dist_matrix = np.linalg.norm(vertices[:, np.newaxis] - curve_matrix, axis=2)
+        return np.min(dist_matrix, axis=1)
+
+    # 计算各区域到曲线的最近距离
+    min_dists = [np.min(batch_closest_dist(r.vertices, pts.vertices)) for r in regions]
+    mesh = regions[np.argmin(min_dists)]
+    
     # 切割网格并设置EdgeSearchMode
     selector = vtk.vtkSelectPolyData()
     selector.SetInputData(mesh.dataset)  # 直接获取VTK数据
@@ -730,9 +742,206 @@ def cut_mesh_point_loop(mesh,pts:vedo.Points,invert=False):
     selector.SetEdgeSearchModeToDijkstra()  # 设置搜索模式
     if invert:
         selector.SetSelectionModeToLargestRegion()
+    selector.SetSelectionModeToSmallestRegion()
+    selector.Update()
+    
+    cut_mesh = vedo.Mesh(selector.GetOutput())
+    return cut_mesh
+
+
+def cut_mesh_point_loop_crow(mesh,pts):
+    
+    """ 
+    
+    基于vtk+dijkstra实现的基于线的牙齿冠分割;
+    
+    线支持在网格上或者网格外；
+
+    Args:
+        mesh (_type_): 待切割网格
+        pts (vedo.Points): 切割线
+        invert (bool, optional): 选择保留最大/最小模式. Defaults to False.
+
+    Returns:
+        _type_: 切割后的网格
+    """
+    # 去除不相关的联通体
+    regions = mesh.split()
+    
+    def batch_closest_dist(vertices, curve_pts):
+        # 将曲线点集转为矩阵（n×3）
+        curve_matrix = np.array(curve_pts)
+        # 计算顶点到曲线点的所有距离（矩阵运算）
+        dist_matrix = np.linalg.norm(vertices[:, np.newaxis] - curve_matrix, axis=2)
+        return np.min(dist_matrix, axis=1)
+
+    # 计算各区域到曲线的最近距离
+    min_dists = [np.min(batch_closest_dist(r.vertices, pts.vertices)) for r in regions]
+    mesh =regions[np.argmin(min_dists)]
+    
+    
+    # 切割网格并设置EdgeSearchMode
+    selector = vtk.vtkSelectPolyData()
+    selector.SetInputData(mesh.dataset)  
+    selector.SetLoop(pts.dataset.GetPoints())
+    selector.GenerateSelectionScalarsOff()
+    selector.SetEdgeSearchModeToDijkstra()  # 设置搜索模式
+    if np.min(min_dists)<0.1:
+        print("mesh已经被裁剪")
+        selector.SetSelectionModeToClosestPointRegion()
     else:
         selector.SetSelectionModeToSmallestRegion()
     selector.Update()
-    
-    cut_mesh = vedo.Mesh(selector.GetOutput()).clean()
+    cut_mesh = vedo.vedo.Mesh(selector.GetOutput()).clean()
     return cut_mesh
+
+
+def reduce_face_by_pymeshlab(mesh: pymeshlab.MeshSet, max_facenum: int = 200000) -> pymeshlab.MeshSet:
+    """通过二次边折叠算法减少网格中的面数，简化模型。
+
+    Args:
+        mesh (pymeshlab.MeshSet): 输入的网格模型。
+        max_facenum (int, optional): 简化后的目标最大面数，默认为 200000。
+
+    Returns:
+        pymeshlab.MeshSet: 简化后的网格模型。
+    """
+    mesh.apply_filter(
+        "meshing_decimation_quadric_edge_collapse",
+        targetfacenum=max_facenum,
+        qualitythr=1.0,
+        preserveboundary=True,
+        boundaryweight=3,
+        preservenormal=True,
+        preservetopology=True,
+        autoclean=True
+    )
+    return mesh
+
+
+def remove_floater_by_pymeshlab(mesh: pymeshlab.MeshSet) -> pymeshlab.MeshSet:
+    """移除网格中的浮动小组件（小面积不连通部分）。
+
+    Args:
+        mesh (pymeshlab.MeshSet): 输入的网格模型。
+
+    Returns:
+        pymeshlab.MeshSet: 移除浮动小组件后的网格模型。
+    """
+    mesh.apply_filter("compute_selection_by_small_disconnected_components_per_face",
+                      nbfaceratio=0.005)
+    mesh.apply_filter("compute_selection_transfer_face_to_vertex", inclusive=False)
+    mesh.apply_filter("meshing_remove_selected_vertices_and_faces")
+    return mesh
+
+
+def isotropic_remeshing_by_pymeshlab(mesh: pymeshlab.MeshSet, target_edge_length, iterations=10)-> pymeshlab.MeshSet:
+    """
+    使用 PyMeshLab 实现网格均匀化。
+
+    Args:
+        mesh: 输入的网格对象 (pymeshlab.MeshSet)。
+        target_edge_length: 目标边长。
+        iterations: 迭代次数，默认为 10。
+
+    Returns:
+        均匀化后的网格对象。
+    """
+    # 应用 Isotropic Remeshing 过滤器
+    mesh.apply_filter(
+        "meshing_isotropic_explicit_remeshing",
+        targetlen=pymeshlab.AbsoluteValue(target_edge_length),
+        iterations=iterations,
+        preserveboundary=True,
+        preservenormal=True
+    )
+
+    # 返回处理后的网格
+    return mesh
+
+
+
+def optimize_mesh_by_pymeshlab(ms: pymeshlab.MeshSet)-> pymeshlab.MeshSet:
+    
+    """
+    使用 PyMeshLab 实现一键优化网格。
+    
+    ```
+    
+    Merge Close Vertices：合并临近顶点
+    Merge Wedge Texture Coord：合并楔形纹理坐标
+    Remove Duplicate Faces：移除重复面
+    Remove Duplicate Vertices：移除重复顶点
+    Remove Isolated Folded Faces by Edge Flip：通过边翻转移除孤立的折叠面
+    Remove Isolated pieces (wrt diameter)：移除孤立部分（相对于直径）
+    Remove Isolated pieces (wrt Face Num.)：移除孤立部分（相对于面数）
+    Remove T-Vertices：移除 T 型顶点
+    Remove Unreferenced Vertices：移除未引用的顶点
+    Remove Vertices wrt Quality：根据质量移除顶点
+    Remove Zero Area Faces：移除零面积面
+    Repair non Manifold Edges：修复非流形边
+    Repair non Manifold Vertices by splitting：通过拆分修复非流形顶点
+    Snap Mismatched Borders ：对齐不匹配的边界 
+    
+    
+    ```
+    
+    
+    
+    
+
+    Args:
+        mesh: 输入的网格对象 (pymeshlab.MeshSet)。
+
+    Returns:
+        优化后的网格对象。
+    """
+
+    # 1. 合并临近顶点
+    ms.apply_filter("meshing_merge_close_vertices", threshold=pymeshlab.AbsoluteValue(0.001))
+
+    # 2. 合并楔形纹理坐标
+    ms.apply_filter("apply_texcoord_merge_per_wedge")  
+
+    # 3. 移除重复面
+    ms.apply_filter("meshing_remove_duplicate_faces")
+
+    # 4. 移除重复顶点
+    ms.apply_filter("meshing_remove_duplicate_vertices")
+
+    # 5. 通过边翻转移除孤立的折叠面
+    ms.apply_filter("meshing_remove_folded_faces")  
+
+    # 6. 移除孤立部分（基于直径）
+    ms.apply_filter("meshing_remove_connected_component_by_diameter")
+
+    # 7. 移除孤立部分（基于面数）
+    ms.apply_filter("meshing_remove_connected_component_by_face_number", mincomponentsize=10)
+
+    # 8. 移除 T 型顶点（文档中无直接对应过滤器）
+    ms.apply_filter("meshing_remove_t_vertices") 
+
+    # 9. 移除未引用的顶点
+    ms.apply_filter("meshing_remove_unreferenced_vertices")
+
+    # 10. 根据质量移除顶点（需自定义质量阈值）
+    ms.apply_filter("meshing_remove_vertices_by_scalar", maxqualitythr=0.5)
+
+    # 11. 移除零面积面
+    ms.apply_filter("meshing_remove_null_faces")
+
+    # 12. 修复非流形边
+    ms.apply_filter("meshing_repair_non_manifold_edges")
+
+    # 13. 通过拆分修复非流形顶点
+    ms.apply_filter("meshing_repair_non_manifold_verticess")
+
+    # 15. 对齐不匹配的边界
+    ms.apply_filter("meshing_snap_mismatched_borders", threshold=pymeshlab.AbsoluteValue(0.001))
+
+    return ms
+
+
+
+
+
