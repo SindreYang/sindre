@@ -309,7 +309,7 @@ class Reader(object):
         out += "类名:\t\t{}\n".format(self.__class__.__name__)
         out += "位置:\t\t'{}'\n".format(os.path.abspath(self.dirpath))
         out += "样本数量:\t{}\n".format(len(self))
-        if len(self)>100:
+        if len(self)<100:
             out += f"data_db所有键:\n\t{self.get_data_key_info()}\n"
             out += f"meta_db所有键:\n\t{self.get_meta_key_info()}\n"
         out += "数据键(第0个样本):"
@@ -386,6 +386,9 @@ class Writer(object):
 
         # 打开LMDB环境
         subdir_bool = True if os.path.isdir(dirpath)  else False
+        # 检测目录是否存在
+        if not os.path.exists(os.path.dirname(dirpath)) and not subdir_bool:
+            os.makedirs(os.path.dirname(dirpath),exist_ok=True)
         try:
             if multiprocessing:
                 self._lmdb_env = lmdb.open(
@@ -406,7 +409,7 @@ class Writer(object):
                                         max_dbs=NB_DBS,
                                         subdir=subdir_bool)
         except lmdb.Error as e :
-            raise ValueError(f"\033[91m 磁盘空间不足!  map_size_limit设置是创建{map_size_limit/1024}GB 的数据库.\033[0m\n",e)
+            raise ValueError(f"创建错误：{e} \t(map_size_limit设置创建 {map_size_limit >> 30} GB 数据库)")
         
         # 打开与环境关联的默认数据库
         self.data_db = self._lmdb_env.open_db(DATA_DB)
@@ -854,6 +857,16 @@ def parallel_write(output_dir: str,
                     map_size_limit=map_size_limit, 
                     multiprocessing=multiprocessing
                 )
+    except Exception as e:
+        cleanup_temp =False
+        print(f"处理失败: {str(e)}")
+        traceback.print_exc()
+        print(f"请手动合并目录: \
+              merge_lmdb(target_dir={output_dir},\
+              source_dirs={temp_dirs},\
+              map_size_limit={map_size_limit},\
+              multiprocessing={multiprocessing})")
+
 
     finally:
         # 清理进程资源

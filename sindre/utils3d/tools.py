@@ -44,18 +44,16 @@
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 """
 __author__ = 'sindre'
-try:
-    import json
-    import vedo
-    import numpy as np
-    from typing import *
-    from sklearn.decomposition import PCA
-    from scipy.spatial import cKDTree
-    from scipy.linalg import eigh
-    import vtk
-    import pymeshlab
-except:
-    pass
+import json
+import vedo
+import numpy as np
+from typing import *
+from sklearn.decomposition import PCA
+from scipy.spatial import cKDTree
+from scipy.linalg import eigh
+import vtk
+import pymeshlab
+
 
 def labels2colors(labels:np.array):
     """
@@ -796,7 +794,7 @@ def cut_mesh_point_loop_crow(mesh,pts):
     return cut_mesh
 
 
-def reduce_face_by_pymeshlab(mesh: pymeshlab.MeshSet, max_facenum: int = 200000) -> pymeshlab.MeshSet:
+def reduce_face_by_meshlab(mesh: vedo.Mesh, max_facenum: int = 200000) ->vedo.Mesh:
     """通过二次边折叠算法减少网格中的面数，简化模型。
 
     Args:
@@ -806,6 +804,9 @@ def reduce_face_by_pymeshlab(mesh: pymeshlab.MeshSet, max_facenum: int = 200000)
     Returns:
         pymeshlab.MeshSet: 简化后的网格模型。
     """
+    import pymeshlab
+    
+    ms =vedo.vedo2meshlab(ms)
     mesh.apply_filter(
         "meshing_decimation_quadric_edge_collapse",
         targetfacenum=max_facenum,
@@ -816,10 +817,10 @@ def reduce_face_by_pymeshlab(mesh: pymeshlab.MeshSet, max_facenum: int = 200000)
         preservetopology=True,
         autoclean=True
     )
-    return mesh
+    return vedo.meshlab2vedo(ms)
 
 
-def remove_floater_by_pymeshlab(mesh: pymeshlab.MeshSet) -> pymeshlab.MeshSet:
+def remove_floater_by_meshlab(mesh: vedo.Mesh) -> vedo.Mesh:
     """移除网格中的浮动小组件（小面积不连通部分）。
 
     Args:
@@ -828,14 +829,17 @@ def remove_floater_by_pymeshlab(mesh: pymeshlab.MeshSet) -> pymeshlab.MeshSet:
     Returns:
         pymeshlab.MeshSet: 移除浮动小组件后的网格模型。
     """
+    import pymeshlab
+    
+    ms =vedo.vedo2meshlab(ms)
     mesh.apply_filter("compute_selection_by_small_disconnected_components_per_face",
                       nbfaceratio=0.005)
     mesh.apply_filter("compute_selection_transfer_face_to_vertex", inclusive=False)
     mesh.apply_filter("meshing_remove_selected_vertices_and_faces")
-    return mesh
+    return vedo.meshlab2vedo(ms)
 
 
-def isotropic_remeshing_by_pymeshlab(mesh: pymeshlab.MeshSet, target_edge_length, iterations=10)-> pymeshlab.MeshSet:
+def isotropic_remeshing_pymeshlab(mesh: vedo.Mesh, target_edge_length, iterations=10)-> vedo.Mesh:
     """
     使用 PyMeshLab 实现网格均匀化。
 
@@ -847,6 +851,10 @@ def isotropic_remeshing_by_pymeshlab(mesh: pymeshlab.MeshSet, target_edge_length
     Returns:
         均匀化后的网格对象。
     """
+    
+    import pymeshlab
+    
+    ms =vedo.vedo2meshlab(ms)
     # 应用 Isotropic Remeshing 过滤器
     mesh.apply_filter(
         "meshing_isotropic_explicit_remeshing",
@@ -857,11 +865,11 @@ def isotropic_remeshing_by_pymeshlab(mesh: pymeshlab.MeshSet, target_edge_length
     )
 
     # 返回处理后的网格
-    return mesh
+    return vedo.meshlab2vedo(ms)
 
 
 
-def optimize_mesh_by_pymeshlab(ms: pymeshlab.MeshSet)-> pymeshlab.MeshSet:
+def optimize_mesh_by_meshlab(ms: vedo.Mesh)-> vedo.Mesh:
     
     """
     使用 PyMeshLab 实现一键优化网格。
@@ -896,7 +904,9 @@ def optimize_mesh_by_pymeshlab(ms: pymeshlab.MeshSet)-> pymeshlab.MeshSet:
     Returns:
         优化后的网格对象。
     """
-
+    import pymeshlab
+    
+    ms =vedo.vedo2meshlab(ms)
     # 1. 合并临近顶点
     ms.apply_filter("meshing_merge_close_vertices", threshold=pymeshlab.AbsoluteValue(0.001))
 
@@ -938,8 +948,9 @@ def optimize_mesh_by_pymeshlab(ms: pymeshlab.MeshSet)-> pymeshlab.MeshSet:
 
     # 15. 对齐不匹配的边界
     ms.apply_filter("meshing_snap_mismatched_borders", threshold=pymeshlab.AbsoluteValue(0.001))
-
-    return ms
+    
+    
+    return vedo.meshlab2vedo(ms)
 
 
 
