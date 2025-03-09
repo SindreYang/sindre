@@ -49,6 +49,15 @@ pip install -r requirements.txt
 python setup.py bdist_wheel
 ```
 
+###### 开发模式
+
+
+```bash
+pip install -e .
+```
+
+
+
 ###### 生成文档
 
 * 设置文档范式 pycharm--->setting--->Tools--->python integrated Tools-->Google

@@ -22,25 +22,6 @@
 声明：未履行将视为自主放弃质保期，本人不承担对此产生的一切法律后果
 如有问题，热线: 114
 
-                                                    __----~~~~~~~~~~~------___
-                                   .  .   ~~//====......          __--~ ~~         江城子 . 程序员之歌
-                   -.            \_|//     |||\\  ~~~~~~::::... /~
-                ___-==_       _-~o~  \/    |||  \\            _/~~-           十年生死两茫茫，写程序，到天亮。
-        __---~~~.==~||\=_    -_--~/_-~|-   |\\   \\        _/~                    千行代码，Bug何处藏。
-    _-~~     .=~    |  \\-_    '-~7  /-   /  ||    \      /                   纵使上线又怎样，朝令改，夕断肠。
-  .~       .~       |   \\ -_    /  /-   /   ||      \   /
- /  ____  /         |     \\ ~-_/  /|- _/   .||       \ /                     领导每天新想法，天天改，日日忙。
- |~~    ~~|--~~~~--_ \     ~==-/   | \~--===~~        .\                          相顾无言，惟有泪千行。
-          '         ~-|      /|    |-~\~~       __--~~                        每晚灯火阑珊处，夜难寐，加班狂。
-                      |-~~-_/ |    |   ~\_   _-~            /\
-                           /  \     \__   \/~                \__
-                       _--~ _/ | .-~~____--~-/                  ~~==.
-                      ((->/~   '.|||' -_|    ~~-/ ,              . _||
-                                 -_     ~\      ~~---l__i__i__i--~~_/
-                                 _-~-__   ~)  \--______________--~~
-                               //.-~~~-~_--~- |-------~~~~~~~~
-                                      //.-~~~--\
-                              神兽保佑                                 永无BUG
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 """
 __author__ = 'sindre'
@@ -49,10 +30,12 @@ import vedo
 import numpy as np
 from typing import *
 from sklearn.decomposition import PCA
-from scipy.spatial import cKDTree
+from scipy.spatial import KDTree
 from scipy.linalg import eigh
 import vtk
-import pymeshlab
+import trimesh
+import os
+
 
 
 def labels2colors(labels:np.array):
@@ -64,38 +47,36 @@ def labels2colors(labels:np.array):
     Returns:
         RGBA颜色标签;
     """
+    from colorsys import hsv_to_rgb
+    unique_labels = np.unique(labels)
+    num_unique = len(unique_labels)
+    
+    if num_unique == 0:
+        return np.zeros((len(labels), 4), dtype=np.uint8)
 
-    colormap = [
-        [230, 25, 75, 255],
-        [60, 180, 75, 255],
-        [255, 225, 25, 255],
-        [67, 99, 216, 255],
-        [245, 130, 49, 255],
-        [66, 212, 244, 255],
-        [240, 50, 230, 255],
-        [250, 190, 212, 255],
-        [70, 153, 144, 255],
-        [220, 190, 255, 255],
-        [154, 99, 36, 255],
-        [255, 250, 200, 255],
-        [128, 0, 0, 255],
-        [170, 255, 195, 255],
-        [0, 0, 117, 255],
-        [169, 169, 169, 255],
-        [255, 255, 255, 255],
-        [0, 0, 0, 255],
-        [255, 10, 0, 255],
-        [0, 255, 10, 255],
-        [0, 9, 255, 255],
-
-    ]
-
-    color_labels= np.zeros((len(labels),4))
-    for i in np.unique(labels):
-        color = colormap[int(i) % len(colormap)]
-        idx_i = np.argwhere(labels == i).reshape(-1)
-        color_labels[idx_i] = color
-
+    # 生成均匀分布的色相（0-360度），饱和度和亮度固定为较高值
+    hues = np.linspace(0, 360, num_unique, endpoint=False)
+    s = 0.8  # 饱和度
+    v = 0.9  # 亮度
+    
+    colors = []
+    for h in hues:
+        # 转换HSV到RGB
+        r, g, b = hsv_to_rgb(h / 360.0, s, v)
+        # 转换为0-255的整数并添加Alpha通道
+        colors.append([int(r * 255), int(g * 255), int(b * 255), 255])
+    
+    colors = np.array(colors, dtype=np.uint8)
+    
+    # 创建颜色映射字典
+    color_dict = {label: colors[i] for i, label in enumerate(unique_labels)}
+    
+    # 生成结果数组
+    color_labels = np.zeros((len(labels), 4), dtype=np.uint8)
+    for label in unique_labels:
+        mask = (labels == label)
+        color_labels[mask] = color_dict[label]
+    
     return color_labels
 
 
@@ -794,7 +775,9 @@ def cut_mesh_point_loop_crow(mesh,pts):
     return cut_mesh
 
 
-def reduce_face_by_meshlab(mesh: vedo.Mesh, max_facenum: int = 200000) ->vedo.Mesh:
+
+
+def reduce_face_by_meshlab(vertices,faces, max_facenum: int = 30000) ->vedo.Mesh:
     """通过二次边折叠算法减少网格中的面数，简化模型。
 
     Args:
@@ -806,7 +789,8 @@ def reduce_face_by_meshlab(mesh: vedo.Mesh, max_facenum: int = 200000) ->vedo.Me
     """
     import pymeshlab
     
-    ms =vedo.vedo2meshlab(ms)
+    mesh = pymeshlab.MeshSet()
+    mesh.add_mesh(pymeshlab.Mesh(vertex_matrix=vertices, face_matrix=faces))
     mesh.apply_filter(
         "meshing_decimation_quadric_edge_collapse",
         targetfacenum=max_facenum,
@@ -817,35 +801,37 @@ def reduce_face_by_meshlab(mesh: vedo.Mesh, max_facenum: int = 200000) ->vedo.Me
         preservetopology=True,
         autoclean=True
     )
-    return vedo.meshlab2vedo(ms)
+    return vedo.Mesh(mesh.current_mesh())
 
 
-def remove_floater_by_meshlab(mesh: vedo.Mesh) -> vedo.Mesh:
+def remove_floater_by_meshlab(vertices,faces,nbfaceratio=0.1,nonclosedonly=False) -> vedo.Mesh:
     """移除网格中的浮动小组件（小面积不连通部分）。
 
     Args:
         mesh (pymeshlab.MeshSet): 输入的网格模型。
+        nbfaceratio (float): 面积比率阈值，小于该比率的部分将被移除。
+        nonclosedonly (bool): 是否仅移除非封闭部分。
 
     Returns:
         pymeshlab.MeshSet: 移除浮动小组件后的网格模型。
     """
     import pymeshlab
     
-    ms =vedo.vedo2meshlab(ms)
+    mesh = pymeshlab.MeshSet()
+    mesh.add_mesh(pymeshlab.Mesh(vertex_matrix=vertices, face_matrix=faces))
     mesh.apply_filter("compute_selection_by_small_disconnected_components_per_face",
-                      nbfaceratio=0.005)
+                      nbfaceratio=nbfaceratio, nonclosedonly=nonclosedonly)
     mesh.apply_filter("compute_selection_transfer_face_to_vertex", inclusive=False)
     mesh.apply_filter("meshing_remove_selected_vertices_and_faces")
-    return vedo.meshlab2vedo(ms)
+    return vedo.Mesh(mesh.current_mesh())
 
-
-def isotropic_remeshing_pymeshlab(mesh: vedo.Mesh, target_edge_length, iterations=10)-> vedo.Mesh:
+def isotropic_remeshing_pymeshlab(vertices,faces, target_edge_length=0.5, iterations=2)-> vedo.Mesh:
     """
     使用 PyMeshLab 实现网格均匀化。
 
     Args:
         mesh: 输入的网格对象 (pymeshlab.MeshSet)。
-        target_edge_length: 目标边长。
+        target_edge_length: 目标边长比例 %。
         iterations: 迭代次数，默认为 10。
 
     Returns:
@@ -853,23 +839,25 @@ def isotropic_remeshing_pymeshlab(mesh: vedo.Mesh, target_edge_length, iteration
     """
     
     import pymeshlab
-    
-    ms =vedo.vedo2meshlab(ms)
+    mesh = pymeshlab.MeshSet()
+    mesh.add_mesh(pymeshlab.Mesh(vertex_matrix=vertices, face_matrix=faces))
     # 应用 Isotropic Remeshing 过滤器
     mesh.apply_filter(
         "meshing_isotropic_explicit_remeshing",
-        targetlen=pymeshlab.AbsoluteValue(target_edge_length),
+        targetlen=pymeshlab.PercentageValue(target_edge_length),
         iterations=iterations,
-        preserveboundary=True,
-        preservenormal=True
     )
 
     # 返回处理后的网格
-    return vedo.meshlab2vedo(ms)
+    return vedo.Mesh(mesh.current_mesh())
 
 
 
-def optimize_mesh_by_meshlab(ms: vedo.Mesh)-> vedo.Mesh:
+
+
+
+
+def optimize_mesh_by_meshlab(vertices,faces)-> vedo.Mesh:
     
     """
     使用 PyMeshLab 实现一键优化网格。
@@ -905,10 +893,10 @@ def optimize_mesh_by_meshlab(ms: vedo.Mesh)-> vedo.Mesh:
         优化后的网格对象。
     """
     import pymeshlab
-    
-    ms =vedo.vedo2meshlab(ms)
+    ms = pymeshlab.MeshSet()
+    ms.add_mesh(pymeshlab.Mesh(vertex_matrix=vertices, face_matrix=faces))
     # 1. 合并临近顶点
-    ms.apply_filter("meshing_merge_close_vertices", threshold=pymeshlab.AbsoluteValue(0.001))
+    ms.apply_filter("meshing_merge_close_vertices")
 
     # 2. 合并楔形纹理坐标
     ms.apply_filter("apply_texcoord_merge_per_wedge")  
@@ -935,7 +923,7 @@ def optimize_mesh_by_meshlab(ms: vedo.Mesh)-> vedo.Mesh:
     ms.apply_filter("meshing_remove_unreferenced_vertices")
 
     # 10. 根据质量移除顶点（需自定义质量阈值）
-    ms.apply_filter("meshing_remove_vertices_by_scalar", maxqualitythr=0.5)
+    ms.apply_filter("meshing_remove_vertices_by_scalar", maxqualitythr=pymeshlab.PercentageValue(10))
 
     # 11. 移除零面积面
     ms.apply_filter("meshing_remove_null_faces")
@@ -944,15 +932,351 @@ def optimize_mesh_by_meshlab(ms: vedo.Mesh)-> vedo.Mesh:
     ms.apply_filter("meshing_repair_non_manifold_edges")
 
     # 13. 通过拆分修复非流形顶点
-    ms.apply_filter("meshing_repair_non_manifold_verticess")
+    ms.apply_filter("meshing_repair_non_manifold_vertices")
 
     # 15. 对齐不匹配的边界
-    ms.apply_filter("meshing_snap_mismatched_borders", threshold=pymeshlab.AbsoluteValue(0.001))
+    ms.apply_filter("meshing_snap_mismatched_borders")
     
     
-    return vedo.meshlab2vedo(ms)
+    return vedo.Mesh(ms.current_mesh())
 
 
 
 
 
+
+
+def labels_mapping(old_mesh, new_mesh, old_labels):
+    """
+    将原始网格的标签属性精确映射到新网格
+    
+    参数:
+        old_mesh (trimesh.Trimesh): 原始网格对象
+        new_mesh (trimesh.Trimesh): 重网格化后的新网格对象
+        old_labels (np.ndarray): 原始顶点标签数组，形状为 (N,) 
+    
+    返回:
+        new_labels (np.ndarray): 映射后的新顶点标签数组，形状为 (M,)
+    """
+    import trimesh
+
+    old_mesh = trimesh.Trimesh(old_mesh.vertices,old_mesh.cells)
+    if len(old_labels) != len(old_mesh.vertices):
+        raise ValueError(f"标签数量 ({len(old_labels)}) 必须与原始顶点数 ({len(old_mesh.vertices)}) 一致")
+    
+    new_vertices = new_mesh.vertices
+    
+    # 步骤1: 查询每个新顶点在原始网格上的最近面片信息
+    # closest_points: 新顶点在原始网格上的投影坐标 (M,3)
+    # distances: 新顶点到投影点的距离 (M,)
+    # tri_ids: 最近面片的索引 (M,)
+    closest_points, distances, tri_ids = trimesh.proximity.closest_point(old_mesh, new_vertices)
+    
+    # 步骤2: 计算每个投影点的重心坐标
+    tri_vertices = old_mesh.faces[tri_ids]
+    tri_points = old_mesh.vertices[tri_vertices]
+    
+    # 计算重心坐标 (M,3)
+    bary_coords = trimesh.triangles.points_to_barycentric(
+        triangles=tri_points, 
+        points=closest_points
+    )
+    
+    # 步骤3: 确定最大重心坐标对应的顶点
+    max_indices = np.argmax(bary_coords, axis=1)
+    
+    # 根据最大分量索引选择顶点编号
+    nearest_vertex_indices = tri_vertices[np.arange(len(max_indices)), max_indices]
+    
+    
+    # 步骤4: 映射标签
+    new_labels = np.array(old_labels)[nearest_vertex_indices]
+    
+    return new_labels
+
+
+
+
+
+
+class BestKFinder:
+    def __init__(self, points, labels):
+        """
+        初始化类，接收点云网格数据和对应的标签
+        
+        Args:
+            points (np.ndarray): 点云数据，形状为 (N, 3)
+            labels (np.ndarray): 点云标签，形状为 (N,)
+        """
+        self.points =  np.array(points)
+        self.labels = np.array(labels).reshape(-1)
+
+    def calculate_boundary_points(self, k):
+        """
+        计算边界点
+        :param k: 最近邻点的数量
+        :return: 边界点的标签数组
+        """
+        points = self.points
+        tree = KDTree(points)
+        _, near_points = tree.query(points, k=k)
+        # 确保 near_points 是整数类型
+        near_points = near_points.astype(int)
+        labels_arr = self.labels[near_points]
+        # 将 labels_arr 转换为整数类型
+        labels_arr = labels_arr.astype(int)
+        label_counts = np.apply_along_axis(lambda x: np.bincount(x).max(), 1, labels_arr)
+        label_ratio = label_counts / k
+        bdl_ratio = 0.8  # 假设的边界点比例阈值
+        bd_labels = np.zeros(len(points))
+        bd_labels[label_ratio < bdl_ratio] = 1
+        return bd_labels
+
+    def evaluate_boundary_points(self, bd_labels):
+        """
+        评估边界点的分布合理性
+        这里简单使用边界点的数量占比作为评估指标
+        :param bd_labels: 边界点的标签数组
+        :return: 评估得分
+        """
+        boundary_ratio = np.sum(bd_labels) / len(bd_labels)
+        # 假设理想的边界点比例在 0.1 - 0.2 之间
+        ideal_ratio = 0.15
+        score = 1 - np.abs(boundary_ratio - ideal_ratio)
+        return score
+
+    def find_best_k(self, k_values):
+        """
+        找出最佳的最近邻点大小
+        
+        :param k_values: 待测试的最近邻点大小列表
+        :return: 最佳的最近邻点大小
+        """
+        best_score = -1
+        best_k = None
+        for k in k_values:
+            bd_labels = self.calculate_boundary_points(k)
+            score = self.evaluate_boundary_points(bd_labels)
+            if score > best_score:
+                best_score = score
+                best_k = k
+        return best_k
+
+
+
+
+class GraphCutRefiner:
+    def __init__(self, vertices, faces, vertex_labels, smooth_factor=None,temperature=None, keep_label=True):
+        """
+        基于顶点的图切优化器
+
+        Args:
+            vertices (array-like): 顶点坐标数组，形状为 (n_vertices, 3)。
+            faces (array-like): 面片索引数组，形状为 (n_faces, 3)。
+            vertex_labels (array-like): 顶点初始标签数组，形状为 (n_vertices,)。
+            smooth_factor (float, optional): 平滑强度系数，越大边界越平滑。默认值为 None，此时会自动计算。范围通常在 0.1 到 0.6 之间。
+            temperature (float, optional): 温度参数，越大标签越平滑，处理速度越快。默认值为 None，此时会自动计算。典型值范围在 50 到 500 之间，会随网格复杂度自动调整。
+            keep_label (bool, optional): 是否保持优化前后标签类别一致性，默认值为 True。
+        """
+        self.mesh = trimesh.Trimesh(vertices, faces)
+        self._precompute_geometry()
+        self.smooth_factor = smooth_factor
+        self.keep_label=keep_label
+        
+        # 处理标签映射
+        self.unique_labels, mapped_labels = np.unique(vertex_labels, return_inverse=True)
+        if temperature is None:
+            self.temperature = self._compute_temperature(mapped_labels)
+        else:
+            self.temperature = temperature
+        self.prob_matrix = self._labels_to_prob(mapped_labels, self.unique_labels.size)
+       
+
+    def _precompute_geometry(self):
+        """预计算顶点几何特征"""
+        self.mesh.fix_normals()
+        self.vertex_normals = self.mesh.vertex_normals.copy()  # 顶点法线
+        self.vertex_positions = self.mesh.vertices.copy()      # 顶点坐标
+        self.adjacency = self._compute_adjacency()             # 顶点邻接关系
+        
+        
+    def _compute_temperature(self, labels):
+        """根据邻域标签一致性计算温度参数"""
+        n = len(labels)
+        total_inconsistency = 0.0
+        
+        for i in range(n):
+            neighbors = self.adjacency[i]
+            if not neighbors.size:
+                continue
+            # 计算邻域标签不一致性
+            same_count = np.sum(labels[neighbors] == labels[i])
+            inconsistency = 1.0 - same_count / len(neighbors)
+            total_inconsistency += inconsistency
+        
+        avg_inconsistency = total_inconsistency / n
+        # 温度公式: 基础0.1 + 平均不一致性系数
+        return 0.1 + avg_inconsistency * 0.5
+
+    def _compute_adjacency(self):
+        """计算顶点邻接关系"""
+        # 使用trimesh内置的顶点邻接查询
+        return [np.array(list(adj)) for adj in self.mesh.vertex_neighbors]
+
+    def refine_labels(self):
+        """
+        执行标签优化
+        :return: 优化后的顶点标签数组 (n_vertices,)
+        """
+        from pygco import cut_from_graph
+        # 数值稳定性处理
+        prob = np.clip(self.prob_matrix, 1e-6, 1.0)
+        prob /= prob.sum(axis=1, keepdims=True)
+
+        # 计算unary potential
+        unaries = (-100 * np.log10(prob)).astype(np.int32)
+        
+        # 自适应计算smooth_factor
+        if self.smooth_factor is None:
+            edges_raw = self._compute_edge_weights(scale=1.0)
+            weights_raw = edges_raw[:, 2]
+            unary_median = np.median(np.abs(unaries))
+            weight_median = np.median(weights_raw) if weights_raw.size else 1.0
+            self.smooth_factor = unary_median / max(weight_median, 1e-6)*4#*0.8* 4 #经验值
+        
+        #print(self.smooth_factor)
+        # 构造pairwise potential
+        n_classes = self.prob_matrix.shape[-1]
+        pairwise = (1 - np.eye(n_classes, dtype=np.int32))
+        
+        # 执行图切优化
+        try:
+            """
+            edges1 = np.array([[0,1,100], [1,2,100], [2,3,100], 
+                 [0,2,200], [1,3,200]], dtype=np.int32)
+            unaries1 = np.array([[5, 0], [0, 5], [5, 0], [5, 0]], dtype=np.int32)
+            pairwise1 = np.array([[0,1],[1,0]], dtype=np.int32)
+            
+            optimized = cut_from_graph(edges1, unaries1, pairwise1)
+            print("应输出[0,1,0,0]，实际输出:", optimized)
+            print("调用图切函数前参数检查:")
+            print("edges shape:", edges.shape, "dtype:", edges.dtype,edges,len(self.vertex_positions))
+            print("unaries shape:", unaries.shape, "dtype:", unaries.dtype,unaries)
+            print("pairwise shape:", pairwise.shape, "dtype:", pairwise.dtype,pairwise)
+            assert edges[:, :2].max() < len(self.vertex_positions), "边包含非法顶点索引"
+            assert not np.isinf(edges[:,2]).any(), "边权重包含无穷值"
+            assert (np.abs(edges[:,2]) < 2**30).all(), "边权重超过int32范围"
+            
+            """
+            
+            if self.keep_label:
+                optimized_labels = None
+                for i  in  range(10):
+                    # 计算边权重
+                    edges = self._compute_edge_weights(self.smooth_factor)
+                    optimized_labels_it = cut_from_graph(edges, unaries, pairwise)
+                    if len(np.unique(optimized_labels_it))== n_classes:
+                        optimized_labels =optimized_labels_it
+                        self.smooth_factor*=1.5
+                        print(f"当前smooth_factor={self.smooth_factor},优化中({i+1}/10)....")
+                    else:
+                        break
+
+            else:
+                edges = self._compute_edge_weights(self.smooth_factor)
+                optimized_labels = cut_from_graph(edges, unaries, pairwise)
+                    
+            
+        except Exception as e:
+            import traceback
+            traceback.print_exc()
+            raise RuntimeError(f"图切优化失败: {str(e)}") from e
+        
+        return self.unique_labels[optimized_labels]
+
+
+    def _compute_edge_weights(self,scale):
+        """计算边权重（基于顶点几何特征）"""
+        edges = []
+        
+        for i in range(len(self.adjacency)):
+            for j in self.adjacency[i]:
+                if j <= i:  # 避免重复计算边
+                    continue
+                
+                # 计算法线夹角
+                ni, nj = self.vertex_normals[i], self.vertex_normals[j]
+                cos_theta = np.dot(ni, nj)
+                theta = np.arccos(np.clip(cos_theta, -1.0, 1.0))
+                theta = np.maximum(theta, 1e-8)  # 防止θ为0导致对数溢出
+                
+                # 计算空间距离
+                pi, pj = self.vertex_positions[i], self.vertex_positions[j]
+                distance = np.linalg.norm(pi - pj)
+                
+                # 计算自适应权重
+                if theta > np.pi/2:
+                    weight = -np.log(theta/np.pi) * distance
+                else:
+                    weight = -10 * np.log(theta/np.pi) * distance  # 加强平滑区域约束
+    
+                
+                edges.append([i, j, int(weight * scale)])
+        
+        return np.array(edges, dtype=np.int32)
+
+    def _labels_to_prob(self, labels, n_classes):
+        """将标签转换为概率矩阵"""
+        one_hot = np.eye(n_classes)[labels]
+        prob = np.exp(one_hot/self.temperature)
+        return prob / prob.sum(axis=1, keepdims=True)
+    
+    
+    
+    
+    
+    
+def load_all(path):
+    """
+    读取各种格式的文件
+
+    Returns:
+        data: 读取的数据，失败返回None；
+    """
+    try:
+        if path.endswith(".json"):
+            with open(json_path, 'r',encoding="utf-8") as f:
+                data = json.load(f)
+    
+            
+        elif path.endswith((".npy","npz")):
+            data = np.load(path, allow_pickle=True)
+            
+        
+        elif path.endswith((".pkl",".pickle")): 
+            import pickle
+            with open(path, 'rb') as f:
+                data = pickle.load(f)
+        
+        elif path.endswith(".txt"):       
+            with open(path, 'r') as f:
+                data = f.read()
+                
+        elif path.endswith((".db",".lmdb","mdb",".yx")):  
+            import sindre     
+            data= sindre.lmdb.Reader(path)
+            print("使用完成请关闭 data.close()")
+            
+        elif path.endswith((".pt", ".pth")):
+            import torch
+            # 使用 map_location='cpu' 避免CUDA设备不可用时的错误
+            data = torch.load(path, map_location='cpu')
+
+        else:
+            data = vedo.load(path)
+        return data
+    except Exception as e:
+        print("读取失败",e)
+        return None 
+  
+        

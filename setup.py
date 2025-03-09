@@ -8,6 +8,7 @@ import time
 import shutil
 
 # python setup.py bdist_wheel
+# pip install -e .
 GFICLEE_VERSION  = os.getenv('PACKAGE_VERSION', time.strftime("%Y.%m.%d", time.localtime()))  # 默认为GFICLEE_VERSION，如果环境变量未设置
 print(GFICLEE_VERSION)
 
@@ -105,6 +106,7 @@ shutil.copy("README.md","dist/README.md")
 shutil.copy("MANIFEST.in","dist/MANIFEST.in")
 # 切换目录
 os.chdir("dist")
+
 
 # 获取系统版本信息
 if sys.platform.startswith('win'):
