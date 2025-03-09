@@ -40,7 +40,7 @@ class Reader(object):
         self.multiprocessing=multiprocessing
 
         # 以只读模式打开LMDB环境
-        subdir_bool = True if os.path.isdir(dirpath)  else False
+        subdir_bool =False if  bool(os.path.splitext(dirpath)[1])  else True
         if multiprocessing:
             self._lmdb_env = lmdb.open(dirpath,
                     readonly=True, 
@@ -384,11 +384,10 @@ class Writer(object):
          # 将 `map_size_limit` 从 B 转换到 GB
         #map_size_limit <<= 30
 
-        # 打开LMDB环境
-        subdir_bool = True if os.path.isdir(dirpath)  else False
-        # 检测目录是否存在
-        if not os.path.exists(os.path.dirname(dirpath)) and not subdir_bool:
-            os.makedirs(os.path.dirname(dirpath),exist_ok=True)
+        # 打开LMDB环境，检测用户路径是否带尾缀，带就以文件形式打开。
+        subdir_bool =False if  bool(os.path.splitext(dirpath)[1])  else True
+        if subdir_bool:
+            os.makedirs(dirpath,exist_ok=True)
         try:
             if multiprocessing:
                 self._lmdb_env = lmdb.open(

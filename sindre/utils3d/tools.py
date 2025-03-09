@@ -951,8 +951,8 @@ def labels_mapping(old_mesh, new_mesh, old_labels):
     将原始网格的标签属性精确映射到新网格
     
     参数:
-        old_mesh (trimesh.Trimesh): 原始网格对象
-        new_mesh (trimesh.Trimesh): 重网格化后的新网格对象
+        old_mesh(vedo) : 原始网格对象
+        new_mesh(vedo): 重网格化后的新网格对象
         old_labels (np.ndarray): 原始顶点标签数组，形状为 (N,) 
     
     返回:
@@ -1264,7 +1264,7 @@ def load_all(path):
                 
         elif path.endswith((".db",".lmdb","mdb",".yx")):  
             import sindre     
-            data= sindre.lmdb.Reader(path)
+            data= sindre.lmdb.Reader(path,True)
             print("使用完成请关闭 data.close()")
             
         elif path.endswith((".pt", ".pth")):
