@@ -1341,3 +1341,69 @@ def farthest_point_sampling(arr, n_sample, start_idx=None):
         sampled_indices.append(farthest_point_idx)
 
     return np.array(sampled_indices)
+
+
+def add_base(vd_mesh,value_z=-20,close_base=True,return_strips=False):
+    """给网格边界z方向添加底座
+
+    Args:
+        vd_mesh (_type_):vedo.mesh
+        value_z (int, optional): 底座长度. Defaults to -20.
+        close_base (bool, optional): 底座是否闭合. Defaults to True.
+        return_strips (bool, optional): 是否返回添加的网格. Defaults to False.
+
+    Returns:
+        _type_: 添加底座的网格
+    """
+    
+    # 开始边界
+    boundarie_start = vd_mesh.clone().boundaries()
+    boundarie_start =boundarie_start.generate_delaunay2d(mode="fit").boundaries()
+    # TODO:补充边界损失
+    # 底座边界
+    boundarie_end= boundarie_start.copy()
+    boundarie_end.vertices[...,2:]=value_z
+    strips = boundarie_start.join_with_strips(boundarie_end)
+    merge_list=[vd_mesh,strips]
+    if return_strips:
+        return strips
+    if close_base:
+        merge_list.append(boundarie_end.generate_delaunay2d(mode="fit"))
+    out_mesh = vedo.merge(merge_list).clean()
+    return out_mesh
+
+
+def equidistant_mesh(mesh, d=-0.01,merge=True):
+    """
+
+    此函数用于创建一个与输入网格等距的新网格，可选择将新网格与原网格合并。
+
+
+    Args:
+        mesh (vedo.Mesh): 输入的三维网格对象。
+        d (float, 可选): 顶点偏移的距离，默认为 -0.01。负值表示向内偏移，正值表示向外偏移。
+        merge (bool, 可选): 是否将原网格和偏移后的网格合并，默认为 True。
+
+    Returns:
+        vedo.Mesh 或 vedo.Assembly: 如果 merge 为 True，则返回合并后的网格；否则返回偏移后的网格。
+    """
+    mesh.compute_normals().clean() 
+    cells = np.asarray(mesh.cells)
+    original_vertices = mesh.vertices
+    vertex_normals = mesh.vertex_normals
+    pts_id =mesh.boundaries(return_point_ids=True)
+    
+    # 创建边界掩码
+    boundary_mask = np.zeros(len(original_vertices), dtype=bool)
+    boundary_mask[pts_id] = True
+    
+    # 仅对非边界顶点应用偏移
+    pts = original_vertices.copy()
+    pts[~boundary_mask] += vertex_normals[~boundary_mask] * d
+    
+    # 构建新网格
+    offset_mesh = vedo.Mesh([pts, cells]).clean()
+    if merge:
+        return vedo.merge([mesh,offset_mesh])
+    else:
+        return offset_mesh
