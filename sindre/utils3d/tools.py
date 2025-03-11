@@ -36,7 +36,20 @@ import vtk
 import trimesh
 import os
 
+def fdi2idx(labels):
+    """
+    
+    将口腔牙列的fid (11-18,21-28,31-38,41-48) 转换成1-18;
+    
+    """
+    
 
+    if labels.max()>30:
+        labels -= 20
+    labels[labels//10==1] %= 10
+    labels[labels//10==2] = (labels[labels//10==2]%10) + 8
+    labels[labels<0] = 0
+    return labels
 
 def labels2colors(labels:np.array):
     """
@@ -1245,7 +1258,7 @@ def load_all(path):
     """
     try:
         if path.endswith(".json"):
-            with open(json_path, 'r',encoding="utf-8") as f:
+            with open(path, 'r',encoding="utf-8") as f:
                 data = json.load(f)
     
             
@@ -1262,7 +1275,7 @@ def load_all(path):
             with open(path, 'r') as f:
                 data = f.read()
                 
-        elif path.endswith((".db",".lmdb","mdb",".yx")):  
+        elif path.endswith((".db",".lmdb","mdb",".yx")) or  os.path.isdir(path):
             import sindre     
             data= sindre.lmdb.Reader(path,True)
             print("使用完成请关闭 data.close()")
@@ -1280,3 +1293,51 @@ def load_all(path):
         return None 
   
         
+        
+        
+def farthest_point_sampling(arr, n_sample, start_idx=None):
+    """
+    无需计算所有点对之间的距离，进行最远点采样。
+
+    Args:
+
+        arr : numpy array
+            形状为 (n_points, n_dim) 的位置数组，其中 n_points 是点的数量，n_dim 是每个点的维度。
+        n_sample : int
+            需要采样的点的数量。
+        start_idx : int, 可选
+            如果给定，指定起始点的索引；否则，随机选择一个点作为起始点。（默认值: None）
+
+    Return:
+
+        numpy array of shape (n_sample,)
+            采样得到的点的索引数组。
+
+    Example:
+
+        >>> import numpy as np
+        >>> data = np.random.rand(100, 1024)
+        >>> point_idx = farthest_point_sampling(data, 3)
+        >>> print(point_idx)
+            array([80, 79, 27])
+
+        >>> point_idx = farthest_point_sampling(data, 5, 60)
+        >>> print(point_idx)
+            array([60, 39, 59, 21, 73])
+    """
+    n_points, n_dim = arr.shape
+
+    if (start_idx is None) or (start_idx < 0):
+        start_idx = np.random.randint(0, n_points)
+
+    sampled_indices = [start_idx]
+    min_distances = np.full(n_points, np.inf)
+    
+    for _ in range(n_sample - 1):
+        current_point = arr[sampled_indices[-1]]
+        dist_to_current_point = np.linalg.norm(arr - current_point, axis=1)
+        min_distances = np.minimum(min_distances, dist_to_current_point)
+        farthest_point_idx = np.argmax(min_distances)
+        sampled_indices.append(farthest_point_idx)
+
+    return np.array(sampled_indices)
