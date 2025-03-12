@@ -1407,3 +1407,220 @@ def equidistant_mesh(mesh, d=-0.01,merge=True):
         return vedo.merge([mesh,offset_mesh])
     else:
         return offset_mesh
+    
+
+def voxel2array(grid_index_array, voxel_size=32):
+    """
+    将 voxel_grid_index 数组转换为固定大小的三维数组。
+
+    该函数接收一个形状为 (N, 3) 的 voxel_grid_index 数组，
+    并将其转换为形状为 (voxel_size, voxel_size, voxel_size) 的三维数组。
+    其中，原 voxel_grid_index 数组中每个元素代表三维空间中的一个网格索引，
+    在转换后的三维数组中对应位置的值会被设为 1，其余位置为 0。
+
+    Args:
+        grid_index_array (numpy.ndarray): 形状为 (N, 3) 的数组，
+            通常从 open3d 的 o3d.voxel_grid.get_voxels() 方法获取，
+            表示三维空间中每个体素的网格索引。
+        voxel_size (int, optional): 转换后三维数组的边长，默认为 32。
+
+    Returns:
+        numpy.ndarray: 形状为 (voxel_size, voxel_size, voxel_size) 的三维数组，
+            其中原 voxel_grid_index 数组对应的网格索引位置值为 1，其余为 0。
+
+    Example:
+        ```python
+        # 获取 grid_index_array
+        voxel_list = voxel_grid.get_voxels()
+        grid_index_array = list(map(lambda x: x.grid_index, voxel_list))
+        grid_index_array = np.array(grid_index_array)
+        voxel_grid_array = voxel2array(grid_index_array, voxel_size=32)
+        grid_index_array = array2voxel(voxel_grid_array)
+        pointcloud_array = grid_index_array  # 0.03125 是体素大小
+        pc = o3d.geometry.PointCloud()
+        pc.points = o3d.utility.Vector3dVector(pointcloud_array)
+        o3d_voxel = o3d.geometry.VoxelGrid.create_from_point_cloud(pc, voxel_size=0.05)
+        o3d.visualization.draw_geometries([pcd, cc, o3d_voxel])
+        ```
+    """
+    array_voxel = np.zeros((voxel_size, voxel_size, voxel_size))
+    array_voxel[grid_index_array[:, 0], grid_index_array[:, 1], grid_index_array[:, 2]] = 1
+    return array_voxel
+
+    
+def array2voxel(voxel_array):
+    """
+        将固定大小的三维数组转换为 voxel_grid_index 数组。
+        该函数接收一个形状为 (voxel_size, voxel_size, voxel_size) 的三维数组，
+        找出其中值为 1 的元素的索引，将这些索引组合成一个形状为 (N, 3) 的数组，
+        类似于从 open3d 的 o3d.voxel_grid.get_voxels () 方法获取的结果。
+        
+    Args:
+        voxel_array (numpy.ndarray): 形状为 (voxel_size, voxel_size, voxel_size) 的三维数组，数组中值为 1 的位置代表对应的体素网格索引。
+    
+    Returns:
+    
+        numpy.ndarray: 形状为 (N, 3) 的数组，表示三维空间中每个体素的网格索引，类似于从 o3d.voxel_grid.get_voxels () 方法获取的结果。
+    
+    Example:
+    
+        ```python
+        
+        # 获取 grid_index_array
+        voxel_list = voxel_grid.get_voxels()
+        grid_index_array = list(map(lambda x: x.grid_index, voxel_list))
+        grid_index_array = np.array(grid_index_array)
+        voxel_grid_array = voxel2array(grid_index_array, voxel_size=32)
+        grid_index_array = array2voxel(voxel_grid_array)
+        pointcloud_array = grid_index_array  # 0.03125 是体素大小
+        pc = o3d.geometry.PointCloud()
+        pc.points = o3d.utility.Vector3dVector(pointcloud_array)
+        o3d_voxel = o3d.geometry.VoxelGrid.create_from_point_cloud(pc, voxel_size=0.05)
+        o3d.visualization.draw_geometries([pcd, cc, o3d_voxel])
+                
+        
+        ```
+    
+    """
+    x, y, z = np.where(voxel_array == 1)
+    index_voxel = np.vstack((x, y, z))
+    grid_index_array = index_voxel.T
+    return grid_index_array
+
+
+
+
+def homogenizing_mesh(vedo_mesh, target_num=10000):
+    """
+    对给定的 vedo 网格进行均质化处理，使其达到指定的目标面数。
+
+    该函数使用 pyacvd 库中的 Clustering 类对输入的 vedo 网格进行处理。
+    如果网格的顶点数小于等于目标面数，会先对网格进行细分，然后进行聚类操作，
+    最终生成一个面数接近目标面数的均质化网格。
+
+    Args:
+        vedo_mesh (vedo.Mesh): 输入的 vedo 网格对象，需要进行均质化处理的网格。
+        target_num (int, optional): 目标面数，即经过处理后网格的面数接近该值。
+            默认为 10000。
+
+    Returns:
+        vedo.Mesh: 经过均质化处理后的 vedo 网格对象，其面数接近目标面数。
+
+    Notes:
+        该函数依赖于 pyacvd 和 pyvista 库，使用前请确保这些库已正确安装。
+        
+    """
+    from pyacvd import Clustering
+    from pyvista import wrap
+    print(" Clustering target_num:{}".format(target_num))
+    clus = Clustering(wrap(vedo_mesh.dataset))
+    if vedo_mesh.npoints<=target_num:
+        clus.subdivide(3)
+    clus.cluster(target_num, maxiter=100, iso_try=10, debug=False)
+    return vedo.Mesh(clus.create_mesh())
+
+
+
+
+
+def fill_hole_with_center(mesh,return_vf=False):
+    """
+        用中心点方式强制补洞
+
+    Args:
+        mesh (_type_): vedo.Mesh
+        return_vf: 是否返回补洞的mesh
+
+
+    """
+    vertices = mesh.vertices.copy()
+    cells = mesh.cells
+
+    # 获取孔洞边界的顶点坐标
+    boundaries = mesh.boundaries().join(reset=True)
+    if not boundaries:
+        return mesh  # 没有孔洞
+    pts_coords = boundaries.vertices
+
+    # 将孔洞顶点坐标转换为原始顶点的索引
+    hole_indices = []
+    for pt in pts_coords:
+        distances = np.linalg.norm(vertices - pt, axis=1)
+        idx = np.argmin(distances)
+        if distances[idx] < 1e-6:
+            hole_indices.append(idx)
+        else:
+            raise ValueError("顶点坐标未找到")
+
+    n = len(hole_indices)
+    if n < 3:
+        return mesh  # 无法形成面片
+
+    # 计算中心点并添加到顶点
+    center = np.mean(pts_coords, axis=0)
+    new_vertices = np.vstack([vertices, center])
+    center_idx = len(vertices)
+
+    # 生成新的三角形面片
+    new_faces = []
+    for i in range(n):
+        v1 = hole_indices[i]
+        v2 = hole_indices[(i + 1) % n]
+        new_faces.append([v1, v2, center_idx])
+        
+    if return_vf:
+        return vedo.Mesh([new_vertices, new_faces]).clean()
+    # 合并面片并创建新网格
+    updated_cells = np.vstack([cells, new_faces])
+    new_mesh = vedo.Mesh([new_vertices, updated_cells])
+    return new_mesh.clean()
+
+
+
+
+
+
+def collision_depth(mesh1, mesh2) -> float:
+    """计算两个网格间的碰撞深度或最小间隔距离。
+
+    使用VTK的带符号距离算法检测碰撞状态：
+    - 正值：两网格分离，返回值为最近距离
+    - 零值：表面恰好接触
+    - 负值：发生穿透，返回值为最大穿透深度（绝对值）
+
+    Args:
+        mesh1 (vedo.Mesh): 第一个网格对象，需包含顶点数据
+        mesh2 (vedo.Mesh): 第二个网格对象，需包含顶点数据
+
+    Returns:
+        float: 带符号的距离值，符号表示碰撞状态，绝对值表示距离量级
+        
+    Raises:
+        RuntimeError: 当VTK计算管道出现错误时抛出
+
+    Notes:
+        1. 当输入网格顶点数>1000时会产生性能警告
+        2. 返回float('inf')表示计算异常或无限远距离
+
+    """
+    # 性能优化提示
+    if mesh1.npoints > 1000 or mesh2.npoints > 1000:
+        print("[性能警告] 检测到高精度网格(顶点数>1000)，建议执行 mesh.decimate(n=500) 进行降采样")
+
+    try:
+        # 初始化VTK距离计算器
+        distance_filter = vtk.vtkDistancePolyDataFilter()
+        distance_filter.SetInputData(0, mesh1.dataset)
+        distance_filter.SetInputData(1, mesh2.dataset)
+        distance_filter.SignedDistanceOn()
+        distance_filter.Update()
+
+        # 提取距离数据
+        distance_array = distance_filter.GetOutput().GetPointData().GetScalars("Distance")
+        if not distance_array:
+            return float('inf')
+            
+        return distance_array.GetRange()[0]
+        
+    except Exception as e:
+        raise RuntimeError(f"VTK距离计算失败: {str(e)}") from e
