@@ -31,7 +31,6 @@ import numpy as np
 from typing import *
 from sklearn.decomposition import PCA
 from scipy.spatial import KDTree
-from scipy.linalg import eigh
 import vtk
 import trimesh
 import os
@@ -706,42 +705,40 @@ def cut_mesh_point_loop(mesh,pts:vedo.Points,invert=False):
     Args:
         mesh (_type_): 待切割网格
         pts (vedo.Points): 切割线
-        invert (bool, optional): 选择保留最大/最小模式. Defaults to False.
+        invert (bool, optional): 选择保留外部. Defaults to False.
 
     Returns:
         _type_: 切割后的网格
     """
     
-    # 去除不相关的联通体
-    regions = mesh.split()
-    
-    def batch_closest_dist(vertices, curve_pts):
-        # 将曲线点集转为矩阵（n×3）
-        curve_matrix = np.array(curve_pts)
-        # 计算顶点到曲线点的所有距离（矩阵运算）
-        dist_matrix = np.linalg.norm(vertices[:, np.newaxis] - curve_matrix, axis=2)
-        return np.min(dist_matrix, axis=1)
-
-    # 计算各区域到曲线的最近距离
-    min_dists = [np.min(batch_closest_dist(r.vertices, pts.vertices)) for r in regions]
-    mesh = regions[np.argmin(min_dists)]
-    
-    # 切割网格并设置EdgeSearchMode
+    # 强制关闭Can't follow edge错误弹窗
+    vtk.vtkObject.GlobalWarningDisplayOff()
     selector = vtk.vtkSelectPolyData()
-    selector.SetInputData(mesh.dataset)  # 直接获取VTK数据
+    selector.SetInputData(mesh.dataset)  
     selector.SetLoop(pts.dataset.GetPoints())
-    selector.GenerateSelectionScalarsOff()
-    selector.SetEdgeSearchModeToDijkstra()  # 设置搜索模式
-    if invert:
-        selector.SetSelectionModeToLargestRegion()
-    selector.SetSelectionModeToSmallestRegion()
+    selector.GenerateSelectionScalarsOn()
     selector.Update()
+    if selector.GetOutput().GetNumberOfPoints()==0:
+        #Can't follow edge
+        selector.SetEdgeSearchModeToDijkstra()
+        selector.Update()
+
     
-    cut_mesh = vedo.Mesh(selector.GetOutput())
+    clipper = vtk.vtkClipPolyData()
+    clipper.SetInputData(selector.GetOutput())
+    clipper.SetInsideOut( not invert)
+    clipper.SetValue(0.0)
+    clipper.Update()
+   
+
+    cut_mesh = vedo.Mesh(clipper.GetOutput())
+    vtk.vtkObject.GlobalWarningDisplayOn()
     return cut_mesh
 
 
-def cut_mesh_point_loop_crow(mesh,pts):
+
+
+def cut_mesh_point_loop_crow(mesh,pts,error_show=True):
     
     """ 
     
@@ -757,34 +754,39 @@ def cut_mesh_point_loop_crow(mesh,pts):
     Returns:
         _type_: 切割后的网格
     """
-    # 去除不相关的联通体
-    regions = mesh.split()
-    
+
+
+    # 计算各区域到曲线的最近距离,去除不相关的联通体
     def batch_closest_dist(vertices, curve_pts):
-        # 将曲线点集转为矩阵（n×3）
         curve_matrix = np.array(curve_pts)
-        # 计算顶点到曲线点的所有距离（矩阵运算）
         dist_matrix = np.linalg.norm(vertices[:, np.newaxis] - curve_matrix, axis=2)
         return np.min(dist_matrix, axis=1)
-
-    # 计算各区域到曲线的最近距离
+    regions = mesh.split()
     min_dists = [np.min(batch_closest_dist(r.vertices, pts.vertices)) for r in regions]
     mesh =regions[np.argmin(min_dists)]
     
+
+    c1 = cut_mesh_point_loop(mesh,pts,invert=False)
+    c2 = cut_mesh_point_loop(mesh,pts,invert=True)
+
     
-    # 切割网格并设置EdgeSearchMode
-    selector = vtk.vtkSelectPolyData()
-    selector.SetInputData(mesh.dataset)  
-    selector.SetLoop(pts.dataset.GetPoints())
-    selector.GenerateSelectionScalarsOff()
-    selector.SetEdgeSearchModeToDijkstra()  # 设置搜索模式
-    if np.min(min_dists)<0.1:
-        print("mesh已经被裁剪")
-        selector.SetSelectionModeToClosestPointRegion()
+    c1_num = len(c1.boundaries().split())
+    c2_num = len(c2.boundaries().split())
+
+    
+    
+    # 牙冠只能有一个开口
+    if np.min(min_dists)<0.1 and c1_num==1:
+        cut_mesh=c1
+    elif  c2_num==1:
+        cut_mesh=c2
     else:
-        selector.SetSelectionModeToSmallestRegion()
-    selector.Update()
-    cut_mesh = vedo.vedo.Mesh(selector.GetOutput()).clean()
+        print("裁剪失败,请检查分割线,尝试pts[::3]进行采样输入")
+        if error_show:
+            print(f"边界1:{c1_num},边界2：{c2_num}")
+            vedo.show([(c1),(c2)],N=2).close()
+        return None
+    
     return cut_mesh
 
 
@@ -1523,12 +1525,13 @@ def homogenizing_mesh(vedo_mesh, target_num=10000):
 
 
 
-def fill_hole_with_center(mesh,return_vf=False):
+def fill_hole_with_center(mesh,boundaries,return_vf=False):
     """
         用中心点方式强制补洞
 
     Args:
         mesh (_type_): vedo.Mesh
+        boundaries:vedo.boundaries
         return_vf: 是否返回补洞的mesh
 
 
@@ -1537,7 +1540,7 @@ def fill_hole_with_center(mesh,return_vf=False):
     cells = mesh.cells
 
     # 获取孔洞边界的顶点坐标
-    boundaries = mesh.boundaries().join(reset=True)
+    boundaries = boundaries.join(reset=True)
     if not boundaries:
         return mesh  # 没有孔洞
     pts_coords = boundaries.vertices

@@ -2,15 +2,6 @@
 # -*- coding: UTF-8 -*-
 
 
-
-try:
-    import win32gui
-    import win32con
-except ImportError:
-    # 若导入模块时出现错误，捕获异常并输出错误信息
-    print("注意：导入 Windows 工具时出错,请 pip install pywin32")
-
-
 def HEXtoRGBAint(HEX: str):
     alpha = HEX[7:]
     blue = HEX[5:7]
@@ -21,6 +12,12 @@ def HEXtoRGBAint(HEX: str):
 
 
 def get_windows_child(hWnd):
+    try:
+        import win32gui
+        import win32con
+    except ImportError:
+        # 若导入模块时出现错误，捕获异常并输出错误信息
+        print("注意：导入 Windows 工具时出错,请 pip install pywin32")
 
     # 获取所有子窗口
     hwndChildList = []
@@ -42,6 +39,14 @@ def set_windows_alpha(alpha: int=255,class_name:str="Shell_TrayWnd"):
           class_name: 窗口名
 
     """
+    try:
+        import win32gui
+        import win32con
+    except ImportError:
+        # 若导入模块时出现错误，捕获异常并输出错误信息
+        print("注意：导入 Windows 工具时出错,请 pip install pywin32")
+
+    
     # 假设 hwnd 是你想要设置透明度的窗口句柄
     hWnd = win32gui.FindWindow(class_name, None)
     ex_style = win32gui.GetWindowLong(hWnd, win32con.GWL_EXSTYLE)
