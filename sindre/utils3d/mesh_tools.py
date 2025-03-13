@@ -39,6 +39,11 @@ class mesh:
             mmesh = self.any_mesh.current_mesh()
             self.vertices = np.asarray(mmesh.vertex_matrix(), dtype=np.float64)
             self.faces = np.asarray(mmesh.face_matrix(), dtype=np.int32)
+            self.vertex_normals =np.asarray(mmesh.vertex_normal_matrix(), dtype=np.float64)
+            self.vertex_colors = (np.asarray(mmesh.vertex_color_matrix()) * 255).astype(np.uint8)
+            if mmesh.has_vertex_color():
+                self.face_normals = np.asarray(mmesh.face_normal_matrix(), dtype=np.float64) 
+            
         
         # Open3D 转换
         elif "open3d" in inputobj_type:
@@ -102,7 +107,7 @@ class mesh:
         if self.vertex_normals is not None:
             mesh.vertex_normals = o3d.utility.Vector3dVector(self.vertex_normals)
         if self.vertex_colors is not None:
-            mesh.vertex_colors = o3d.utility.Vector3dVector(self.vertex_colors/255.0)
+            mesh.vertex_colors = o3d.utility.Vector3dVector(self.vertex_colors[...,:3]/255.0)
         return mesh
 
     def to_dict(self):

@@ -742,14 +742,12 @@ def cut_mesh_point_loop_crow(mesh,pts,error_show=True):
     
     """ 
     
-    基于vtk+dijkstra实现的基于线的牙齿冠分割;
-    
-    线支持在网格上或者网格外；
+    实现的基于线的牙齿冠分割;
 
     Args:
         mesh (_type_): 待切割网格
-        pts (vedo.Points): 切割线
-        invert (bool, optional): 选择保留最大/最小模式. Defaults to False.
+        pts (vedo.Points/Line): 切割线
+        error_show(bool, optional): 裁剪失败是否进行渲染. Defaults to True.
 
     Returns:
         _type_: 切割后的网格
@@ -840,14 +838,14 @@ def remove_floater_by_meshlab(vertices,faces,nbfaceratio=0.1,nonclosedonly=False
     mesh.apply_filter("meshing_remove_selected_vertices_and_faces")
     return vedo.Mesh(mesh.current_mesh())
 
-def isotropic_remeshing_pymeshlab(vertices,faces, target_edge_length=0.5, iterations=2)-> vedo.Mesh:
+def isotropic_remeshing_pymeshlab(vertices,faces, target_edge_length=0.5, iterations=1)-> vedo.Mesh:
     """
     使用 PyMeshLab 实现网格均匀化。
 
     Args:
         mesh: 输入的网格对象 (pymeshlab.MeshSet)。
         target_edge_length: 目标边长比例 %。
-        iterations: 迭代次数，默认为 10。
+        iterations: 迭代次数，默认为 1。
 
     Returns:
         均匀化后的网格对象。
@@ -867,96 +865,66 @@ def isotropic_remeshing_pymeshlab(vertices,faces, target_edge_length=0.5, iterat
     return vedo.Mesh(mesh.current_mesh())
 
 
-
-
-
-
-
-def optimize_mesh_by_meshlab(vertices,faces)-> vedo.Mesh:
-    
+def clean_redundant(ms):
     """
-    使用 PyMeshLab 实现一键优化网格。
-    
-    ```
-    
-    Merge Close Vertices：合并临近顶点
-    Merge Wedge Texture Coord：合并楔形纹理坐标
-    Remove Duplicate Faces：移除重复面
-    Remove Duplicate Vertices：移除重复顶点
-    Remove Isolated Folded Faces by Edge Flip：通过边翻转移除孤立的折叠面
-    Remove Isolated pieces (wrt diameter)：移除孤立部分（相对于直径）
-    Remove Isolated pieces (wrt Face Num.)：移除孤立部分（相对于面数）
-    Remove T-Vertices：移除 T 型顶点
-    Remove Unreferenced Vertices：移除未引用的顶点
-    Remove Vertices wrt Quality：根据质量移除顶点
-    Remove Zero Area Faces：移除零面积面
-    Repair non Manifold Edges：修复非流形边
-    Repair non Manifold Vertices by splitting：通过拆分修复非流形顶点
-    Snap Mismatched Borders ：对齐不匹配的边界 
-    
-    
-    ```
-    
-    
-    
-    
+    处理冗余元素，如合并临近顶点、移除重复面和顶点等。
 
     Args:
-        mesh: 输入的网格对象 (pymeshlab.MeshSet)。
+        ms: pymeshlab.MeshSet 对象
 
     Returns:
-        优化后的网格对象。
+        pymeshlab.MeshSet 对象
     """
-    import pymeshlab
-    ms = pymeshlab.MeshSet()
-    ms.add_mesh(pymeshlab.Mesh(vertex_matrix=vertices, face_matrix=faces))
-    # 1. 合并临近顶点
     ms.apply_filter("meshing_merge_close_vertices")
-
-    # 2. 合并楔形纹理坐标
-    ms.apply_filter("apply_texcoord_merge_per_wedge")  
-
-    # 3. 移除重复面
     ms.apply_filter("meshing_remove_duplicate_faces")
-
-    # 4. 移除重复顶点
     ms.apply_filter("meshing_remove_duplicate_vertices")
-
-    # 5. 通过边翻转移除孤立的折叠面
-    ms.apply_filter("meshing_remove_folded_faces")  
-
-    # 6. 移除孤立部分（基于直径）
-    ms.apply_filter("meshing_remove_connected_component_by_diameter")
-
-    # 7. 移除孤立部分（基于面数）
-    ms.apply_filter("meshing_remove_connected_component_by_face_number", mincomponentsize=10)
-
-    # 8. 移除 T 型顶点（文档中无直接对应过滤器）
-    ms.apply_filter("meshing_remove_t_vertices") 
-
-    # 9. 移除未引用的顶点
     ms.apply_filter("meshing_remove_unreferenced_vertices")
+    return ms
 
-    # 10. 根据质量移除顶点（需自定义质量阈值）
-    ms.apply_filter("meshing_remove_vertices_by_scalar", maxqualitythr=pymeshlab.PercentageValue(10))
+def clean_invalid(ms):
+    """
+    清理无效的几何结构，如折叠面、零面积面和未引用的顶点。
 
-    # 11. 移除零面积面
+    Args:
+        ms: pymeshlab.MeshSet 对象
+
+    Returns:
+        pymeshlab.MeshSet 对象
+    """
+    ms.apply_filter("meshing_remove_folded_faces")
     ms.apply_filter("meshing_remove_null_faces")
+    ms.apply_filter("meshing_remove_unreferenced_vertices")
+    return ms
 
-    # 12. 修复非流形边
+def clean_low_qualitys(ms):
+    """
+    移除低质量的组件，如小的连通分量。
+
+    Args:
+        ms: pymeshlab.MeshSet 对象
+
+    Returns:
+        pymeshlab.MeshSet 对象
+    """
+    ms.apply_filter("meshing_remove_connected_component_by_diameter")
+    ms.apply_filter("meshing_remove_connected_component_by_face_number", mincomponentsize=10)
+    return ms
+
+def repair_topology(ms):
+    """
+    修复拓扑问题，如 T 型顶点、非流形边和非流形顶点，并对齐不匹配的边界。
+
+    Args:
+        ms: pymeshlab.MeshSet 对象
+
+    Returns:
+        pymeshlab.MeshSet 对象
+    """
+    ms.apply_filter("meshing_remove_t_vertices")
     ms.apply_filter("meshing_repair_non_manifold_edges")
-
-    # 13. 通过拆分修复非流形顶点
     ms.apply_filter("meshing_repair_non_manifold_vertices")
-
-    # 15. 对齐不匹配的边界
     ms.apply_filter("meshing_snap_mismatched_borders")
-    
-    
-    return vedo.Mesh(ms.current_mesh())
-
-
-
+    return ms
 
 
 
@@ -1627,3 +1595,32 @@ def collision_depth(mesh1, mesh2) -> float:
         
     except Exception as e:
         raise RuntimeError(f"VTK距离计算失败: {str(e)}") from e
+    
+    
+    
+    
+def compute_curvature_by_meshlab(ms):
+    """
+    使用 MeshLab 计算网格的曲率和顶点颜色。
+
+    该函数接收一个顶点矩阵和一个面矩阵作为输入，创建一个 MeshLab 的 MeshSet 对象，
+    并将输入的顶点和面添加到 MeshSet 中。然后，计算每个顶点的主曲率方向，
+    最后获取顶点颜色矩阵和顶点曲率数组。
+
+    Args:
+        ms: pymeshlab格式mesh;
+
+    Returns:
+        - vertex_colors (numpy.ndarray): 顶点颜色矩阵，形状为 (n, 3)，其中 n 是顶点的数量。
+            每个元素的范围是 [0, 255]，表示顶点的颜色。
+        - vertex_curvature (numpy.ndarray): 顶点曲率数组，形状为 (n,)，其中 n 是顶点的数量。
+            每个元素表示对应顶点的曲率。
+        - mesh: pymeshlab格式ms
+
+    """
+    ms.compute_curvature_principal_directions_per_vertex()
+    curr_ms = ms.current_mesh()
+    vertex_colors =curr_ms.vertex_color_matrix()*255
+    vertex_curvature=curr_ms.vertex_scalar_array()
+    return vertex_colors,vertex_curvature,ms
+
