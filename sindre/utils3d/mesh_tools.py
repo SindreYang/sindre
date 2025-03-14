@@ -3,7 +3,7 @@ import numpy as np
 import json
 from sindre.utils3d.tools import NpEncoder
 
-class mesh:
+class SindreMesh:
     """三维网格中转类，假设都是三角面片 """
     def __init__(self, any_mesh) -> None:
         self.any_mesh = any_mesh
