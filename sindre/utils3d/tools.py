@@ -59,6 +59,7 @@ def labels2colors(labels:np.array):
     Returns:
         RGBA颜色标签;
     """
+    labels = labels.reshape(-1)
     from colorsys import hsv_to_rgb
     unique_labels = np.unique(labels)
     num_unique = len(unique_labels)
@@ -929,7 +930,7 @@ def repair_topology(ms):
 
 
 
-def labels_mapping(old_mesh, new_mesh, old_labels):
+def labels_mapping(old_vertices,old_faces, new_vertices, old_labels,fast=True):
     """
     将原始网格的标签属性精确映射到新网格
     
@@ -941,41 +942,34 @@ def labels_mapping(old_mesh, new_mesh, old_labels):
     返回:
         new_labels (np.ndarray): 映射后的新顶点标签数组，形状为 (M,)
     """
-    import trimesh
+    if len(old_labels) != len(old_vertices):
+        raise ValueError(f"标签数量 ({len(old_labels)}) 必须与原始顶点数 ({len(old_vertices)}) 一致")
 
-    old_mesh = trimesh.Trimesh(old_mesh.vertices,old_mesh.cells)
-    if len(old_labels) != len(old_mesh.vertices):
-        raise ValueError(f"标签数量 ({len(old_labels)}) 必须与原始顶点数 ({len(old_mesh.vertices)}) 一致")
-    
-    new_vertices = new_mesh.vertices
-    
-    # 步骤1: 查询每个新顶点在原始网格上的最近面片信息
-    # closest_points: 新顶点在原始网格上的投影坐标 (M,3)
-    # distances: 新顶点到投影点的距离 (M,)
-    # tri_ids: 最近面片的索引 (M,)
-    closest_points, distances, tri_ids = trimesh.proximity.closest_point(old_mesh, new_vertices)
-    
-    # 步骤2: 计算每个投影点的重心坐标
-    tri_vertices = old_mesh.faces[tri_ids]
-    tri_points = old_mesh.vertices[tri_vertices]
-    
-    # 计算重心坐标 (M,3)
-    bary_coords = trimesh.triangles.points_to_barycentric(
-        triangles=tri_points, 
-        points=closest_points
-    )
-    
-    # 步骤3: 确定最大重心坐标对应的顶点
-    max_indices = np.argmax(bary_coords, axis=1)
-    
-    # 根据最大分量索引选择顶点编号
-    nearest_vertex_indices = tri_vertices[np.arange(len(max_indices)), max_indices]
-    
-    
-    # 步骤4: 映射标签
-    new_labels = np.array(old_labels)[nearest_vertex_indices]
-    
-    return new_labels
+    if fast:
+        tree= KDTree( old_vertices)
+        _,idx = tree.query(new_vertices,workers=-1)
+        return old_labels[idx]
+        
+    else:
+        import trimesh
+        old_mesh  = trimesh.Trimesh(old_vertices,old_faces)
+        # 步骤1: 查询每个新顶点在原始网格上的最近面片信息
+        closest_points, distances, tri_ids = trimesh.proximity.closest_point(old_mesh, new_vertices)
+        # 步骤2: 计算每个投影点的重心坐标
+        tri_vertices = old_mesh.faces[tri_ids]
+        tri_points = old_mesh.vertices[tri_vertices]
+        # 计算重心坐标 (M,3)
+        bary_coords = trimesh.triangles.points_to_barycentric(
+            triangles=tri_points, 
+            points=closest_points
+        )
+        # 步骤3: 确定最大重心坐标对应的顶点
+        max_indices = np.argmax(bary_coords, axis=1)
+        # 根据最大分量索引选择顶点编号
+        nearest_vertex_indices = tri_vertices[np.arange(len(max_indices)), max_indices]
+        # 步骤4: 映射标签
+        new_labels = np.array(old_labels)[nearest_vertex_indices]
+        return new_labels
 
 
 
@@ -1002,7 +996,7 @@ class BestKFinder:
         """
         points = self.points
         tree = KDTree(points)
-        _, near_points = tree.query(points, k=k)
+        _, near_points = tree.query(points, k=k,workers=-1)
         # 确保 near_points 是整数类型
         near_points = near_points.astype(int)
         labels_arr = self.labels[near_points]
@@ -1065,6 +1059,7 @@ class GraphCutRefiner:
         self._precompute_geometry()
         self.smooth_factor = smooth_factor
         self.keep_label=keep_label
+        vertex_labels = vertex_labels.reshape(-1)
         
         # 处理标签映射
         self.unique_labels, mapped_labels = np.unique(vertex_labels, return_inverse=True)
@@ -1073,6 +1068,7 @@ class GraphCutRefiner:
         else:
             self.temperature = temperature
         self.prob_matrix = self._labels_to_prob(mapped_labels, self.unique_labels.size)
+        print(self.prob_matrix.shape)
        
 
     def _precompute_geometry(self):
@@ -1624,3 +1620,138 @@ def compute_curvature_by_meshlab(ms):
     vertex_curvature=curr_ms.vertex_scalar_array()
     return vertex_colors,vertex_curvature,ms
 
+
+def compute_curvature_by_igl(v,f):
+    """
+    用igl计算平均曲率并归一化
+
+    Args:
+        v: 顶点;
+        f: 面片:
+
+    Returns:
+        - vertex_curvature (numpy.ndarray): 顶点曲率数组，形状为 (n,)，其中 n 是顶点的数量。
+            每个元素表示对应顶点的曲率。
+
+
+    """
+    try:
+        import igl
+    except ImportError:
+        print("请安装igl, pip install libigl")
+    _, _, K, _ = igl.principal_curvature(v, f)
+    K_normalized = (K - K.min()) / (K.max() - K.min())
+    return K_normalized
+
+
+def harmonic_by_igl(v,f,map_vertices_to_circle=True):
+    """
+    谐波参数化后的2D网格
+
+    Args:
+        v (_type_): 顶点
+        f (_type_): 面片
+        map_vertices_to_circle: 是否映射到圆形（正方形)
+
+    Returns:
+        uv,v_p: 创建参数化后的2D网格,3D坐标
+        
+    Note:
+    
+        ```
+         
+        # 创建空间索引
+        uv_kdtree = KDTree(uv)
+        
+        # 初始化可视化系统
+        plt = Plotter(shape=(1, 2), axes=False, title="Interactive Parametrization")
+        
+        # 创建网格对象
+        mesh_3d = Mesh([v, f]).cmap("jet", calculate_curvature(v, f)).lighting("glossy")
+        mesh_2d = Mesh([v_p, f]).wireframe(True).cmap("jet", calculate_curvature(v, f))
+        
+        # 存储选中标记
+        markers_3d = []
+        markers_2d = []
+
+        def on_click(event):
+            # 安全检查
+            if not event.actor or event.actor not in [mesh_2d, None]:
+                return
+            if not hasattr(event, 'picked3d') or event.picked3d is None:
+                return
+            
+            try:
+                # 获取点击坐标
+                uv_click = np.array(event.picked3d[:2])
+                
+                # 查找最近顶点
+                _, idx = uv_kdtree.query(uv_click)
+                v3d = v[idx]
+                uv_point = uv[idx]  # 获取对应2D坐标
+                
+                
+                # 创建3D标记（使用球体）
+                marker_3d = Sphere(v3d, r=0.1, c='cyan', res=12)
+                markers_3d.append(marker_3d)
+                
+                # 创建2D标记（使用大号点）
+                marker_2d = Point(uv_point, c='magenta', r=10, alpha=0.8)
+                markers_2d.append(marker_2d)
+                
+                # 更新视图
+                plt.at(0).add(marker_3d)
+                plt.at(1).add(marker_2d)
+                plt.render()
+                
+            except Exception as e:
+                print(f"Error processing click: {str(e)}")
+
+        # 视图设置
+        plt.at(0).show(mesh_3d, "3D Visualization", viewup="z")
+        plt.at(1).show(mesh_2d, "2D Parametrization").add_callback('mouse_click', on_click)
+        
+        # 配置2D视图相机
+        plt.at(1).camera.SetPosition(0, 0, 1)
+        plt.at(1).camera.SetFocalPoint(0, 0, 0)
+        plt.at(1).camera.SetViewUp(0, 1, 0)
+        
+        plt.interactive().close()
+            
+        
+        ``` 
+        
+    """
+    try:
+        import igl
+    except ImportError:
+        print("请安装igl, pip install libigl")
+
+    # 正方形边界映射）
+    def map_to_square(bnd):
+        n = len(bnd)
+        quarter = n // 4
+        uv = np.zeros((n, 2))
+        for i in range(n):
+            idx = i % quarter
+            side = i // quarter
+            t = idx / (quarter-1)
+            if side == 0:   uv[i] = [1, t]
+            elif side == 1: uv[i] = [1-t, 1]
+            elif side == 2: uv[i] = [0, 1-t]
+            else:           uv[i] = [t, 0]
+        return uv
+    try:
+        # 参数化
+        bnd = igl.boundary_loop(f)
+        if map_vertices_to_circle:
+            bnd_uv = igl.map_vertices_to_circle(v, bnd)  # 圆形参数化
+        else:
+            bnd_uv = map_to_square(bnd)                # 正方形参数化
+        uv = igl.harmonic(v, f, bnd, bnd_uv, 1)
+    except Exception as e:
+        print(f"生成错误，请检测连通体数量，{e}")
+    # 创建参数化后的2D网格（3D坐标）
+    v_p = np.hstack([uv, np.zeros((uv.shape[0], 1))])
+    
+    return uv,v_p
