@@ -5,8 +5,19 @@ from sindre.utils3d.tools import NpEncoder
 
 class SindreMesh:
     """三维网格中转类，假设都是三角面片 """
-    def __init__(self, any_mesh) -> None:
-        self.any_mesh = any_mesh
+    def __init__(self, any_mesh=None, vertices=None, faces=None) -> None:
+        # 检查传入的参数
+        
+        if any_mesh is None:
+            if any_mesh is None and (vertices is None or faces is None):
+                raise ValueError("必须传入 any_mesh 或者同时传入 vertices 和 faces")
+            else:
+                vertices,faces=np.array(vertices),np.array(faces)
+                import vedo
+                self.any_mesh=vedo.Mesh([vertices,faces])
+        else:
+            self.any_mesh = any_mesh
+
         self.vertices = None
         self.vertex_colors = None
         self.vertex_normals = None
@@ -145,6 +156,82 @@ class SindreMesh:
         v,f= self.to_torch()
         mesh = Meshes(verts=v[None], faces=f[None])
         return mesh
+    
+    def show(self,labels=None,exclude_list=[0]):
+        """
+        渲染展示网格数据，并根据标签添加标记和坐标轴。
+
+        Args:
+            labels (numpy.ndarray, optional): 网格顶点的标签数组，默认为None。如果提供，将根据标签为顶点着色，并为每个非排除标签添加标记。
+            exclude_list (list, optional): 要排除的标签列表，默认为[0]。列表中的标签对应的标记不会被显示。
+
+        Returns:
+            None: 该方法没有返回值，直接进行渲染展示。
+        """
+        import vedo
+        from sindre.utils3d.tools import labels2colors
+        mesh_vd=self.to_vedo()
+        show_list=[]
+        if labels is not None:
+            labels = labels.reshape(-1)
+            fss =self._labels_flag(mesh_vd,labels,exclude_list=exclude_list)
+            show_list=show_list+fss
+            colors = labels2colors(labels)
+            mesh_vd.pointcolors=colors
+            self.vertex_colors=colors
+            
+        show_list.append(mesh_vd)
+        show_list.append(self._create_vedo_axes(mesh_vd))
+            
+        # 渲染
+        vp = vedo.Plotter(N=1, title="SindreMesh", bg2="black", axes=3)
+        vp.at(0).show(show_list)
+        vp.close()
+        
+
+
+    def _create_vedo_axes(self,mesh_vd):
+        """
+        创建vedo的坐标轴对象。
+
+        Args:
+            mesh_vd (vedo.Mesh): vedo的网格对象，用于确定坐标轴的长度。
+
+        Returns:
+            vedo.Arrows: 表示坐标轴的vedo箭头对象。
+        """
+        import vedo
+        bounds = mesh_vd.bounds()
+        max_length = max([bounds[1] - bounds[0], bounds[3] - bounds[2], bounds[5] - bounds[4]])
+        start_points = [(0, 0, 0), (0, 0, 0), (0, 0, 0)]
+        end_points = [(max_length, 0, 0),(0, max_length, 0),(0, 0, max_length)]
+        colors = ['red', 'green', 'blue']
+        arrows = vedo.Arrows(start_points, end_points, c=colors, shaft_radius=0.005,head_radius=0.01,head_length=0.02)
+        return arrows
+
+
+
+    def _labels_flag(self,mesh_vd,labels,exclude_list=[0]):
+        """
+        根据标签为网格的每个非排除类别创建标记。
+
+        Args:
+            mesh_vd (vedo.Mesh): vedo的网格对象。
+            labels (numpy.ndarray): 网格顶点的标签数组。
+            exclude_list (list, optional): 要排除的标签列表，默认为[0]。列表中的标签对应的标记不会被创建。
+
+        Returns:
+            list: 包含所有标记对象的列表。
+        """
+        fss = []
+        for i in np.unique(labels):
+            if int(i) not in exclude_list:
+                v_i = mesh_vd.vertices[labels == i]
+                cent = np.mean(v_i, axis=0)
+                fs = mesh_vd.flagpost(f"{i}", cent)
+                fss.append(fs)
+        return fss
+        
 
 
     def _count_duplicate_vertices(self):

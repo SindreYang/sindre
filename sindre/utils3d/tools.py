@@ -1675,7 +1675,6 @@ def harmonic_by_igl(v,f,map_vertices_to_circle=True):
         markers_2d = []
 
         def on_click(event):
-            # 安全检查
             if not event.actor or event.actor not in [mesh_2d, None]:
                 return
             if not hasattr(event, 'picked3d') or event.picked3d is None:
@@ -1707,15 +1706,8 @@ def harmonic_by_igl(v,f,map_vertices_to_circle=True):
             except Exception as e:
                 print(f"Error processing click: {str(e)}")
 
-        # 视图设置
         plt.at(0).show(mesh_3d, "3D Visualization", viewup="z")
         plt.at(1).show(mesh_2d, "2D Parametrization").add_callback('mouse_click', on_click)
-        
-        # 配置2D视图相机
-        plt.at(1).camera.SetPosition(0, 0, 1)
-        plt.at(1).camera.SetFocalPoint(0, 0, 0)
-        plt.at(1).camera.SetViewUp(0, 1, 0)
-        
         plt.interactive().close()
             
         
