@@ -1759,7 +1759,11 @@ def harmonic_by_igl(v,f,map_vertices_to_circle=True):
 
 def hole_filling_by_Radial(boundary_coords):
     """
-    参考https://www.cnblogs.com/shushen/p/5759679.html实现的最小角度法补洞法；
+    参考 
+    
+    [https://www.cnblogs.com/shushen/p/5759679.html]
+    
+    实现的最小角度法补洞法；
 
     Args:
         boundary_coords (_type_): 有序边界顶点
@@ -1772,7 +1776,7 @@ def hole_filling_by_Radial(boundary_coords):
         ```python 
         
         # 创建带孔洞的简单网格
-        s = vedo.load(r"C:\Users\yx\Downloads\clip_vedo\J10166160052_16.obj")
+        s = vedo.load(r"J10166160052_16.obj")
         # 假设边界点即网格边界点
         boundary =vedo.Spline((s.boundaries().join(reset=True).vertices),res=100)
         # 通过边界点进行补洞
@@ -1853,3 +1857,128 @@ def hole_filling_by_Radial(boundary_coords):
 
     return vertex_list, face_list
 
+
+
+
+
+
+
+
+class A_Star:
+    def __init__(self,vertices, faces):
+        """
+        使用A*算法在三维三角网格中寻找最短路径
+        
+        参数：
+        vertices: numpy数组，形状为(N,3)，表示顶点坐标
+        faces: numpy数组，形状为(M,3)，表示三角形面的顶点索引
+        
+        """
+        self.adj=self.build_adjacency(faces)
+        self.vertices = vertices
+        
+
+    def build_adjacency(self,faces):
+        """构建顶点的邻接表"""
+        from collections import defaultdict
+        adj = defaultdict(set)
+        for face in faces:
+            for i in range(3):
+                u = face[i]
+                v = face[(i + 1) % 3]
+                adj[u].add(v)
+                adj[v].add(u)
+        return {k: list(v) for k, v in adj.items()}
+
+    def run(self,start_idx, end_idx, vertex_weights=None):
+        """
+        使用A*算法在三维三角网格中寻找最短路径
+        
+        参数：
+        start_idx: 起始顶点的索引
+        end_idx: 目标顶点的索引
+        vertex_weights: 可选，形状为(N,)，顶点权重数组，默认为None
+        
+        返回：
+        path: 列表，表示从起点到终点的顶点索引路径，若不可达返回None
+        """
+        import heapq
+        end_coord = self.vertices[end_idx]
+        
+        # 启发式函数（当前顶点到终点的欧氏距离）
+        def heuristic(idx):
+            return np.linalg.norm(self.vertices[idx] - end_coord)
+        
+        # 优先队列：(f, g, current_idx)
+        open_heap = []
+        heapq.heappush(open_heap, (heuristic(start_idx), 0, start_idx))
+        
+        # 记录各顶点的g值和父节点
+        g_scores = {start_idx: 0}
+        parents = {}
+        closed_set = set()
+        
+        while open_heap:
+            current_f, current_g, current_idx = heapq.heappop(open_heap)
+            
+            # 若当前节点已处理且有更优路径，跳过
+            if current_idx in closed_set:
+                if current_g > g_scores.get(current_idx, np.inf):
+                    continue
+            # 找到终点，回溯路径
+            if current_idx == end_idx:
+                path = []
+                while current_idx is not None:
+                    path.append(current_idx)
+                    current_idx = parents.get(current_idx)
+                return path[::-1]
+            
+            closed_set.add(current_idx)
+            
+            # 遍历邻接顶点
+            for neighbor in self.adj.get(current_idx, []):
+                if neighbor in closed_set:
+                    continue
+                
+                # 计算移动代价
+                distance = np.linalg.norm(self.vertices[current_idx] - self.vertices[neighbor])
+                if vertex_weights is not None:
+                    cost = distance * vertex_weights[neighbor]
+                else:
+                    cost = distance
+                
+                tentative_g = current_g + cost
+                
+                # 更新邻接顶点的g值和父节点
+                if tentative_g < g_scores.get(neighbor, np.inf):
+                    parents[neighbor] = current_idx
+                    g_scores[neighbor] = tentative_g
+                    f = tentative_g + heuristic(neighbor)
+                    heapq.heappush(open_heap, (f, tentative_g, neighbor))
+        
+        # 开放队列空，无路径
+        return None
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
