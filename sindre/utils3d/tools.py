@@ -1747,3 +1747,109 @@ def harmonic_by_igl(v,f,map_vertices_to_circle=True):
     v_p = np.hstack([uv, np.zeros((uv.shape[0], 1))])
     
     return uv,v_p
+
+
+
+
+
+
+
+
+
+
+def hole_filling_by_Radial(boundary_coords):
+    """
+    参考https://www.cnblogs.com/shushen/p/5759679.html实现的最小角度法补洞法；
+
+    Args:
+        boundary_coords (_type_): 有序边界顶点
+
+    Returns:
+        v,f: 修补后的曲面
+        
+        
+    Note:
+        ```python 
+        
+        # 创建带孔洞的简单网格
+        s = vedo.load(r"C:\Users\yx\Downloads\clip_vedo\J10166160052_16.obj")
+        # 假设边界点即网格边界点
+        boundary =vedo.Spline((s.boundaries().join(reset=True).vertices),res=100)
+        # 通过边界点进行补洞
+        filled_mesh =vedo.Mesh(hole_filling(boundary.vertices))
+        # 渲染补洞后的曲面
+        vedo.show([filled_mesh,boundary,s.alpha(0.8)], bg='white').close()
+        
+        ```
+    
+    """
+    # 初始化顶点列表和边界索引
+    vertex_list = np.array(boundary_coords.copy())
+    boundary = list(range(len(vertex_list)))  # 存储顶点在vertex_list中的索引
+    face_list = []
+
+    while len(boundary) >= 3:
+        # 1. 计算平均边长
+        avg_length = 0.0
+        n_edges = len(boundary)
+        for i in range(n_edges):
+            curr_idx = boundary[i]
+            next_idx = boundary[(i+1)%n_edges]
+            avg_length += np.linalg.norm(vertex_list[next_idx] - vertex_list[curr_idx])
+        avg_length /= n_edges
+
+        # 2. 寻找最小内角顶点在边界列表中的位置
+        min_angle = float('inf')
+        min_idx = 0  # 默认取第一个顶点
+        for i in range(len(boundary)):
+            prev_idx = boundary[(i-1)%len(boundary)]
+            curr_idx = boundary[i]
+            next_idx = boundary[(i+1)%len(boundary)]
+            
+            v1 = vertex_list[prev_idx] - vertex_list[curr_idx]
+            v2 = vertex_list[next_idx] - vertex_list[curr_idx]
+            # 检查向量长度避免除以零
+            v1_norm = np.linalg.norm(v1)
+            v2_norm = np.linalg.norm(v2)
+            if v1_norm == 0 or v2_norm==0:
+                continue  # 跳过无效顶点
+            cos_theta = np.dot(v1, v2) / (v1_norm * v2_norm)
+            angle = np.arccos(np.clip(cos_theta, -1, 1))
+            if angle < min_angle:
+                min_angle = angle
+                min_idx = i  # 记录边界列表中的位置
+
+        # 3. 获取当前处理的三个顶点索引
+        curr_pos = min_idx
+        prev_pos = (curr_pos - 1) % len(boundary)
+        next_pos = (curr_pos + 1) % len(boundary)
+        
+        prev_idx = boundary[prev_pos]
+        curr_idx = boundary[curr_pos]
+        next_idx = boundary[next_pos]
+
+        # 计算前驱和后继顶点的距离
+        dist = np.linalg.norm(vertex_list[next_idx] - vertex_list[prev_idx])
+
+        # 4. 根据距离决定添加三角形的方式
+        if dist < 2 * avg_length:
+            # 添加单个三角形
+            face_list.append([prev_idx, curr_idx, next_idx])
+            # 从边界移除当前顶点
+            boundary.pop(curr_pos)
+        else:
+            # 创建新顶点并添加到顶点列表
+            new_vertex = (vertex_list[prev_idx] + vertex_list[next_idx]) / 2
+            vertex_list = np.vstack([vertex_list, new_vertex])
+            new_idx = len(vertex_list) - 1
+
+            # 添加两个三角形
+            face_list.append([prev_idx, curr_idx, new_idx])
+            face_list.append([curr_idx, next_idx, new_idx])
+
+            # 更新边界：替换当前顶点为新顶点
+            boundary.pop(curr_pos)
+            boundary.insert(curr_pos, new_idx)
+
+    return vertex_list, face_list
+
