@@ -266,7 +266,7 @@ class matrix3d_by_vedo(vedo.Plotter):
 
 
 
-def show_matrix(data:np.ndarray):
+def show_matrix_by_vedo(data:np.ndarray):
     """
     用vedo渲染矩阵
 
@@ -274,14 +274,11 @@ def show_matrix(data:np.ndarray):
         data (np.ndarray): 输入的2d/3d数组；
     """
     if data.ndim==3:
-        plt = matrix3d_by_vedo(data)
+        matrix3d_by_vedo(data).show().close()
     elif data.ndim==2:
-        plt = vedo.pyplot.matrix(data)
+        vedo.show(vedo.pyplot.matrix(data)).close()
     else:
         print(f"只支持2维和3维，不支持{data.ndim}")
-
-    plt.show()
-    plt.close()
 
 
 
