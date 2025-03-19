@@ -32,7 +32,6 @@ from typing import *
 from sklearn.decomposition import PCA
 from scipy.spatial import KDTree
 import vtk
-import trimesh
 import os
 
 def fdi2idx(labels):
@@ -1055,6 +1054,7 @@ class GraphCutRefiner:
             temperature (float, optional): 温度参数，越大标签越平滑，处理速度越快。默认值为 None，此时会自动计算。典型值范围在 50 到 500 之间，会随网格复杂度自动调整。
             keep_label (bool, optional): 是否保持优化前后标签类别一致性，默认值为 True。
         """
+        import trimesh
         self.mesh = trimesh.Trimesh(vertices, faces)
         self._precompute_geometry()
         self.smooth_factor = smooth_factor
