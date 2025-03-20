@@ -1,6 +1,6 @@
-
-import sindre.utils3d.tools as tools
-from sindre.utils3d.mesh_tools import *
-from sindre.utils3d.tools import *
-from sindre.utils3d.vedo_show import *
+from sindre.utils3d.augment import *
+from sindre.utils3d.dental_tools import *
+from sindre.utils3d.mesh import *
+from sindre.utils3d.algorithm import *
+from sindre.utils3d.vedo_tools import *
  

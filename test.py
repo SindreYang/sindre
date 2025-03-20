@@ -9,7 +9,7 @@ import multiprocessing as mp
 
 def main():
     print(dir(sindre))
-    dir(sindre.utils3d.tools)
+    dir(sindre.utils3d.algorithm)
     print(f"\t\t\033[0;33;40mYou cannot get success without failure! Come on!\033[0m\033[0;31;40m{__author__}!\033[0m")
     print(sindre.__path__)
     print(dir(sindre.lmdb))

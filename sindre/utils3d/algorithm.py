@@ -34,20 +34,7 @@ from scipy.spatial import KDTree
 import vtk
 import os
 
-def fdi2idx(labels):
-    """
-    
-    将口腔牙列的fid (11-18,21-28,31-38,41-48) 转换成1-18;
-    
-    """
-    
 
-    if labels.max()>30:
-        labels -= 20
-    labels[labels//10==1] %= 10
-    labels[labels//10==2] = (labels[labels//10==2]%10) + 8
-    labels[labels<0] = 0
-    return labels
 
 def labels2colors(labels:np.array):
     """
@@ -143,39 +130,7 @@ def face_labels_to_vertex_labels(vertices: Union[np.array, list], faces: Union[n
     return vertex_labels.astype(np.int32)
 
 
-def tooth_labels_to_color(data: Union[np.array, list]) -> list:
-    """
-        将牙齿标签转换成RGBA颜色
 
-    Notes:
-        只支持以下标签类型：
-
-            upper_dict = [0, 18, 17, 16, 15, 14, 13, 12, 11, 21, 22, 23, 24, 25, 26, 27, 28]
-
-            lower_dict = [0, 48, 47, 46, 45, 44, 43, 42, 41, 31, 32, 33, 34, 35, 36, 37, 38]
-
-    Args:
-        data: 属性
-
-    Returns:
-        colors: 对应属性的RGBA类型颜色
-
-    """
-
-    colormap_hex = ['#e6194B', '#3cb44b', '#ffe119', '#4363d8', '#f58231', '#42d4f4', '#f032e6', '#fabed4', '#469990',
-                    '#dcbeff',
-                    '#9A6324', '#fffac8', '#800000', '#aaffc3', '#000075', '#a9a9a9', '#ffffff', '#000000'
-                    ]
-    hex2rgb= lambda h: list(int(h.lstrip("#")[i : i + 2], 16) for i in (0, 2, 4))
-    colormap = [ hex2rgb(h) for h in colormap_hex]
-    upper_dict = [0, 18, 17, 16, 15, 14, 13, 12, 11, 21, 22, 23, 24, 25, 26, 27, 28]
-    lower_dict = [0, 48, 47, 46, 45, 44, 43, 42, 41, 31, 32, 33, 34, 35, 36, 37, 38]
-
-    if max(data) in upper_dict:
-        colors = [colormap[upper_dict.index(data[i])] for i in range(len(data))]
-    else:
-        colors = [colormap[lower_dict.index(data[i])] for i in range(len(data))]
-    return colors
 
 
 def get_axis_rotation(axis: list, angle: float) -> np.array:
@@ -290,9 +245,9 @@ def get_pca_transform(mesh: vedo.Mesh) -> np.array:
     return transform
 
 
-def apply_pac_transform(vertices: np.array, transform: np.array) -> np.array:
+def apply_transform(vertices: np.array, transform: np.array) -> np.array:
     """
-        对pca获得4*4矩阵进行应用
+        对4*4矩阵进行应用
 
     Args:
         vertices: 顶点
@@ -312,7 +267,7 @@ def apply_pac_transform(vertices: np.array, transform: np.array) -> np.array:
     return vertices
 
 
-def restore_pca_transform(vertices: np.array, transform: np.array) -> np.array:
+def restore_transform(vertices: np.array, transform: np.array) -> np.array:
     """
         根据提供的顶点及矩阵，进行逆变换(还原应用矩阵之前的状态）
 
@@ -337,63 +292,6 @@ def restore_pca_transform(vertices: np.array, transform: np.array) -> np.array:
     return vertices_restored
 
 
-def rotation_crown(near_mesh: vedo.Mesh, jaw_mesh: vedo.Mesh) -> vedo.Mesh:
-    """
-        调整单冠的轴向
-
-    Tip:
-        1.通过连通域分割两个邻牙;
-
-        2.以邻牙质心为确定x轴；
-
-        3.通过找对颌最近的点确定z轴方向;如果z轴方向上有mesh，则保持原样，否则将z轴取反向;
-
-        4.输出调整后的牙冠
-
-
-    Args:
-        near_mesh: 两个邻牙组成的mesh
-        jaw_mesh: 两个邻牙的对颌
-
-    Returns:
-        变换后的单冠mesh
-
-    """
-    vertices = near_mesh.points()
-    # 通过左右邻牙中心指定x轴
-    m_list = near_mesh.split()
-    center_vec = m_list[0].center_of_mass() - m_list[1].center_of_mass()
-    user_xaxis = center_vec / np.linalg.norm(center_vec)
-
-    # 通过找对颌最近的点确定z轴方向
-    jaw_mesh = jaw_mesh.split()[0]
-    jaw_near_point = jaw_mesh.closest_point(vertices.mean(0))
-    jaw_vec = jaw_near_point - vertices.mean(0)
-    user_zaxis = jaw_vec / np.linalg.norm(jaw_vec)
-
-    components = PCA(n_components=3).fit(vertices).components_
-    xaxis, yaxis, zaxis = components
-
-    # debug
-    # arrow_user_zaxis = vedo.Arrow(vertices.mean(0), user_zaxis*5+vertices.mean(0), c="blue")
-    # arrow_zaxis = vedo.Arrow(vertices.mean(0), zaxis*5+vertices.mean(0), c="red")
-    # arrow_xaxis = vedo.Arrow(vertices.mean(0), user_xaxis*5+vertices.mean(0), c="green")
-    # vedo.show([arrow_user_zaxis,arrow_zaxis,arrow_xaxis,jaw_mesh.split()[0], vedo.Point(jaw_near_point,r=12,c="black"),vedo.Point(vertices.mean(0),r=20,c="red5"),vedo.Point(m_list[0].center_of_mass(),r=24,c="green"),vedo.Point(m_list[1].center_of_mass(),r=24,c="green"),near_mesh], axes=3)
-    # print(np.dot(user_zaxis, zaxis))
-
-    if np.dot(user_zaxis, zaxis) < 0:
-        # 如果z轴方向上有mesh，则保持原样，否则将z轴取反向
-        zaxis = -zaxis
-    yaxis = np.cross(user_xaxis, zaxis)
-    components = np.stack([user_xaxis, yaxis, zaxis], axis=0)
-
-    transform = np.eye(4, dtype=np.float32)
-    transform[:3, :3] = components
-    transform[:3, 3] = - components @ vertices.mean(0)
-
-    # 渲染
-    new_m = vedo.Mesh([apply_pac_transform(near_mesh.points(), transform), near_mesh.faces()])
-    return new_m
 
 
 class NpEncoder(json.JSONEncoder):
@@ -738,54 +636,7 @@ def cut_mesh_point_loop(mesh,pts:vedo.Points,invert=False):
 
 
 
-def cut_mesh_point_loop_crow(mesh,pts,error_show=True):
-    
-    """ 
-    
-    实现的基于线的牙齿冠分割;
 
-    Args:
-        mesh (_type_): 待切割网格
-        pts (vedo.Points/Line): 切割线
-        error_show(bool, optional): 裁剪失败是否进行渲染. Defaults to True.
-
-    Returns:
-        _type_: 切割后的网格
-    """
-
-
-    # 计算各区域到曲线的最近距离,去除不相关的联通体
-    def batch_closest_dist(vertices, curve_pts):
-        curve_matrix = np.array(curve_pts)
-        dist_matrix = np.linalg.norm(vertices[:, np.newaxis] - curve_matrix, axis=2)
-        return np.min(dist_matrix, axis=1)
-    regions = mesh.split()
-    min_dists = [np.min(batch_closest_dist(r.vertices, pts.vertices)) for r in regions]
-    mesh =regions[np.argmin(min_dists)]
-    
-
-    c1 = cut_mesh_point_loop(mesh,pts,invert=False)
-    c2 = cut_mesh_point_loop(mesh,pts,invert=True)
-
-    
-    c1_num = len(c1.boundaries().split())
-    c2_num = len(c2.boundaries().split())
-
-    
-    
-    # 牙冠只能有一个开口
-    if np.min(min_dists)<0.1 and c1_num==1:
-        cut_mesh=c1
-    elif  c2_num==1:
-        cut_mesh=c2
-    else:
-        print("裁剪失败,请检查分割线,尝试pts[::3]进行采样输入")
-        if error_show:
-            print(f"边界1:{c1_num},边界2：{c2_num}")
-            vedo.show([(c1),(c2)],N=2).close()
-        return None
-    
-    return cut_mesh
 
 
 
@@ -1536,11 +1387,11 @@ def fill_hole_with_center(mesh,boundaries,return_vf=False):
         new_faces.append([v1, v2, center_idx])
         
     if return_vf:
-        return vedo.Mesh([new_vertices, new_faces]).clean()
+        return vedo.Mesh([new_vertices, new_faces]).clean().compute_normals()
     # 合并面片并创建新网格
     updated_cells = np.vstack([cells, new_faces])
     new_mesh = vedo.Mesh([new_vertices, updated_cells])
-    return new_mesh.clean()
+    return new_mesh.clean().compute_normals()
 
 
 
@@ -1966,6 +1817,185 @@ class A_Star:
     
     
     
+    
+
+
+
+class MeshRandomWalks:
+    def __init__(self, vertices, faces, face_normals=None):
+        """
+        随机游走分割网格
+        
+        参考：https://www.cnblogs.com/shushen/p/5144823.html
+        
+        Args:
+            vertices: 顶点坐标数组，形状为(N, 3)
+            faces: 面片索引数组，形状为(M, 3)
+            face_normals: 可选的面法线数组，形状为(M, 3)
+            
+            
+        Note:
+        
+            ```python
+            
+                # 加载并预处理网格
+                mesh = vedo.load(r"upper_jaws.ply")
+                mesh.compute_normals()
+                
+                # 创建分割器实例
+                segmenter = MeshRandomWalks(
+                    vertices=mesh.points,
+                    faces=mesh.faces(),
+                    face_normals=mesh.celldata["Normals"]
+                )
+                
+                head = [1063,3571,1501,8143]
+                tail = [7293,3940,8021]
+                
+                # 执行分割
+                labels, unmarked = segmenter.segment(
+                    foreground_seeds=head,
+                    background_seeds=tail
+                )
+                p1 = vedo.Points(mesh.points[head],r=20,c="red")
+                p2 = vedo.Points(mesh.points[tail],r=20,c="blue")
+                # 可视化结果
+                mesh.pointdata["labels"] = labels
+                mesh.cmap("jet", "labels")
+                vedo.show([mesh,p1,p2], axes=1, viewup='z').close()
+            ```
+        """
+        self.vertices = np.asarray(vertices)
+        self.faces = np.asarray(faces, dtype=int)
+        self.face_normals = face_normals
+        
+        # 自动计算面法线（如果未提供）
+        if self.face_normals is None:
+            self.face_normals = self._compute_face_normals()
+        
+        # 初始化其他属性
+        self.edge_faces = None
+        self.edge_weights = None
+        self.W = None       # 邻接矩阵
+        self.D = None       # 度矩阵
+        self.L = None       # 拉普拉斯矩阵
+        self.labels = None  # 顶点标签
+        self.marked = None  # 标记点掩码
+
+    def _compute_face_normals(self):
+        """计算每个面片的单位法向量"""
+        normals = []
+        for face in self.faces:
+            v0, v1, v2 = self.vertices[face]
+            vec1 = v1 - v0
+            vec2 = v2 - v0
+            normal = np.cross(vec1, vec2)
+            norm = np.linalg.norm(normal)
+            if norm > 0:
+                normal /= norm
+            else:
+                normal = np.zeros(3)  # 处理退化面片
+            normals.append(normal)
+        return np.array(normals)
+
+    def _compute_edge_face_map(self):
+        """构建边到面片的映射关系"""
+
+        from collections import defaultdict
+        edge_map = defaultdict(list)
+        for fid, face in enumerate(self.faces):
+            for i in range(3):
+                v0, v1 = sorted([face[i], face[(i+1)%3]])
+                edge_map[(v0, v1)].append(fid)
+        self.edge_faces = edge_map
+
+    def _compute_edge_weights(self):
+        """基于面片法线计算边权重"""
+        self._compute_edge_face_map()
+        self.edge_weights = {}
+        
+        for edge, fids in self.edge_faces.items():
+            if len(fids) != 2:
+                continue  # 只处理内部边
+                
+            # 获取相邻面法线
+            n1, n2 = self.face_normals[fids[0]], self.face_normals[fids[1]]
+            
+            # 计算角度差异权重
+            cos_theta = np.dot(n1, n2)
+            eta = 1.0 if cos_theta < 0 else 0.2
+            d = eta * (1 - abs(cos_theta))
+            self.edge_weights[edge] = np.exp(-d)
+
+    def _build_adjacency_matrix(self):
+        """构建顶点邻接权重矩阵"""
+        from scipy.sparse import csr_matrix, lil_matrix
+
+        n = len(self.vertices)
+        self.W = lil_matrix((n, n))
+        
+        for (v0, v1), w in self.edge_weights.items():
+            self.W[v0, v1] = w
+            self.W[v1, v0] = w
+        
+        self.W = self.W.tocsr()  # 转换为压缩格式提高效率
+
+    def _build_laplacian_matrix(self):
+        """构建拉普拉斯矩阵 L = D - W"""
+        from scipy.sparse import csr_matrix
+        degrees = self.W.sum(axis=1).A.ravel()
+        self.D = csr_matrix((degrees, (range(len(degrees)), range(len(degrees)))))
+        self.L = self.D - self.W
+
+    def segment(self, foreground_seeds, background_seeds, vertex_weights=None):
+        """
+        执行网格分割
+        
+        参数:
+            foreground_seeds: 前景种子点索引列表
+            background_seeds: 背景种子点索引列表
+            vertex_weights: 可选的顶点权重矩阵（稀疏矩阵）
+        
+        返回:
+            labels: 顶点标签数组 (0: 背景，1: 前景)
+            unmarked: 未标记顶点的布尔掩码
+        """
+        from scipy.sparse.linalg import spsolve
+        from scipy.sparse import csr_matrix
+        # 初始化标签数组
+        n = len(self.vertices)
+        self.labels = np.full(n, -1, dtype=np.float64)
+        self.labels[foreground_seeds] = 1.0
+        self.labels[background_seeds] = 0.0
+
+        # 处理权重矩阵
+        if vertex_weights is not None:
+            self.W = vertex_weights
+        else:
+            if not self.edge_weights:
+                self._compute_edge_weights()
+            if self.W is None:
+                self._build_adjacency_matrix()
+        
+        # 构建拉普拉斯矩阵
+        self._build_laplacian_matrix()
+
+        # 分割问题求解
+        self.marked = self.labels != -1
+        L_uu = self.L[~self.marked, :][:, ~self.marked]
+        L_ul = self.L[~self.marked, :][:, self.marked]
+        rhs = -L_ul @ self.labels[self.marked]
+
+        # 求解并应用阈值
+        L_uu_reg = L_uu + 1e-9 * csr_matrix(np.eye(L_uu.shape[0])) #防止用户选择过少造成奇异值矩阵
+        try:
+            x = spsolve(L_uu_reg, rhs)
+        except:
+            # 使用最小二乘法作为备选方案
+            x = np.linalg.lstsq(L_uu_reg.toarray(), rhs, rcond=None)[0]
+        self.labels[~self.marked] = (x > 0.5).astype(int)
+        
+        return self.labels.astype(int), ~self.marked
     
     
     
