@@ -66,6 +66,19 @@ class Latent2MeshOutput:
         self.mesh_v = mesh_v
         self.mesh_f = mesh_f
 
+def sdf2mesh_by_diso(sdf,diffdmc=None ,deform=None,return_quads=False, normalize=True,isovalue=0 ,invert=True):
+    try:
+        from diso import DiffDMC
+    except ImportError:
+        print("请安装 pip install diso")
+    if diffdmc is None:
+        diffdmc =DiffDMC(dtype=torch.float32).cuda()
+    if invert:
+        sdf*=-1
+    v, f = diffdmc(sdf, deform, return_quads=return_quads, normalize=normalize, isovalue=isovalue) 
+    return v,f
+
+
 
 class ShapeVAE(nn.Module):
     def __init__(

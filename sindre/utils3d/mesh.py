@@ -237,12 +237,10 @@ class SindreMesh:
 
     def _count_duplicate_vertices(self):
         """统计重复顶点"""
-        return len(self.vertices) - len(np.unique(self.vertices, axis=0)) if self.vertices is not None else 0
+        return len(self.vertices) - len(np.unique(self.vertices, axis=0))
 
     def _count_degenerate_faces(self):
         """统计退化面片"""
-        if self.faces is None:
-            return 0
         areas = np.linalg.norm(self.face_normals, axis=1)/2
         return np.sum(areas < 1e-8)
 
@@ -250,8 +248,6 @@ class SindreMesh:
         """计算连通体数量"""
         from scipy.sparse import csr_matrix
         from scipy.sparse.csgraph import connected_components
-        if self.faces is None:
-            return 0
         n = len(self.vertices)
         data = np.ones(len(self.faces)*3)
         rows = self.faces.flatten()
@@ -261,18 +257,16 @@ class SindreMesh:
 
     def _count_unused_vertices(self):
         """统计未使用顶点"""
-        if self.vertices is None or self.faces is None:
-            return 0
         used = np.unique(self.faces)
         return len(self.vertices) - len(used)
 
     def _is_watertight(self):
         """判断是否闭合"""
-        if self.faces is None:
-            return False
-        edges = np.concatenate([self.faces[:, :2], self.faces[:, 1:], self.faces[:, [2,0]]])
-        unique_edges = np.unique(np.sort(edges, axis=1), axis=0)
-        return len(edges) == 2*len(unique_edges)
+        unique_edges = np.unique(np.sort(self.edges, axis=1), axis=0)
+        return len(self.edges) == 2*len(unique_edges)
+    
+
+        
 
     def to_texture(self):
         """将颜色转换为纹理贴图"""
@@ -296,6 +290,14 @@ class SindreMesh:
     
     def __repr__(self):
         return self.get_quality
+    
+    
+    
+    
+    @cached_property
+    def edges(self):
+        """边缘属性 """
+        return np.concatenate([self.faces[:, :2], self.faces[:, 1:], self.faces[:, [2,0]]])
         
     @cached_property
     def get_quality(self):
