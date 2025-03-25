@@ -2013,6 +2013,62 @@ class MeshRandomWalks:
     
     
     
+
+def mesh2sdf(v, f, size=64):
+    """
+    体素化网格，该函数适用于非水密网格（带孔的网格）、自相交网格、具有非流形几何体的网格以及具有方向不一致的面的网格。
+
+    Args:
+        v (array-like): 网格的顶点数组。
+        f (array-like): 网格的面数组。
+        size (int, optional): 体素化的大小，默认为 64。
+
+    Returns:
+        array: 体素化后的数组。
+
+    Raises:
+        ImportError: 如果未安装 'mesh-to-sdf' 库，会提示安装。
+    """
+    import trimesh
+    try:
+        from mesh_to_sdf import mesh_to_voxels
+    except ImportError:
+        print("请安装依赖库：pip install mesh-to-sdf")
+
+    mesh = trimesh.Trimesh(v, f)
+
+    voxels = mesh_to_voxels(mesh, size, pad=True)
+    return voxels
+
+
+def sample_sdf_mesh(v, f, number_of_points=200000):
+    """
+    在曲面附近不均匀地采样 SDF 点，该函数适用于非水密网格（带孔的网格）、自相交网格、具有非流形几何体的网格以及具有方向不一致的面的网格。
+    这是 DeepSDF 论文中提出和使用的方法。
+
+    Args:
+        v (array-like): 网格的顶点数组。
+        f (array-like): 网格的面数组。
+        number_of_points (int, optional): 采样点的数量，默认为 200000。
+
+    Returns:
+        tuple: 包含采样点数组和对应的 SDF 值数组的元组。
+
+    Raises:
+        ImportError: 如果未安装 'mesh-to-sdf' 库，会提示安装。
+    """
+    import trimesh
+    try:
+        from mesh_to_sdf import sample_sdf_near_surface
+    except ImportError:
+        print("请安装依赖库：pip install mesh-to-sdf")
+
+    mesh = trimesh.Trimesh(v, f)
+
+    points, sdf = sample_sdf_near_surface(mesh, number_of_points=number_of_points)
+    return points, sdf
+    
+    
     
     
     

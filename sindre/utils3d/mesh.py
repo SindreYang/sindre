@@ -262,14 +262,10 @@ class SindreMesh:
         unique_edges = np.unique(np.sort(self.get_edges, axis=1), axis=0)
         return len(self.get_edges) == 2*len(unique_edges)
     
-
     
-    def texture2colors_by_vtk(self,image_path ="texture_uv.png", uv=None ):
-        """将纹理贴图转换成顶点颜色"""
-        if uv is None:
-            uv=self.get_uv()
-        vm= self.to_vedo().texture(image_path,uv)
-        self.vertex_colors=vm.pointcolors
+    
+
+
         
     def texture2colors(self,image_path ="texture_uv.png", uv=None ):
         """将纹理贴图转换成顶点颜色"""
@@ -331,10 +327,25 @@ class SindreMesh:
     
     def __repr__(self):
         return self.get_quality
+
+        
+        
     
     @cache
     def get_curvature(self,max_curvature=False):
-        """ 获取归一化后的最大/最小平均曲率"""
+        """ 
+        获取归一化后的最大/最小平均曲率
+        
+        Note:
+        
+            ```
+            # 牙齿分割线曲率
+            rgb = np.zeros((sm.npoints,3))
+            rgb[curvature<0.78] = np.array([255,0,0])
+            sm.vertex_colors=rgb
+            ```
+        
+        """
         return compute_curvature_by_igl(self.vertices,self.faces,max_curvature)
     
     @cache
@@ -342,6 +353,16 @@ class SindreMesh:
         """ 获取uv映射 与顶点一致(npoinst,2) """
         uv,_= harmonic_by_igl(self.vertices,self.faces,map_vertices_to_circle=return_circle)
         return uv
+    
+    @cached_property
+    def npoints(self):
+        """获取顶点数量"""
+        return len(self.vertices)
+    @cached_property
+    def nfaces(self):
+        """获取顶点数量"""
+        return len(self.faces)
+
         
             
     @cached_property
