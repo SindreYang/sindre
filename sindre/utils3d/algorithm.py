@@ -1472,17 +1472,24 @@ def compute_curvature_by_meshlab(ms):
     return vertex_colors,vertex_curvature,ms
 
 
-def compute_curvature_by_igl(v,f):
+def compute_curvature_by_igl(v,f,max_curvature=True):
     """
     用igl计算平均曲率并归一化
 
     Args:
         v: 顶点;
         f: 面片:
+        max_curvature:返回最大曲率
 
     Returns:
         - vertex_curvature (numpy.ndarray): 顶点曲率数组，形状为 (n,)，其中 n 是顶点的数量。
             每个元素表示对应顶点的曲率。
+            
+    Note:
+        pd1 : #v by 3 maximal curvature direction for each vertex
+        pd2 : #v by 3 minimal curvature direction for each vertex
+        pv1 : #v by 1 maximal curvature value for each vertex
+        pv2 : #v by 1 minimal curvature value for each vertex
 
 
     """
@@ -1490,7 +1497,9 @@ def compute_curvature_by_igl(v,f):
         import igl
     except ImportError:
         print("请安装igl, pip install libigl")
-    _, _, K, _ = igl.principal_curvature(v, f)
+    _, _, K_max, K = igl.principal_curvature(v, f)
+    if max_curvature:
+        K=K_max
     K_normalized = (K - K.min()) / (K.max() - K.min())
     return K_normalized
 

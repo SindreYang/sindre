@@ -1,8 +1,9 @@
 import torch
 import torch.nn as nn
 from typing import Tuple, List, Union, Optional
-from einops import rearrange, repeat
 import torch.nn.functional as F
+
+
 class FourierEmbedder(nn.Module):
     """
     ```
@@ -258,6 +259,7 @@ class QKVMultiheadCrossAttention(nn.Module):
         k = self.k_norm(k)
 
         # 重排维度并计算注意力
+        from einops import rearrange
         q, k, v = map(lambda t: rearrange(t, 'b n h d -> b h n d', h=self.heads), (q, k, v))
         out = F.scaled_dot_product_attention(q, k, v).transpose(1, 2).reshape(bs, n_ctx, -1)
         return out
@@ -388,6 +390,7 @@ class QKVMultiheadAttention(nn.Module):
         k = self.k_norm(k)
 
         # 重排维度并计算注意力
+        from einops import rearrange
         q, k, v = map(lambda t: rearrange(t, 'b n h d -> b h n d', h=self.heads), (q, k, v))
         out = F.scaled_dot_product_attention(q, k, v).transpose(1, 2).reshape(bs, n_ctx, -1)
         return out

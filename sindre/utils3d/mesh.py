@@ -1,7 +1,7 @@
-from functools import cached_property
+from functools import cached_property,cache
 import numpy as np
 import json
-from sindre.utils3d.algorithm import NpEncoder
+from sindre.utils3d.algorithm import NpEncoder, compute_curvature_by_igl,harmonic_by_igl
 
 class SindreMesh:
     """三维网格中转类，假设都是三角面片 """
@@ -75,7 +75,7 @@ class SindreMesh:
             self.faces = np.asarray(self.any_mesh.cells, dtype=np.int32)
             self.vertex_normals =self.any_mesh.vertex_normals
             self.face_normals =self.any_mesh.cell_normals
-            self.vertex_colors = self.any_mesh.pointdata["RGBA"]
+            self.vertex_colors = self.any_mesh.pointdata["PointsRGBA"]
 
 
     def to_trimesh(self):
@@ -156,6 +156,7 @@ class SindreMesh:
         v,f= self.to_torch()
         mesh = Meshes(verts=v[None], faces=f[None])
         return mesh
+
     
     def show(self,show_append =[],labels=None,exclude_list=[0]):
         """
@@ -183,6 +184,7 @@ class SindreMesh:
             
         show_list.append(mesh_vd)
         show_list.append(self._create_vedo_axes(mesh_vd))
+        
             
         # 渲染
         vp = vedo.Plotter(N=1, title="SindreMesh", bg2="black", axes=3)
@@ -246,14 +248,9 @@ class SindreMesh:
 
     def _count_connected_components(self):
         """计算连通体数量"""
-        from scipy.sparse import csr_matrix
         from scipy.sparse.csgraph import connected_components
-        n = len(self.vertices)
-        data = np.ones(len(self.faces)*3)
-        rows = self.faces.flatten()
-        cols = np.roll(self.faces, shift=1, axis=1).flatten()
-        adj = csr_matrix((data, (rows, cols)), shape=(n, n))
-        return connected_components(adj, directed=False)
+        n_components, labels =connected_components(self.get_adj_matrix, directed=False)
+        return n_components, labels
 
     def _count_unused_vertices(self):
         """统计未使用顶点"""
@@ -262,17 +259,61 @@ class SindreMesh:
 
     def _is_watertight(self):
         """判断是否闭合"""
-        unique_edges = np.unique(np.sort(self.edges, axis=1), axis=0)
-        return len(self.edges) == 2*len(unique_edges)
+        unique_edges = np.unique(np.sort(self.get_edges, axis=1), axis=0)
+        return len(self.get_edges) == 2*len(unique_edges)
     
 
+    
+    def texture2colors_by_vtk(self,image_path ="texture_uv.png", uv=None ):
+        """将纹理贴图转换成顶点颜色"""
+        if uv is None:
+            uv=self.get_uv()
+        vm= self.to_vedo().texture(image_path,uv)
+        self.vertex_colors=vm.pointcolors
+        
+    def texture2colors(self,image_path ="texture_uv.png", uv=None ):
+        """将纹理贴图转换成顶点颜色"""
+        from PIL import Image
+        from scipy.ndimage import map_coordinates
+        if uv is None:
+            uv=self.get_uv()
+        texture = np.array(Image.open(image_path))
+       
+        # 转换UV到图像坐标（考虑翻转V轴）
+        h, w = texture.shape[:2]
+        u_coords = uv[:, 0] * (w - 1)
+        v_coords = (1 - uv[:, 1]) * (h - 1)
+        coords = np.vstack([v_coords, u_coords])  # scipy的坐标格式为(rows, cols)
+        channels = []
+        for c in range(3):
+            sampled = map_coordinates(texture[:, :, c], coords, order=1, mode='nearest')
+            channels.append(sampled)
+    
+        self.vertex_colors = np.stack(channels, axis=1).astype(np.uint8)
+
+
+    def get_texture(self,write_path ="texture_uv.png", image_size = (512, 512),uv=None ):
+        """将颜色转换为纹理贴图,  Mesh([v, f]).texture(write_path,uv)"""
+        from PIL import Image
+        from scipy.interpolate import griddata
+        if uv is None:
+            uv=self.get_uv()
+        
+        def compute_interpolation_map(shape, tcoords, values):
+            points = (tcoords * np.asarray(shape)[None, :]).astype(np.int32)
+            x = np.arange(shape[0])
+            y = np.flip(np.arange(shape[1]))
+            X, Y = np.meshgrid(x, y)
+            res = griddata(points, values, (X, Y),  method='nearest')
+            res[np.isnan(res)] = 0
+            return res
+
+        texture_map = compute_interpolation_map(image_size, uv, self.vertex_colors) 
+        Image.fromarray(texture_map.astype(np.uint8)).save(write_path)
         
 
-    def to_texture(self):
-        """将颜色转换为纹理贴图"""
-        if self.vertex_colors is not None:
-            return self.vertex_colors.reshape(-1, 3)
-        return None
+
+        
     
     def check(self):
         """检测数据完整性,正常返回True"""
@@ -291,13 +332,47 @@ class SindreMesh:
     def __repr__(self):
         return self.get_quality
     
+    @cache
+    def get_curvature(self,max_curvature=False):
+        """ 获取归一化后的最大/最小平均曲率"""
+        return compute_curvature_by_igl(self.vertices,self.faces,max_curvature)
     
-    
+    @cache
+    def get_uv(self,return_circle=False):
+        """ 获取uv映射 与顶点一致(npoinst,2) """
+        uv,_= harmonic_by_igl(self.vertices,self.faces,map_vertices_to_circle=return_circle)
+        return uv
+        
+            
+    @cached_property
+    def get_adj_matrix(self):
+        """基于去重边构建邻接矩阵"""
+        from scipy.sparse import csr_matrix
+        n = len(self.vertices)
+        edges = np.unique(self.get_edges, axis=0)
+        data = np.ones(edges.shape[0] * 2)  # 两条边（无向图）
+        rows = np.concatenate([edges[:,0], edges[:,1]])
+        cols = np.concatenate([edges[:,1], edges[:,0]])
+        return csr_matrix((data, (rows, cols)), shape=(n, n))
     
     @cached_property
-    def edges(self):
-        """边缘属性 """
-        return np.concatenate([self.faces[:, :2], self.faces[:, 1:], self.faces[:, [2,0]]])
+    def get_adj_list(self):
+        """邻接表属性"""
+        edges = np.unique(self.get_edges, axis=0)  # 去重
+        adj = [[] for _ in range(len(self.vertices))]
+        for u, v in edges:
+            adj[u].append(v)
+            adj[v].append(u)
+        return adj
+
+    @cached_property
+    def get_edges(self):
+        """未去重边缘属性 """
+        edges = np.concatenate([self.faces[:, [0,1]], 
+                                self.faces[:, [1,2]], 
+                                self.faces[:, [2,0]]], axis=0)
+        edges = np.sort(edges, axis=1)  # 确保边无序性
+        return edges
         
     @cached_property
     def get_quality(self):
