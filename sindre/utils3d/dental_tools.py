@@ -126,7 +126,7 @@ def transform_crown(near_mesh: vedo.Mesh, jaw_mesh: vedo.Mesh) -> vedo.Mesh:
 
 
 
-def cut_mesh_point_loop_crow(mesh,pts,error_show=True):
+def cut_mesh_point_loop_crow(mesh,pts,error_show=True,invert=True):
     
     """ 
     
@@ -136,6 +136,7 @@ def cut_mesh_point_loop_crow(mesh,pts,error_show=True):
         mesh (_type_): 待切割网格
         pts (vedo.Points/Line): 切割线
         error_show(bool, optional): 裁剪失败是否进行渲染. Defaults to True.
+        invert(bool): 是否取反；
 
     Returns:
         _type_: 切割后的网格
@@ -152,8 +153,8 @@ def cut_mesh_point_loop_crow(mesh,pts,error_show=True):
     mesh =regions[np.argmin(min_dists)]
     
 
-    c1 = cut_mesh_point_loop(mesh,pts,invert=False)
-    c2 = cut_mesh_point_loop(mesh,pts,invert=True)
+    c1 = cut_mesh_point_loop(mesh,pts,invert=not invert)
+    c2 = cut_mesh_point_loop(mesh,pts,invert=invert)
 
     
     c1_num = len(c1.boundaries().split())

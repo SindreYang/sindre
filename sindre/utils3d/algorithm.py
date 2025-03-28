@@ -202,7 +202,7 @@ def get_pca_transform(mesh: vedo.Mesh) -> np.array:
     :return: 
     """
     vedo_mesh = mesh.clone().decimate(n=5000).clean()
-    vertices = vedo_mesh.points()
+    vertices = vedo_mesh.vertices
 
     vedo_mesh.compute_curvature(method=1)
     data = vedo_mesh.pointdata['Mean_Curvature']
