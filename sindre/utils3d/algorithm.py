@@ -2070,10 +2070,103 @@ def sample_sdf_mesh(v, f, number_of_points=200000):
     
     
     
+def resample_mesh(vertices, faces, density=1, num_samples=None):
+    """在由顶点和面定义的网格表面上进行点云重采样。
     
+    1. 密度模式：根据单位面片面积自动计算总采样数
+    2. 指定数量模式：直接指定需要采样的总点数
+
+    该函数使用向量化操作高效地在网格表面进行均匀采样，采样密度由单位面积点数决定。
+    采样策略基于重心坐标系，采用分层随机抽样方法。
+
+    注意：
+        零面积三角形会被自动跳过，因为不会分配采样点。
+
+    参考实现：
+        https://chrischoy.github.io/research/barycentric-coordinate-for-mesh-sampling/
+
+    Args:
+        vertices (numpy.ndarray): 网格顶点数组，形状为(V, 3)，V表示顶点数量
+        faces (numpy.ndarray): 三角形面片索引数组，形状为(F, 3)，数据类型应为整数
+        density (float, 可选): 每单位面积的采样点数，默认为1
+        num_samples (int, 可选): 指定总采样点数，若提供则忽略density参数
+
+    Returns:
+        numpy.ndarray: 重采样后的点云数组，形状为(N, 3)，N为总采样点数
+
+    Notes:
+        采样点生成公式（重心坐标系）：
+            P = (1 - √r₁)A + √r₁(1 - r₂)B + √r₁ r₂ C
+        其中：
+        - r₁, r₂ ∈ [0, 1) 为随机数
+        - A, B, C 为三角形顶点
+        - 该公式可确保在三角形表面均匀采样
+
+        算法流程：
+        1. 计算每个面的面积并分配采样点数
+        2. 通过随机舍入处理总点数误差
+        3. 使用向量化操作批量生成采样点
+
+    References:
+        [1] Barycentric coordinate system - https://en.wikipedia.org/wiki/Barycentric_coordinate_system
+    """
+    # 计算每个面的法向量并计算面的面积
+    vec_cross = np.cross(
+        vertices[faces[:, 0], :] - vertices[faces[:, 2], :],
+        vertices[faces[:, 1], :] - vertices[faces[:, 2], :],
+    )
+    face_areas = np.sqrt(np.sum(vec_cross ** 2, 1))
     
+    if num_samples is not None:
+        n_samples = num_samples
+        # 按面积比例分配采样数
+        ratios = face_areas / face_areas.sum()
+        n_samples_per_face = np.random.multinomial(n_samples, ratios)
+    else:
+        # 计算需要采样的总点数
+        n_samples = (np.sum(face_areas) * density).astype(int)
+        # face_areas = face_areas / np.sum(face_areas)
+
+        # 为每个面分配采样点数
+        # 首先，过度采样点并去除多余的点
+        # Bug 修复由 Yangyan (yangyan.lee@gmail.com) 完成
+        n_samples_per_face = np.ceil(density * face_areas).astype(int)
+        
     
+    floor_num = np.sum(n_samples_per_face) - n_samples
+    if floor_num > 0:
+        indices = np.where(n_samples_per_face > 0)[0]
+        floor_indices = np.random.choice(indices, floor_num, replace=True)
+        n_samples_per_face[floor_indices] -= 1
+
+    n_samples = np.sum(n_samples_per_face)
+
+    # 创建一个包含面索引的向量
+    sample_face_idx = np.zeros((n_samples,), dtype=int)
+    acc = 0
+    for face_idx, _n_sample in enumerate(n_samples_per_face):
+        sample_face_idx[acc : acc + _n_sample] = face_idx
+        acc += _n_sample
+
+
+    # 生成随机数
+    r = np.random.rand(n_samples, 2)
+    faces_samples = faces[sample_face_idx]
+    A = vertices[faces_samples[:, 0]]
+    B = vertices[faces_samples[:, 1]]
+    C = vertices[faces_samples[:, 2]]
+
+    # 使用重心坐标公式计算采样点
+    P = (
+        (1 - np.sqrt(r[:, 0:1])) * A
+        + np.sqrt(r[:, 0:1]) * (1 - r[:, 1:]) * B
+        + np.sqrt(r[:, 0:1]) * r[:, 1:] * C
+    )
     
-    
-    
+    # # 随机采样
+    # if num_samples is not None:
+    #     idx = np.random.choice(len(P), num_samples,replace=False)
+    #     P=P[idx]
+
+    return P
     

@@ -1,7 +1,7 @@
-from functools import cached_property,cache
+from functools import cached_property,lru_cache
 import numpy as np
 import json
-from sindre.utils3d.algorithm import NpEncoder, compute_curvature_by_igl,harmonic_by_igl
+from sindre.utils3d.algorithm import NpEncoder, compute_curvature_by_igl,harmonic_by_igl,resample_mesh
 
 class SindreMesh:
     """三维网格中转类，假设都是三角面片 """
@@ -307,6 +307,21 @@ class SindreMesh:
         texture_map = compute_interpolation_map(image_size, uv, self.vertex_colors) 
         Image.fromarray(texture_map.astype(np.uint8)).save(write_path)
         
+    def sample(self,density=1, num_samples=None):
+        """
+        网格表面上进行点云重采样
+        Args:
+            density (float, 可选): 每单位面积的采样点数，默认为1
+            num_samples (int, 可选): 指定总采样点数N，若提供则忽略density参数
+            
+        Returns:
+            numpy.ndarray: 重采样后的点云数组，形状为(N, 3)，N为总采样点数
+        
+        """
+        
+        return resample_mesh(vertices=self.vertices,faces=self.faces,density=density,num_samples=num_samples)
+        
+        
 
 
         
@@ -331,7 +346,7 @@ class SindreMesh:
         
         
     
-    @cache
+    @lru_cache(maxsize=None)
     def get_curvature(self,max_curvature=False):
         """ 
         获取归一化后的最大/最小平均曲率
@@ -348,7 +363,7 @@ class SindreMesh:
         """
         return compute_curvature_by_igl(self.vertices,self.faces,max_curvature)
     
-    @cache
+    @lru_cache(maxsize=None)
     def get_uv(self,return_circle=False):
         """ 获取uv映射 与顶点一致(npoinst,2) """
         uv,_= harmonic_by_igl(self.vertices,self.faces,map_vertices_to_circle=return_circle)
@@ -362,6 +377,47 @@ class SindreMesh:
     def nfaces(self):
         """获取顶点数量"""
         return len(self.faces)
+    
+        
+    @cached_property
+    def faces_vertices(self):
+        """将面片索引用顶点来表示"""
+        return  self.vertices[self.faces]
+    
+   
+    
+    @cached_property
+    def faces_area(self):
+        """
+        计算每个三角形面片的面积。
+        
+        Notes:
+            使用叉乘公式计算面积：
+            面积 = 0.5 * ||(v1 - v0) × (v2 - v0)||
+        """
+        tri_vertices =self.faces_vertices
+        v0, v1, v2 = tri_vertices[:, 0], tri_vertices[:, 1], tri_vertices[:, 2]
+        area = 0.5 * np.linalg.norm(np.cross((v1 - v0), (v2 - v0)), axis=1)
+        return area
+    
+    @cached_property
+    def faces_center(self):
+        """每个三角形的中心（重心 [1/3,1/3,1/3]）"""
+        return  self.faces_vertices.mean(axis=1)
+    
+    
+    @cached_property
+    def center(self) -> np.ndarray:
+        """计算网格的加权质心（基于面片面积加权）。
+
+        Returns:
+            np.ndarray: 加权质心坐标，形状为 (3,)。
+
+        Notes:
+            使用三角形面片面积作为权重，对三角形质心坐标进行加权平均。
+            该结果等价于网格的几何中心。
+        """
+        return np.average(self.faces_center, weights=self.faces_area, axis=0)
 
         
             
