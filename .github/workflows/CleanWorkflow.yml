@@ -13,5 +13,5 @@ jobs:
           token: ${{ github.token }} # optional
           owner: ${{ github.repository_owner }} # optional
           repo: ${{ github.repository }} # optional
-          runs_older_than: 300 # optional
-          runs_to_keep: 1 # optional
+          runs_older_than: 365 # optional
+          runs_to_keep: 0 # optional
