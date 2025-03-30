@@ -10,5 +10,5 @@ jobs:
     steps:
       - uses: igorjs/gh-actions-clean-workflow@v6
         with:
-          runs_older_than: 365
+          runs_older_than: 21
           runs_to_keep: 0
