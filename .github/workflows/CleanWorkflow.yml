@@ -1,6 +1,16 @@
 name: Clean Workflow Logs
 
-on: [push]
+on:
+  workflow_dispatch:
+    inputs:
+      runs_older_than:
+        description: "The amount of days old to delete"
+        default: "7"
+        required: false
+      runs_to_keep:
+        description: "The amount of latest workflows runs to keep"
+        default: "0"
+        required: false
 
 jobs:
   clean-logs:
@@ -10,5 +20,5 @@ jobs:
     steps:
       - uses: igorjs/gh-actions-clean-workflow@v6
         with:
-          runs_older_than: 21
-          runs_to_keep: 0
+          runs_older_than: ${{ github.event.inputs.runs_older_than }} # optional
+          runs_to_keep: ${{ github.event.inputs.runs_to_keep }} # optional
