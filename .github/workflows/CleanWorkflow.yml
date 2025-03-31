@@ -1,0 +1,16 @@
+name: Clean Workflow Logs
+
+on: 
+  workflow_dispatch:  #手动触发
+
+
+jobs:
+  delete_runs:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Delete workflow runs
+        uses: dmvict/clean-workflow-runs@v1.0.0
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          save_period: '06:00:00'
+          save_min_runs_number: 0
