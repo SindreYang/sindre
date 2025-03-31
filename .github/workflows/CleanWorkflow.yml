@@ -1,24 +1,15 @@
 name: Clean Workflow Logs
 
-on:
-  workflow_dispatch:
-    inputs:
-      runs_older_than:
-        description: "The amount of days old to delete"
-        default: "7"
-        required: false
-      runs_to_keep:
-        description: "The amount of latest workflows runs to keep"
-        default: "0"
-        required: false
+on: [push]
+
 
 jobs:
-  clean-logs:
+  delete_runs:
     runs-on: ubuntu-latest
-    permissions:
-      actions: write
     steps:
-      - uses: igorjs/gh-actions-clean-workflow@v6
+      - name: Delete workflow runs
+        uses: dmvict/clean-workflow-runs@v1.0.0
         with:
-          runs_older_than: ${{ github.event.inputs.runs_older_than }} # optional
-          runs_to_keep: ${{ github.event.inputs.runs_to_keep }} # optional
+          token: ${{ secrets.PRIVATE_GITHUB_TOKEN }}
+          save_period: '06:00:00'
+          save_min_runs_number: 0
