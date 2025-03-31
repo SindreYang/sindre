@@ -147,7 +147,7 @@ def cut_mesh_point_loop_crow(mesh,pts,error_show=True,invert=True):
     def batch_closest_dist(vertices, curve_pts):
         curve_matrix = np.array(curve_pts)
         dist_matrix = np.linalg.norm(vertices[:, np.newaxis] - curve_matrix, axis=2)
-        return np.min(dist_matrix, axis=1)
+        return np.sum(dist_matrix, axis=1)
     regions = mesh.split()
     min_dists = [np.min(batch_closest_dist(r.vertices, pts.vertices)) for r in regions]
     mesh =regions[np.argmin(min_dists)]
@@ -156,14 +156,16 @@ def cut_mesh_point_loop_crow(mesh,pts,error_show=True,invert=True):
     c1 = cut_mesh_point_loop(mesh,pts,invert=not invert)
     c2 = cut_mesh_point_loop(mesh,pts,invert=invert)
 
-    
-    c1_num = len(c1.boundaries().split())
-    c2_num = len(c2.boundaries().split())
+
+
+    # 可能存在网格错误造成的洞,默认执行补洞
+    c1_num = len(c1.fill_holes().boundaries().split())
+    c2_num = len(c2.fill_holes().boundaries().split())
 
     
     
     # 牙冠只能有一个开口
-    if np.min(min_dists)<0.1 and c1_num==1:
+    if c1_num==1:
         cut_mesh=c1
     elif  c2_num==1:
         cut_mesh=c2

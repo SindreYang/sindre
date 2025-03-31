@@ -128,6 +128,7 @@ setup(
         'tqdm',
         'scikit-learn',
         'vedo',
+        'numba',
     ],
     #data_files=find_files("sindre\Resources"),
     url='https://github.com/SindreYang/sindre',

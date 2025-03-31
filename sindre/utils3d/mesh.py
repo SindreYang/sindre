@@ -1,7 +1,7 @@
 from functools import cached_property,lru_cache
 import numpy as np
 import json
-from sindre.utils3d.algorithm import NpEncoder, compute_curvature_by_igl,harmonic_by_igl,resample_mesh
+from sindre.utils3d.algorithm import NpEncoder, compute_curvature_by_igl,harmonic_by_igl,resample_mesh,compute_curvature_by_meshlab
 
 class SindreMesh:
     """三维网格中转类，假设都是三角面片 """
@@ -21,8 +21,10 @@ class SindreMesh:
         self.vertices = None
         self.vertex_colors = None
         self.vertex_normals = None
+        self.vertex_curvature =None
         self.face_normals = None
         self.faces = None
+       
         try:
             self._convert()
         except Exception as e:
@@ -51,9 +53,10 @@ class SindreMesh:
             self.vertices = np.asarray(mmesh.vertex_matrix(), dtype=np.float64)
             self.faces = np.asarray(mmesh.face_matrix(), dtype=np.int32)
             self.vertex_normals =np.asarray(mmesh.vertex_normal_matrix(), dtype=np.float64)
-            self.vertex_colors = (np.asarray(mmesh.vertex_color_matrix()) * 255).astype(np.uint8)
+            self.face_normals = np.asarray(mmesh.face_normal_matrix(), dtype=np.float64) 
             if mmesh.has_vertex_color():
-                self.face_normals = np.asarray(mmesh.face_normal_matrix(), dtype=np.float64) 
+                self.vertex_colors = (np.asarray(mmesh.vertex_color_matrix()) * 255).astype(np.uint8)
+                
             
         
         # Open3D 转换
@@ -135,26 +138,34 @@ class SindreMesh:
         return json.dumps(self.to_dict(),cls=NpEncoder)
 
     
-    def to_torch(self):
+    def to_torch(self,device="cpu"):
         """将顶点&面片转换成torch形式
 
         Returns:
-            v,f : 顶点，面片
+            vertices,faces,vertex_normals,vertex_colors: 顶点，面片,法线，颜色（没有则为None)
         """
         import torch
-        v= torch.from_numpy(self.vertices)
-        f= torch.from_numpy(self.faces)
-        return v,f 
+        vertices= torch.from_numpy(self.vertices).to(device)
+        faces= torch.from_numpy(self.faces).to(device)
         
-    def to_pytorch3d(self):
+        vertex_normals = torch.from_numpy(self.vertex_normals).to(device)
+        if self.vertex_colors is not None:
+            vertex_colors = torch.from_numpy(self.vertex_colors).to(device)
+        else:
+            vertex_colors = None
+        return vertices,faces,vertex_normals,vertex_colors
+        
+    def to_pytorch3d(self,device="cpu"):
         """转换成pytorch3d形式
 
         Returns:
             mesh : pytorch3d类型mesh
         """
+        import torch
         from pytorch3d.structures import Meshes
-        v,f= self.to_torch()
-        mesh = Meshes(verts=v[None], faces=f[None])
+        vertices= torch.from_numpy(self.vertices).to(device)
+        faces= torch.from_numpy(self.faces).to(device)
+        mesh = Meshes(verts=vertices[None], faces=faces[None])
         return mesh
 
     
@@ -320,6 +331,10 @@ class SindreMesh:
         """
         
         return resample_mesh(vertices=self.vertices,faces=self.faces,density=density,num_samples=num_samples)
+    
+    
+    
+    
         
         
 
@@ -343,25 +358,20 @@ class SindreMesh:
     def __repr__(self):
         return self.get_quality
 
-        
-        
-    
-    @lru_cache(maxsize=None)
-    def get_curvature(self,max_curvature=False):
-        """ 
-        获取归一化后的最大/最小平均曲率
-        
-        Note:
-        
-            ```
-            # 牙齿分割线曲率
-            rgb = np.zeros((sm.npoints,3))
-            rgb[curvature<0.78] = np.array([255,0,0])
-            sm.vertex_colors=rgb
-            ```
-        
-        """
-        return compute_curvature_by_igl(self.vertices,self.faces,max_curvature)
+
+    def get_curvature(self):
+        """会自动去除未使用点"""
+        ms = self.to_meshlab()
+        ms.compute_curvature_principal_directions_per_vertex()
+        mmesh = ms.current_mesh()
+        self.vertex_colors =(mmesh.vertex_color_matrix()*255)[...,:3]
+        self.vertex_curvature =mmesh.vertex_scalar_array()
+        self.vertices=mmesh.vertex_matrix()
+        self.vertex_normals =np.asarray(mmesh.vertex_normal_matrix(), dtype=np.float64)
+        self.face_normals = np.asarray(mmesh.face_normal_matrix(), dtype=np.float64) 
+        self.faces = np.asarray(mmesh.face_matrix(), dtype=np.int32)
+        return self
+
     
     @lru_cache(maxsize=None)
     def get_uv(self,return_circle=False):
@@ -418,6 +428,8 @@ class SindreMesh:
             该结果等价于网格的几何中心。
         """
         return np.average(self.faces_center, weights=self.faces_area, axis=0)
+    
+    
 
         
             

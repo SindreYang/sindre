@@ -33,6 +33,7 @@ from sklearn.decomposition import PCA
 from scipy.spatial import KDTree
 import vtk
 import os
+from numba import njit, prange
 
 
 
@@ -641,7 +642,7 @@ def cut_mesh_point_loop(mesh,pts:vedo.Points,invert=False):
 
 
 
-def reduce_face_by_meshlab(vertices,faces, max_facenum: int = 30000) ->vedo.Mesh:
+def simplify_by_meshlab(vertices,faces, max_facenum: int = 30000) ->vedo.Mesh:
     """通过二次边折叠算法减少网格中的面数，简化模型。
 
     Args:
@@ -668,7 +669,7 @@ def reduce_face_by_meshlab(vertices,faces, max_facenum: int = 30000) ->vedo.Mesh
     return vedo.Mesh(mesh.current_mesh())
 
 
-def remove_floater_by_meshlab(vertices,faces,nbfaceratio=0.1,nonclosedonly=False) -> vedo.Mesh:
+def fix_floater_by_meshlab(vertices,faces,nbfaceratio=0.1,nonclosedonly=False) -> vedo.Mesh:
     """移除网格中的浮动小组件（小面积不连通部分）。
 
     Args:
@@ -716,7 +717,7 @@ def isotropic_remeshing_pymeshlab(vertices,faces, target_edge_length=0.5, iterat
     return vedo.Mesh(mesh.current_mesh())
 
 
-def clean_redundant(ms):
+def fix_redundant_by_meshlab(ms):
     """
     处理冗余元素，如合并临近顶点、移除重复面和顶点等。
 
@@ -732,7 +733,7 @@ def clean_redundant(ms):
     ms.apply_filter("meshing_remove_unreferenced_vertices")
     return ms
 
-def clean_invalid(ms):
+def fix_invalid_by_meshlab(ms):
     """
     清理无效的几何结构，如折叠面、零面积面和未引用的顶点。
 
@@ -747,7 +748,7 @@ def clean_invalid(ms):
     ms.apply_filter("meshing_remove_unreferenced_vertices")
     return ms
 
-def clean_low_qualitys(ms):
+def fix_low_qualitys_by_meshlab(ms):
     """
     移除低质量的组件，如小的连通分量。
 
@@ -761,7 +762,7 @@ def clean_low_qualitys(ms):
     ms.apply_filter("meshing_remove_connected_component_by_face_number", mincomponentsize=10)
     return ms
 
-def repair_topology(ms):
+def fix_topology_by_meshlab(ms):
     """
     修复拓扑问题，如 T 型顶点、非流形边和非流形顶点，并对齐不匹配的边界。
 
@@ -1109,55 +1110,177 @@ def load_all(path):
         print("读取失败",e)
         return None 
   
-        
-        
-        
-def farthest_point_sampling(arr, n_sample, start_idx=None):
-    """
-    无需计算所有点对之间的距离，进行最远点采样。
+  
+  
+  
+  
+@njit(nogil=True, fastmath=True, cache=True, parallel=True)
+def furthestsampling_jit(xyz: np.ndarray, offset: np.ndarray, new_offset: np.ndarray) -> np.ndarray:
+    """使用并行批次处理的最远点采样算法实现
+    
+    该方法将输入点云划分为多个批次，每个批次独立进行最远点采样。通过维护最小距离数组，
+    确保每次迭代选择距离已选点集最远的新点，实现高效采样。
 
     Args:
+        xyz (np.ndarray): 输入点云坐标，形状为(N, 3)的C连续float32数组
+        offset (np.ndarray): 原始点云的分段偏移数组，表示每个批次的结束位置。例如[1000, 2000]表示两个批次
+        new_offset (np.ndarray): 采样后的分段偏移数组，表示每个批次的目标采样数。例如[200, 400]表示每批采200点
 
-        arr : numpy array
-            形状为 (n_points, n_dim) 的位置数组，其中 n_points 是点的数量，n_dim 是每个点的维度。
-        n_sample : int
-            需要采样的点的数量。
-        start_idx : int, 可选
-            如果给定，指定起始点的索引；否则，随机选择一个点作为起始点。（默认值: None）
+    Returns:
+        np.ndarray: 采样点索引数组，形状为(total_samples,)，其中total_samples = new_offset[-1]
 
-    Return:
+    Notes:
+        实现特点:
+        - 使用Numba并行加速，支持多核并行处理不同批次
+        - 采用平方距离计算避免开方运算
+        - 每批次独立初始化距离数组，避免跨批次干扰
+        - 自动处理边界情况（空批次或零采样批次）
 
-        numpy array of shape (n_sample,)
-            采样得到的点的索引数组。
-
-    Example:
-
-        >>> import numpy as np
-        >>> data = np.random.rand(100, 1024)
-        >>> point_idx = farthest_point_sampling(data, 3)
-        >>> print(point_idx)
-            array([80, 79, 27])
-
-        >>> point_idx = farthest_point_sampling(data, 5, 60)
-        >>> print(point_idx)
-            array([60, 39, 59, 21, 73])
+        典型调用流程:
+        >>> n_total = 10000
+        >>> offset = np.array([1000, 2000, ..., 10000], dtype=np.int32)
+        >>> new_offset = np.array([200, 400, ..., 2000], dtype=np.int32)
+        >>> sampled_indices = furthestsampling_jit(xyz, offset, new_offset)
     """
-    n_points, n_dim = arr.shape
-
-    if (start_idx is None) or (start_idx < 0):
-        start_idx = np.random.randint(0, n_points)
-
-    sampled_indices = [start_idx]
-    min_distances = np.full(n_points, np.inf)
+    # 确保输入为C连续的float32数组
+    total_samples = new_offset[-1]
+    indices = np.empty(total_samples, dtype=np.int32)
     
-    for _ in range(n_sample - 1):
-        current_point = arr[sampled_indices[-1]]
-        dist_to_current_point = np.linalg.norm(arr - current_point, axis=1)
-        min_distances = np.minimum(min_distances, dist_to_current_point)
-        farthest_point_idx = np.argmax(min_distances)
-        sampled_indices.append(farthest_point_idx)
+    # 并行处理每个批次
+    for bid in prange(len(new_offset)):
+        # 确定批次边界
+        if bid == 0:
+            n_start, n_end = 0, offset[0]
+            m_start, m_end = 0, new_offset[0]
+        else:
+            n_start = offset[bid-1]
+            n_end = offset[bid]
+            m_start = new_offset[bid-1]
+            m_end = new_offset[bid]
+        
+        batch_size = n_end - n_start
+        sample_size = m_end - m_start
+        
+        if batch_size == 0 or sample_size == 0:
+            continue
+        
+        # 提取当前批次的点坐标（三维）
+        batch_xyz = xyz[n_start:n_end]
+        x = batch_xyz[:, 0]  # x坐标数组
+        y = batch_xyz[:, 1]  # y坐标数组
+        z = batch_xyz[:, 2]  # z坐标数组
+        
+        # 初始化最小距离数组
+        min_dists = np.full(batch_size, np.finfo(np.float32).max, dtype=np.float32)
+        
+        # 首点选择批次内的第一个点
+        current_local_idx = 0
+        indices[m_start] = n_start + current_local_idx  # 转换为全局索引
+        
+        # 初始化最新点坐标
+        last_x = x[current_local_idx]
+        last_y = y[current_local_idx]
+        last_z = z[current_local_idx]
+        
+        # 主采样循环
+        for j in range(1, sample_size):
+            max_dist = -1.0
+            best_local_idx = 0
+            
+            # 遍历所有点更新距离并寻找最大值
+            for k in range(batch_size):
+                # 计算到最新点的平方距离
+                dx = x[k] - last_x
+                dy = y[k] - last_y
+                dz = z[k] - last_z
+                dist = dx*dx + dy*dy + dz*dz
+                
+                # 更新最小距离
+                if dist < min_dists[k]:
+                    min_dists[k] = dist
+                
+                # 跟踪当前最大距离
+                if min_dists[k] > max_dist:
+                    max_dist = min_dists[k]
+                    best_local_idx = k
+            
+            # 更新当前最优点的索引和坐标
+            current_local_idx = best_local_idx
+            indices[m_start + j] = n_start + current_local_idx  # 转换为全局索引
+            last_x = x[current_local_idx]
+            last_y = y[current_local_idx]
+            last_z = z[current_local_idx]
+    
+    return indices
 
-    return np.array(sampled_indices)
+def farthest_point_sampling(vertices: np.ndarray, n_sample: int = 2000, auto_seg: bool = True, n_batches: int = 10) -> np.ndarray:
+    """
+    最远点采样，支持自动分批处理
+    
+    根据参数配置，自动决定是否将输入点云分割为多个批次进行处理。当处理大规模数据时，
+    建议启用auto_seg以降低内存需求并利用并行加速。
+
+    Args:
+        vertices (np.ndarray): 输入点云坐标，形状为(N, 3)的浮点数组
+        n_sample (int, optional): 总采样点数，当auto_seg=False时生效。默认2000
+        auto_seg (bool, optional): 是否启用自动分批处理(提速，但会丢失全局距离信息)。默认False
+        n_batches (int, optional): 自动分批时的批次数量。默认10
+
+    Returns:
+        np.ndarray: 采样点索引数组，形状为(n_sample,)
+
+    Raises:
+        ValueError: 当输入数组维度不正确时抛出
+
+    Notes:
+        典型场景:
+        - 小规模数据（如5万点以下）: auto_seg=False，单批次处理
+        - 大规模数据（如百万级点）: auto_seg=True，分10批处理，每批采样2000点
+
+        示例:
+        >>> vertices = np.random.rand(100000, 3).astype(np.float32)
+        >>> # 自动分10批，每批采2000点
+        >>> indices = farthest_point_sampling(vertices, auto_seg=True)
+        >>> # 单批采5000点
+        >>> indices = farthest_point_sampling(vertices, n_sample=5000)
+    """
+    if vertices.ndim != 2 or vertices.shape[1] != 3:
+        raise ValueError("输入点云必须是形状为(N, 3)的二维数组")
+    xyz =np.ascontiguousarray(vertices, dtype=np.float32) 
+    n_total = xyz.shape[0]
+    if auto_seg:
+         # 计算批次采样数分配
+        base_samples = n_sample // n_batches
+        remainder = n_sample % n_batches
+        
+        # 创建采样数数组，前remainder个批次多采1点
+        batch_samples = [base_samples + 1 if i < remainder else base_samples 
+                        for i in range(n_batches)]
+        
+        # 生成偏移数组（累加形式）
+        new_offset = np.cumsum(batch_samples).astype(np.int32)
+        
+        # 原始点云分批偏移（均匀分配）
+        batch_size = n_total // n_batches
+        offset = np.array([batch_size*(i+1) for i in range(n_batches)], dtype=np.int32)
+        offset[-1] = n_total  # 最后一批包含余数点
+        
+    else:
+        offset = np.array([n_total], dtype=np.int32)
+        new_offset = np.array([n_sample], dtype=np.int32)
+    return  furthestsampling_jit(xyz,offset,new_offset)
+
+
+def farthest_point_sampling_by_open3d(vertices: np.ndarray, n_sample: int = 2000) -> np.ndarray:
+    """ 输出采样后的点 """
+    import open3d as o3d
+    pcd = o3d.t.geometry.PointCloud(np.ascontiguousarray(vertices,dtype=np.float32))
+    downpcd_farthest = pcd.farthest_point_down_sample(n_sample)
+    out  =downpcd_farthest.point.positions.numpy()
+    return out
+
+    
+
 
 
 def add_base(vd_mesh,value_z=-20,close_base=True,return_strips=False):
@@ -1462,14 +1585,16 @@ def compute_curvature_by_meshlab(ms):
             每个元素的范围是 [0, 255]，表示顶点的颜色。
         - vertex_curvature (numpy.ndarray): 顶点曲率数组，形状为 (n,)，其中 n 是顶点的数量。
             每个元素表示对应顶点的曲率。
-        - mesh: pymeshlab格式ms
+        - new_vertex (numpy.ndarray): 新的顶点数组，形状为 (n,)，其中 n 是顶点的数量。
+        
 
     """
     ms.compute_curvature_principal_directions_per_vertex()
     curr_ms = ms.current_mesh()
     vertex_colors =curr_ms.vertex_color_matrix()*255
     vertex_curvature=curr_ms.vertex_scalar_array()
-    return vertex_colors,vertex_curvature,ms
+    new_vertex  =curr_ms.vertex_matrix()
+    return vertex_colors,vertex_curvature,new_vertex
 
 
 def compute_curvature_by_igl(v,f,max_curvature=True):
