@@ -131,7 +131,7 @@ setup(
         'numba',
     ],
     #data_files=find_files("sindre\Resources"),
-    url='https://github.com/SindreYang/sindre',
+    url='https://github.com/SindreYang/Sindre',
     license='GNU General Public License v3.0',
     author='SindreYang',
     description='自用脚本库',
@@ -139,10 +139,12 @@ setup(
     long_description_content_type='text/markdown',
     python_requires=">=3.8",
     include_package_data = True, #如果有符合MANIFEST.in的文件，会被打包
-    options={
-        'bdist_wheel': {
-            'python_tag': python_version,
-            'plat_name': platform_tag
-        }
-    }
+    
+    # 开放源码，不再针对平台，版本单独编译。
+    # options={
+    #     'bdist_wheel': {
+    #         'python_tag': python_version,
+    #         'plat_name': platform_tag
+    #     }
+    # }
 )

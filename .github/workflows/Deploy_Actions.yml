@@ -15,7 +15,7 @@ jobs:
     runs-on: windows-latest
     strategy:
       matrix:
-        python-version: ["3.8","3.9","3.10","3.11","3.12"]
+        python-version: ["3.12"]
     steps:
 
       - name: Set package version from release tag
@@ -48,39 +48,39 @@ jobs:
 
 
 
-  deploy_linux_pypi:
-    runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        python-version: ["3.8","3.9","3.10","3.11","3.12"]
-    steps:
-      - name: Checkout main
-        uses: actions/checkout@v3
+  # deploy_linux_pypi:
+  #   runs-on: ubuntu-latest
+  #   strategy:
+  #     matrix:
+  #       python-version: ["3.8","3.9","3.10","3.11","3.12"]
+  #   steps:
+  #     - name: Checkout main
+  #       uses: actions/checkout@v3
 
 
-      - name: Set package version from release tag
-        run: echo "PACKAGE_VERSION=${{ github.event.release.tag_name }}" >> $GITHUB_ENV
+  #     - name: Set package version from release tag
+  #       run: echo "PACKAGE_VERSION=${{ github.event.release.tag_name }}" >> $GITHUB_ENV
 
-      - name: Debug Environment Variable
-        run: echo "PACKAGE_VERSION is ${{ env.PACKAGE_VERSION }}"
+  #     - name: Debug Environment Variable
+  #       run: echo "PACKAGE_VERSION is ${{ env.PACKAGE_VERSION }}"
       
-      - name: Set up Python  ${{ matrix.python-version }}
-        uses: actions/setup-python@v4
-        with:
-          python-version:  ${{ matrix.python-version }}
+  #     - name: Set up Python  ${{ matrix.python-version }}
+  #       uses: actions/setup-python@v4
+  #       with:
+  #         python-version:  ${{ matrix.python-version }}
            
 
-      - name: Build Wheel
-        run: |
-            python -m pip install cython wheel setuptools
-            python setup.py bdist_wheel 
-            ls dist/dist/
+  #     - name: Build Wheel
+  #       run: |
+  #           python -m pip install cython wheel setuptools
+  #           python setup.py bdist_wheel 
+  #           ls dist/dist/
 
-      - name: Upload build artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: build_linux_${{ matrix.python-version }}
-          path: dist/dist/*.whl
+  #     - name: Upload build artifacts
+  #       uses: actions/upload-artifact@v4
+  #       with:
+  #         name: build_linux_${{ matrix.python-version }}
+  #         path: dist/dist/*.whl
 
 
 
@@ -142,8 +142,7 @@ jobs:
         - name: Deploy
           uses: peaceiris/actions-gh-pages@v3
           with:
-            deploy_key: ${{secrets.SSH_KEY}}
-            external_repository: SindreYang/sindre
+            github_token: ${{ secrets.GITHUB_TOKEN }}
             publish_branch: gh-pages
             publish_dir: ./site
 
