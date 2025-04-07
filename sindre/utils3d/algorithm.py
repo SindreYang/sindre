@@ -690,7 +690,39 @@ def fix_floater_by_meshlab(vertices,faces,nbfaceratio=0.1,nonclosedonly=False) -
     mesh.apply_filter("meshing_remove_selected_vertices_and_faces")
     return vedo.Mesh(mesh.current_mesh())
 
-def isotropic_remeshing_pymeshlab(vertices,faces, target_edge_length=0.5, iterations=1)-> vedo.Mesh:
+
+
+
+def isotropic_remeshing_by_acvd(vedo_mesh, target_num=10000):
+    """
+    对给定的 vedo 网格进行均质化处理，使其达到指定的目标面数。
+
+    该函数使用 pyacvd 库中的 Clustering 类对输入的 vedo 网格进行处理。
+    如果网格的顶点数小于等于目标面数，会先对网格进行细分，然后进行聚类操作，
+    最终生成一个面数接近目标面数的均质化网格。
+
+    Args:
+        vedo_mesh (vedo.Mesh): 输入的 vedo 网格对象，需要进行均质化处理的网格。
+        target_num (int, optional): 目标面数，即经过处理后网格的面数接近该值。
+            默认为 10000。
+
+    Returns:
+        vedo.Mesh: 经过均质化处理后的 vedo 网格对象，其面数接近目标面数。
+
+    Notes:
+        该函数依赖于 pyacvd 和 pyvista 库，使用前请确保这些库已正确安装。
+        
+    """
+    from pyacvd import Clustering
+    from pyvista import wrap
+    print(" Clustering target_num:{}".format(target_num))
+    clus = Clustering(wrap(vedo_mesh.dataset))
+    if vedo_mesh.npoints<=target_num:
+        clus.subdivide(3)
+    clus.cluster(target_num, maxiter=100, iso_try=10, debug=False)
+    return vedo.Mesh(clus.create_mesh())
+
+def isotropic_remeshing_by_meshlab(vertices,faces, target_edge_length=0.5, iterations=1)-> vedo.Mesh:
     """
     使用 PyMeshLab 实现网格均匀化。
 
@@ -1430,34 +1462,6 @@ def array2voxel(voxel_array):
 
 
 
-def homogenizing_mesh(vedo_mesh, target_num=10000):
-    """
-    对给定的 vedo 网格进行均质化处理，使其达到指定的目标面数。
-
-    该函数使用 pyacvd 库中的 Clustering 类对输入的 vedo 网格进行处理。
-    如果网格的顶点数小于等于目标面数，会先对网格进行细分，然后进行聚类操作，
-    最终生成一个面数接近目标面数的均质化网格。
-
-    Args:
-        vedo_mesh (vedo.Mesh): 输入的 vedo 网格对象，需要进行均质化处理的网格。
-        target_num (int, optional): 目标面数，即经过处理后网格的面数接近该值。
-            默认为 10000。
-
-    Returns:
-        vedo.Mesh: 经过均质化处理后的 vedo 网格对象，其面数接近目标面数。
-
-    Notes:
-        该函数依赖于 pyacvd 和 pyvista 库，使用前请确保这些库已正确安装。
-        
-    """
-    from pyacvd import Clustering
-    from pyvista import wrap
-    print(" Clustering target_num:{}".format(target_num))
-    clus = Clustering(wrap(vedo_mesh.dataset))
-    if vedo_mesh.npoints<=target_num:
-        clus.subdivide(3)
-    clus.cluster(target_num, maxiter=100, iso_try=10, debug=False)
-    return vedo.Mesh(clus.create_mesh())
 
 
 
@@ -2295,3 +2299,63 @@ def resample_mesh(vertices, faces, density=1, num_samples=None):
 
     return P
     
+    
+    
+    
+    
+def subdivide_loop_by_trimesh(
+    vertices,
+    faces,
+    iterations=5,
+    max_face_num=100000,
+    face_mask=None,
+):
+    """
+    
+    对给定的顶点和面片进行 Loop 细分。
+
+    Args:
+        vertices (array-like): 输入的顶点数组，形状为 (n, 3)，其中 n 是顶点数量。
+        faces (array-like): 输入的面片数组，形状为 (m, 3)，其中 m 是面片数量。
+        iterations (int, optional): 细分的迭代次数，默认为 5。
+        max_face_num (int, optional): 细分过程中允许的最大面片数量，达到此数量时停止细分，默认为 100000。
+        face_mask (array-like, optional): 面片掩码数组，用于指定哪些面片需要进行细分，默认为 None。
+
+    Returns:
+        tuple: 包含细分后的顶点数组、细分后的面片数组和面片掩码数组的元组。
+
+    Notes:
+        以下是一个示例代码，展示了如何使用该函数：
+        ```python
+        # 1. 获取每个点的最近表面点及对应面
+        face_indices = set()
+        kdtree = cKDTree(mesh.vertices)
+        for p in pts:
+            # 查找半径2mm内的顶点
+            vertex_indices = kdtree.query_ball_point(p, r=1.0)
+            for v_idx in vertex_indices:
+                # 获取包含这些顶点的面片
+                faces = mesh.vertex_faces[v_idx]
+                faces = faces[faces != -1]  # 去除无效索引
+                face_indices.update(faces.tolist())
+        face_indices = np.array([[i] for i in list(face_indices)])
+        new_vertices, new_face, _ = subdivide_loop(v, f, face_mask=face_indices)
+        ```
+    
+    
+    """
+    import trimesh
+    current_v = np.asarray(vertices)
+    current_f = np.asarray(faces)
+    if face_mask is not None:
+        face_mask = np.asarray(face_mask).reshape(-1)
+
+    for _ in range(iterations):
+        current_v, current_f,face_mask_dict=trimesh.remesh.subdivide(current_v,current_f,face_mask, return_index=True)
+        face_mask = np.asarray(np.concatenate(list(face_mask_dict.values()))).reshape(-1)
+        # 检查停止条件
+        if len(current_f)>max_face_num:
+            print(f"subdivide: {len(current_f)} >{ max_face_num},break")
+            break
+        
+    return current_v, current_f,face_mask

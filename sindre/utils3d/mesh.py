@@ -79,8 +79,100 @@ class SindreMesh:
             self.vertex_normals =self.any_mesh.vertex_normals
             self.face_normals =self.any_mesh.cell_normals
             self.vertex_colors = self.any_mesh.pointdata["PointsRGBA"]
+            
+        elif "OCC" in inputobj_type:
+            from OCC.Core.BRepMesh import BRepMesh_IncrementalMesh
+            from OCC.Core.TopExp import TopExp_Explorer
+            from OCC.Core.TopAbs import TopAbs_FACE
+            from OCC.Core.TopLoc import TopLoc_Location
+            from OCC.Core.TopoDS import topods
+            from OCC.Core.BRep import BRep_Tool
+            
+            BRepMesh_IncrementalMesh(self.any_mesh, 0.1).Perform()
+            vertices = []
+            faces = []
+            vertex_index_map = {}
+            current_index = 0
+            explorer = TopExp_Explorer(self.any_mesh, TopAbs_FACE)
+            while explorer.More():
+                face = topods.Face(explorer.Current())
+                location = TopLoc_Location()
+                triangulation = BRep_Tool.Triangulation(face, location)
 
+                if triangulation:
+                    nb_nodes = triangulation.NbNodes()
+                    for i in range(1, nb_nodes + 1):
+                        pnt = triangulation.Node(i)
+                        vertex = (pnt.X(), pnt.Y(), pnt.Z())
+                        if vertex not in vertex_index_map:
+                            vertex_index_map[vertex] = current_index
+                            vertices.append(vertex)
+                            current_index += 1
+                    triangles = triangulation.Triangles()
+                    for i in range(1, triangles.Length() + 1):
+                        triangle = triangles.Value(i)
+                        n1, n2, n3 = triangle.Get()
+                        face_indices = [
+                            vertex_index_map[(triangulation.Node(n1).X(), triangulation.Node(n1).Y(), triangulation.Node(n1).Z())],
+                            vertex_index_map[(triangulation.Node(n2).X(), triangulation.Node(n2).Y(), triangulation.Node(n2).Z())],
+                            vertex_index_map[(triangulation.Node(n3).X(), triangulation.Node(n3).Y(), triangulation.Node(n3).Z())]
+                        ]
+                        faces.append(face_indices)
+                explorer.Next()
+            self.vertices = np.array(vertices, dtype=np.float64)
+            self.faces = np.array(faces, dtype=np.int64)
+        else:
+            print("不支持类型：",inputobj_type)
+    @property
+    def to_occ(self):
+        try:
+            from OCC.Core.BRepBuilderAPI import (
+                BRepBuilderAPI_MakePolygon,
+                BRepBuilderAPI_MakeFace,
+                BRepBuilderAPI_Sewing,
+                BRepBuilderAPI_MakeSolid,
+            )
+            from OCC.Core.gp import gp_Pnt
+            from OCC.Core.BRepMesh import BRepMesh_IncrementalMesh
+            from OCC.Core.TopAbs import TopAbs_SHELL
+            from OCC.Core.TopoDS import topods
+        except ImportError:
+            raise f"请安装 ：conda install -c conda-forge pythonocc-core=7.8.1.1"
+        vertices =self.vertices
+        faces =self.faces
+        sewing = BRepBuilderAPI_Sewing(0.1)
+        for face_indices in faces:
+            polygon = BRepBuilderAPI_MakePolygon()
+            for idx in face_indices:
+                x = float(vertices[idx][0])
+                y = float(vertices[idx][1])
+                z = float(vertices[idx][2])
+                polygon.Add(gp_Pnt(x, y, z))  #
+            polygon.Close()
+            wire = polygon.Wire()
+            face_maker = BRepBuilderAPI_MakeFace(wire)
+            if face_maker.IsDone():
+                sewing.Add(face_maker.Face())
+            else:
+                raise ValueError("无法从顶点创建面")
+        sewing.Perform()
+        sewed_shape = sewing.SewedShape()
+        if sewed_shape.ShapeType() == TopAbs_SHELL:
+            shell = topods.Shell(sewed_shape)
+            solid_maker = BRepBuilderAPI_MakeSolid(shell)
+            if solid_maker.IsDone():
+                solid = solid_maker.Solid()
+                # 网格化确保几何质量
+                BRepMesh_IncrementalMesh(solid, 0.1).Perform()
+                return solid 
+            else:
+                print("警告：Shell无法生成Solid，返回Shell")
+                return shell  
+        else:
+            print("返回原始缝合结果（如Compound）")
+            return sewed_shape 
 
+    @property
     def to_trimesh(self):
         """转换成trimesh"""
         import trimesh
@@ -93,7 +185,7 @@ class SindreMesh:
         if self.vertex_colors is not None:
             mesh.visual.vertex_colors = self.vertex_colors
         return mesh
-
+    @property
     def to_meshlab(self):
         """转换成meshlab"""
         import pymeshlab
@@ -103,7 +195,7 @@ class SindreMesh:
             face_matrix=self.faces,
         ))
         return ms
-
+    @property
     def to_vedo(self):
         """转换成vedo"""
         from vedo import Mesh
@@ -111,7 +203,7 @@ class SindreMesh:
         if self.vertex_colors is not None:
             vedo_mesh.pointcolors = self.vertex_colors
         return vedo_mesh
-
+    @property
     def to_open3d(self):
         """转换成open3d"""
         import open3d as o3d
@@ -123,7 +215,7 @@ class SindreMesh:
         if self.vertex_colors is not None:
             mesh.vertex_colors = o3d.utility.Vector3dVector(self.vertex_colors[...,:3]/255.0)
         return mesh
-
+    @property
     def to_dict(self):
         """将属性转换成python字典"""
         return {
@@ -132,12 +224,12 @@ class SindreMesh:
             'vertex_colors': self.vertex_colors if self.vertex_colors is not None else [],
             'vertex_normals': self.vertex_normals if self.vertex_normals is not None else []
         }
-
+    @property
     def to_json(self):
         """转换成json"""
-        return json.dumps(self.to_dict(),cls=NpEncoder)
+        return json.dumps(self.to_dict,cls=NpEncoder)
 
-    
+    @property
     def to_torch(self,device="cpu"):
         """将顶点&面片转换成torch形式
 
@@ -154,7 +246,7 @@ class SindreMesh:
         else:
             vertex_colors = None
         return vertices,faces,vertex_normals,vertex_colors
-        
+    @property
     def to_pytorch3d(self,device="cpu"):
         """转换成pytorch3d形式
 
@@ -183,7 +275,7 @@ class SindreMesh:
         """
         import vedo
         from sindre.utils3d.algorithm import labels2colors
-        mesh_vd=self.to_vedo()
+        mesh_vd=self.to_vedo
         show_list=[]+show_append
         if labels is not None:
             labels = labels.reshape(-1)
@@ -274,6 +366,32 @@ class SindreMesh:
         return len(self.get_edges) == 2*len(unique_edges)
     
     
+    def subdivison(self,face_mask,iterations=3,method="mid"):
+        """局部细分"""
+        
+        assert len(face_mask)==len(self.faces),"face_mask长度不匹配:要求每个面片均有对应索引"
+        import pymeshlab
+        if int(face_mask).max()!=1:
+            # # 索引值转bool值
+            face_mask = np.any(np.isin(self.faces, face_mask), axis=1)
+        ms = pymeshlab.MeshSet()
+        ms.add_mesh(pymeshlab.Mesh(vertex_matrix=self.vertices, face_matrix=self.faces,f_scalar_array=face_mask))
+        ms.compute_selection_by_condition_per_face(condselect="fq == 1")
+            
+        if method == "mid":
+            ms.meshing_surface_subdivision_midpoint(
+                iterations=iterations,
+                threshold=pymeshlab.PercentageValue(1e-4),
+                selected=True  
+            )
+        else:
+            ms.meshing_surface_subdivision_ls3_loop(
+                iterations=iterations,
+                threshold=pymeshlab.PercentageValue(1e-4),
+                selected=True  
+            )
+        self.any_mesh=ms
+        self._convert()
     
 
 
@@ -361,7 +479,7 @@ class SindreMesh:
 
     def get_curvature(self):
         """会自动去除未使用点"""
-        ms = self.to_meshlab()
+        ms = self.to_meshlab
         ms.compute_curvature_principal_directions_per_vertex()
         mmesh = ms.current_mesh()
         self.vertex_colors =(mmesh.vertex_color_matrix()*255)[...,:3]
@@ -395,7 +513,6 @@ class SindreMesh:
         return  self.vertices[self.faces]
     
    
-    
     @cached_property
     def faces_area(self):
         """
@@ -466,7 +583,7 @@ class SindreMesh:
     @cached_property
     def get_quality(self):
         """网格质量检测"""
-        mesh = self.to_open3d()
+        mesh = self.to_open3d
         edge_manifold = mesh.is_edge_manifold(allow_boundary_edges=True)
         edge_manifold_boundary = mesh.is_edge_manifold(allow_boundary_edges=False)
         vertex_manifold = mesh.is_vertex_manifold()
