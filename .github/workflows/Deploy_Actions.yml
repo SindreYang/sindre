@@ -89,7 +89,7 @@ jobs:
 
 
   upload_wheel:
-    needs: [deploy_linux_pypi,deploy_win_amd64_pypi]
+    needs: [deploy_win_amd64_pypi]
     runs-on: ubuntu-latest
     steps:
 
