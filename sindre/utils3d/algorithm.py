@@ -80,6 +80,24 @@ def labels2colors(labels:np.array):
     return color_labels
 
 
+
+def color_mapping(value,vmin=-1, vmax=1):
+    """将向量映射为颜色，遵从vcg映射标准"""
+    import matplotlib.colors as mcolors
+    colors = [
+        (1.0, 0.0, 0.0, 1.0),  # 红
+        (1.0, 1.0, 0.0, 1.0),  # 黄
+        (0.0, 1.0, 0.0, 1.0),  # 绿
+        (0.0, 1.0, 1.0, 1.0),  # 青
+        (0.0, 0.0, 1.0, 1.0)   # 蓝
+    ]
+    cmap = mcolors.LinearSegmentedColormap.from_list("VCG", colors)
+    norm = mcolors.Normalize(vmin=vmin, vmax=vmax)
+    value = norm(np.asarray(value))
+    rgba = cmap(value)
+    return (rgba * 255).astype(np.uint8)
+
+
 def vertex_labels_to_face_labels(faces: Union[np.array, list], vertex_labels: Union[np.array, list]) -> np.array:
     """
         将三角网格的顶点标签转换成面片标签，存在一个面片，多个属性，则获取出现最多的属性。
@@ -261,11 +279,8 @@ def apply_transform(vertices: np.array, transform: np.array) -> np.array:
 
     # 在每个顶点的末尾添加一个维度为1的数组，以便进行齐次坐标转换
     vertices = np.concatenate([vertices, np.ones_like(vertices[..., :1])], axis=-1)
-    vertices = vertices @ transform.T
-    # 移除结果中多余的维度，只保留前3列，即三维坐标
-    vertices = vertices[..., :3]
-
-    return vertices
+    vertices = vertices @ transform
+    return vertices[..., :3]
 
 
 def restore_transform(vertices: np.array, transform: np.array) -> np.array:
@@ -281,16 +296,14 @@ def restore_transform(vertices: np.array, transform: np.array) -> np.array:
 
     """
     # 得到转换矩阵的逆矩阵
-    inv_transform = np.linalg.inv(transform.T)
+    inv_transform = np.linalg.inv(transform)
 
     # 将经过转换后的顶点坐标乘以逆矩阵
-    vertices_restored = np.concatenate([vertices, np.ones_like(vertices[..., :1])], axis=-1) @ inv_transform
-
-    # 去除齐次坐标
-    vertices_restored = vertices_restored[:, :3]
+    vertices_restored = np.concatenate([vertices, np.ones_like(vertices[..., :1])], axis=-1)
+    vertices_restored = vertices_restored @ inv_transform
 
     # 最终得到还原后的顶点坐标 vertices_restored
-    return vertices_restored
+    return  vertices_restored[:, :3]
 
 
 
@@ -669,26 +682,6 @@ def simplify_by_meshlab(vertices,faces, max_facenum: int = 30000) ->vedo.Mesh:
     return vedo.Mesh(mesh.current_mesh())
 
 
-def fix_floater_by_meshlab(vertices,faces,nbfaceratio=0.1,nonclosedonly=False) -> vedo.Mesh:
-    """移除网格中的浮动小组件（小面积不连通部分）。
-
-    Args:
-        mesh (pymeshlab.MeshSet): 输入的网格模型。
-        nbfaceratio (float): 面积比率阈值，小于该比率的部分将被移除。
-        nonclosedonly (bool): 是否仅移除非封闭部分。
-
-    Returns:
-        pymeshlab.MeshSet: 移除浮动小组件后的网格模型。
-    """
-    import pymeshlab
-    
-    mesh = pymeshlab.MeshSet()
-    mesh.add_mesh(pymeshlab.Mesh(vertex_matrix=vertices, face_matrix=faces))
-    mesh.apply_filter("compute_selection_by_small_disconnected_components_per_face",
-                      nbfaceratio=nbfaceratio, nonclosedonly=nonclosedonly)
-    mesh.apply_filter("compute_selection_transfer_face_to_vertex", inclusive=False)
-    mesh.apply_filter("meshing_remove_selected_vertices_and_faces")
-    return vedo.Mesh(mesh.current_mesh())
 
 
 
@@ -722,7 +715,7 @@ def isotropic_remeshing_by_acvd(vedo_mesh, target_num=10000):
     clus.cluster(target_num, maxiter=100, iso_try=10, debug=False)
     return vedo.Mesh(clus.create_mesh())
 
-def isotropic_remeshing_by_meshlab(vertices,faces, target_edge_length=0.5, iterations=1)-> vedo.Mesh:
+def isotropic_remeshing_by_meshlab(mesh, target_edge_length=0.5, iterations=1)-> vedo.Mesh:
     """
     使用 PyMeshLab 实现网格均匀化。
 
@@ -734,10 +727,8 @@ def isotropic_remeshing_by_meshlab(vertices,faces, target_edge_length=0.5, itera
     Returns:
         均匀化后的网格对象。
     """
-    
     import pymeshlab
-    mesh = pymeshlab.MeshSet()
-    mesh.add_mesh(pymeshlab.Mesh(vertex_matrix=vertices, face_matrix=faces))
+
     # 应用 Isotropic Remeshing 过滤器
     mesh.apply_filter(
         "meshing_isotropic_explicit_remeshing",
@@ -746,28 +737,30 @@ def isotropic_remeshing_by_meshlab(vertices,faces, target_edge_length=0.5, itera
     )
 
     # 返回处理后的网格
-    return vedo.Mesh(mesh.current_mesh())
+    return mesh
 
-
-def fix_redundant_by_meshlab(ms):
-    """
-    处理冗余元素，如合并临近顶点、移除重复面和顶点等。
+def fix_floater_by_meshlab(mesh,nbfaceratio=0.1,nonclosedonly=False) -> vedo.Mesh:
+    """移除网格中的浮动小组件（小面积不连通部分）。
 
     Args:
-        ms: pymeshlab.MeshSet 对象
+        mesh (pymeshlab.MeshSet): 输入的网格模型。
+        nbfaceratio (float): 面积比率阈值，小于该比率的部分将被移除。
+        nonclosedonly (bool): 是否仅移除非封闭部分。
 
     Returns:
-        pymeshlab.MeshSet 对象
+        pymeshlab.MeshSet: 移除浮动小组件后的网格模型。
     """
-    ms.apply_filter("meshing_merge_close_vertices")
-    ms.apply_filter("meshing_remove_duplicate_faces")
-    ms.apply_filter("meshing_remove_duplicate_vertices")
-    ms.apply_filter("meshing_remove_unreferenced_vertices")
-    return ms
+
+    mesh.apply_filter("compute_selection_by_small_disconnected_components_per_face",
+                      nbfaceratio=nbfaceratio, nonclosedonly=nonclosedonly)
+    mesh.apply_filter("compute_selection_transfer_face_to_vertex", inclusive=False)
+    mesh.apply_filter("meshing_remove_selected_vertices_and_faces")
+    return mesh
+
 
 def fix_invalid_by_meshlab(ms):
     """
-    清理无效的几何结构，如折叠面、零面积面和未引用的顶点。
+    处理冗余元素，如合移除重复面和顶点等, 清理无效的几何结构，如折叠面、零面积面和未引用的顶点。
 
     Args:
         ms: pymeshlab.MeshSet 对象
@@ -775,14 +768,19 @@ def fix_invalid_by_meshlab(ms):
     Returns:
         pymeshlab.MeshSet 对象
     """
+    ms.apply_filter("meshing_remove_duplicate_faces")
+    ms.apply_filter("meshing_remove_duplicate_vertices")
+    ms.apply_filter("meshing_remove_unreferenced_vertices")
     ms.apply_filter("meshing_remove_folded_faces")
     ms.apply_filter("meshing_remove_null_faces")
     ms.apply_filter("meshing_remove_unreferenced_vertices")
     return ms
 
-def fix_low_qualitys_by_meshlab(ms):
+
+
+def fix_component_by_meshlab(ms):
     """
-    移除低质量的组件，如小的连通分量。
+    移除低质量的组件，如小的连通分量,移除网格中的浮动小组件（小面积不连通部分）。
 
     Args:
         ms: pymeshlab.MeshSet 对象
@@ -791,7 +789,8 @@ def fix_low_qualitys_by_meshlab(ms):
         pymeshlab.MeshSet 对象
     """
     ms.apply_filter("meshing_remove_connected_component_by_diameter")
-    ms.apply_filter("meshing_remove_connected_component_by_face_number", mincomponentsize=10)
+    ms.apply_filter("meshing_remove_connected_component_by_face_number")
+    
     return ms
 
 def fix_topology_by_meshlab(ms):
@@ -1601,7 +1600,7 @@ def compute_curvature_by_meshlab(ms):
     return vertex_colors,vertex_curvature,new_vertex
 
 
-def compute_curvature_by_igl(v,f,max_curvature=True):
+def compute_curvature_by_igl(v,f,max_curvature=False):
     """
     用igl计算平均曲率并归一化
 
@@ -1614,7 +1613,7 @@ def compute_curvature_by_igl(v,f,max_curvature=True):
         - vertex_curvature (numpy.ndarray): 顶点曲率数组，形状为 (n,)，其中 n 是顶点的数量。
             每个元素表示对应顶点的曲率。
             
-    Note:
+    Notes:
         pd1 : #v by 3 maximal curvature direction for each vertex
         pd2 : #v by 3 minimal curvature direction for each vertex
         pv1 : #v by 1 maximal curvature value for each vertex
@@ -1629,8 +1628,7 @@ def compute_curvature_by_igl(v,f,max_curvature=True):
     _, _, K_max, K = igl.principal_curvature(v, f)
     if max_curvature:
         K=K_max
-    K_normalized = (K - K.min()) / (K.max() - K.min())
-    return K_normalized
+    return K
 
 
 def harmonic_by_igl(v,f,map_vertices_to_circle=True):

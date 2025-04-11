@@ -1292,7 +1292,7 @@ class Embedding(PointModule):
 class PointTransformerV3(PointModule):
     def __init__(
         self,
-        in_channels=1,
+        in_channels=6,
         order=("z", "z-trans", "hilbert", "hilbert-trans"),
         stride=(2, 2, 2, 2),
         enc_depths=(2, 2, 2, 6, 2),
@@ -1500,14 +1500,12 @@ class PointTransformerV3(PointModule):
         data_dict.feat = torch.flatten(x, start_dim=0, end_dim=1)
         
         # 生成批次索引: 每个点对应所属的样本批次
-        data_dict.batch = torch.arange(x.shape[0]).repeat_interleave(x.shape[1])
+        data_dict.batch = torch.arange(x.shape[0]).repeat_interleave(x.shape[1]).to(x.device)
         
-        # 构造三维坐标: 添加z轴零值并展平 (B, N, 2) -> (B, N, 3) -> (B*N, 3)
-        data_dict.coord = torch.flatten(
-            torch.cat((p, torch.zeros((p.shape[0], p.shape[1], 1))), dim=-1),
-            start_dim=0, end_dim=1)
+        # 构造三维坐标:  (B, N, 3) -> (B*N, 3)
+        data_dict.coord = torch.flatten(p, start_dim=0, end_dim=1)
         
-        # 设置体素化网格尺寸（单位：米）
+        # 设置体素化网格尺寸
         data_dict.grid_size = 0.01
 
         # 点云处理流程 ----------------------------------------------------------
@@ -1532,16 +1530,14 @@ class PointTransformerV3(PointModule):
         # 解码器处理（非分类模式时启用）：特征上采样/重建
         if not self.cls_mode:
             point = self.dec(point)
-        
-        # 输出重构：将展平的特征恢复为原始输入形状
-        # (B*N, C') -> (B, N, C')
-        y = torch.reshape(point.feat, x.shape)
-        return y
+    
+        return point
     
 if __name__ == "__main__":
     # 示例用法
-    model = PointTransformerV3()
-    x = torch.randn(2, 10000, 6)  # 批次x点数x特征
-    p = torch.randn(2, 10000, 3)  # 坐标
+    model = PointTransformerV3(in_channels=6 ,enable_flash=False,enc_patch_size=(128,128,128,128,128),dec_patch_size=(128,128,128,128)).cuda()
+    #model = PointTransformerV3(in_channels=6 ).cuda()
+    x = torch.randn(2, 10000, 6).cuda()  # 批次x点数x特征
+    p = torch.randn(2, 10000, 3).cuda()  # 坐标
     output = model(x, p)
-    print(f"输出形状: {output.shape}")  # 应保持点数，通道变化
+    print(f"输出形状: {output.feat.shape},{output.batch.shape},{output.coord.shape}, {output.keys()}")  

@@ -100,12 +100,24 @@ def sindre_py2pyd() -> list:
     
 
 sindre_py2pyd()
-
-# 复制资源
+#复制资源
 shutil.copy("README.md","dist/README.md")
 shutil.copy("MANIFEST.in","dist/MANIFEST.in")
-# 切换目录
+#切换目录
 os.chdir("dist")
+
+
+
+""" 开启 -e 需要注释下面
+#sindre_py2pyd()
+# 复制资源
+# shutil.copy("README.md","dist/README.md")
+# shutil.copy("MANIFEST.in","dist/MANIFEST.in")
+# 切换目录
+#os.chdir("dist")
+
+
+"""
 
 
 # 获取系统版本信息

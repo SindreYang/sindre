@@ -1,7 +1,7 @@
 from functools import cached_property,lru_cache
 import numpy as np
 import json
-from sindre.utils3d.algorithm import NpEncoder, compute_curvature_by_igl,harmonic_by_igl,resample_mesh,compute_curvature_by_meshlab
+from sindre.utils3d.algorithm import *
 
 class SindreMesh:
     """三维网格中转类，假设都是三角面片 """
@@ -22,13 +22,102 @@ class SindreMesh:
         self.vertex_colors = None
         self.vertex_normals = None
         self.vertex_curvature =None
+        self.vertex_labels = None
+        self.vertex_kdtree=None
         self.face_normals = None
         self.faces = None
+        self._update()
+        
+    def set_vertex_labels(self,vertex_labels):
+        """设置顶点labels,并自动渲染颜色"""
+        vertex_labels = np.array(vertex_labels).reshape(-1)
+        self.vertex_labels=vertex_labels
+        self.vertex_colors=labels2colors(vertex_labels)[...,:3]
+        
+        
+    def computer_normals(self,force=False):
+        """计算顶点法线及面片法线.force代表是否强制重新计算"""
+        if force:
+            self.vertex_normals =compute_vertex_normals(self.vertices, self.faces)
+            self.face_normals  = compute_face_normals(self.vertices, self.faces)
+        else:    
+            if self.vertex_normals is None:
+                self.vertex_normals =compute_vertex_normals(self.vertices, self.faces)
+            if self.face_normals is None:
+                self.face_normals  = compute_face_normals(self.vertices, self.faces)     
+            
+    def apply_transform_normals(self,mat):
+        """处理顶点法线的变换,顶点法线变换后需要重新计算面片法线"""
+        if mat.shape[0]==4:
+            mat = mat[:3,:3]
+        inv_transpose = np.linalg.inv(mat).T  # 逆转置矩阵
+        self.vertex_normals = (inv_transpose @ self.vertex_normals.T).T
+        norms = np.linalg.norm(self.vertex_normals, axis=1, keepdims=True)
+        norms[norms == 0] = 1e-6  # 防止除零
+        self.vertex_normals /= norms
+        # 将面片法线置为空
+        self.face_normals = None
+        
+    def apply_transform(self,mat):
+        """对顶点应用4*4/3*3变换矩阵"""
+        self.apply_transform_normals(mat)
+        if mat.shape[0]==4:
+            self.vertices = apply_transform(self.vertices,mat)
+        else:
+            """对顶点应用3*3旋转矩阵"""
+            self.apply_transform_normals(mat)
+            self.vertices = (mat @ self.vertices.T).T
+        
+    def apply_inv_transform(self,mat):
+        """对顶点应用4*4/3*3变换矩阵进行逆变换"""
+        mat=np.linalg.inv(mat)
+        self.apply_transform_normals(mat)
+        if mat.shape[0]==4:
+            """对顶点应用4*4变换矩阵的逆变换"""
+            self.vertices = apply_transform(self.vertices,mat)
+        else:
+            """对顶点应用3*3旋转矩阵的逆变换"""
+            self.vertices = (mat @ self.vertices.T).T
+            
+    def shift(self,dxdydz_list):
+        """平移指定量"""
+        self.vertices +=np.array(dxdydz_list) 
+
        
+    
+         
+   
+        
+       
+        
+            
+    def _update(self):
         try:
             self._convert()
         except Exception as e:
             raise RuntimeError(f"转换错误:{e}")
+        # 给定默认颜色
+        if self.vertex_colors is None:
+            self.vertex_colors = np.ones_like(self.vertices)*np.array([255,0,0]).astype(np.uint8)
+        # 给定默认标签
+        if self.vertex_labels is None:
+            self.vertex_labels = np.ones(len(self.vertices))
+        # 给定默认曲率
+        if self.vertex_curvature is None:
+            self.vertex_curvature = np.zeros(len(self.vertices))
+            
+        
+        if len(self.vertex_labels)!=len(self.vertices):
+            print(f"顶点发生改变，标签重新映射{len(self.vertex_labels),len(self.vertices)} ")
+            self.vertex_labels = self.vertex_labels[self.get_near_idx(self.vertices)] 
+            
+        if len(self.vertex_curvature)!=len(self.vertices):
+            print(f"顶点发生改变，曲率重新映射 {len(self.vertex_curvature),len(self.vertices)}")
+            self.vertex_curvature = self.vertex_curvature[self.get_near_idx(self.vertices)] 
+            
+        # 重置kdtree
+        self.vertex_kdtree=None
+    
         
     def _convert(self):
         """将模型转换到类中"""
@@ -48,14 +137,13 @@ class SindreMesh:
         
         # MeshLab 转换
         elif "MeshSet" in inputobj_type:
-            import pymeshlab
             mmesh = self.any_mesh.current_mesh()
             self.vertices = np.asarray(mmesh.vertex_matrix(), dtype=np.float64)
             self.faces = np.asarray(mmesh.face_matrix(), dtype=np.int32)
             self.vertex_normals =np.asarray(mmesh.vertex_normal_matrix(), dtype=np.float64)
             self.face_normals = np.asarray(mmesh.face_normal_matrix(), dtype=np.float64) 
             if mmesh.has_vertex_color():
-                self.vertex_colors = (np.asarray(mmesh.vertex_color_matrix()) * 255).astype(np.uint8)
+                self.vertex_colors = (np.asarray(mmesh.vertex_color_matrix())[...,:3] * 255).astype(np.uint8)
                 
             
         
@@ -69,7 +157,7 @@ class SindreMesh:
             self.face_normals = np.asarray(self.any_mesh.triangle_normals, dtype=np.float64)
             
             if self.any_mesh.has_vertex_colors():
-                self.vertex_colors = (np.asarray(self.any_mesh.vertex_colors) * 255).astype(np.uint8)
+                self.vertex_colors = (np.asarray(self.any_mesh.vertex_colors)[...,:3] * 255).astype(np.uint8)
         
         # Vedo/VTK 转换
         elif "vedo" in inputobj_type or "vtk" in inputobj_type:
@@ -78,7 +166,8 @@ class SindreMesh:
             self.faces = np.asarray(self.any_mesh.cells, dtype=np.int32)
             self.vertex_normals =self.any_mesh.vertex_normals
             self.face_normals =self.any_mesh.cell_normals
-            self.vertex_colors = self.any_mesh.pointdata["PointsRGBA"]
+            if self.any_mesh.pointdata["PointsRGBA"] is not  None:
+                self.vertex_colors = np.asarray(self.any_mesh.pointdata["PointsRGBA"][...,:3], dtype=np.uint8)
             
         elif "OCC" in inputobj_type:
             from OCC.Core.BRepMesh import BRepMesh_IncrementalMesh
@@ -182,26 +271,32 @@ class SindreMesh:
             vertex_normals=self.vertex_normals,
             face_normals=self.face_normals
         )
-        if self.vertex_colors is not None:
-            mesh.visual.vertex_colors = self.vertex_colors
+        mesh.visual.vertex_colors = self.vertex_colors
         return mesh
     @property
     def to_meshlab(self):
         """转换成meshlab"""
         import pymeshlab
         ms = pymeshlab.MeshSet()
-        ms.add_mesh(pymeshlab.Mesh(
-            vertex_matrix=self.vertices,
-            face_matrix=self.faces,
-        ))
+        v_color_matrix = np.hstack([self.vertex_colors/255, np.ones((len(self.vertices), 1),dtype=np.float64)])
+        mesh  =pymeshlab.Mesh(
+            vertex_matrix=np.asarray(self.vertices, dtype=np.float64),
+            face_matrix=np.asarray(self.faces, dtype=np.int32),
+            v_normals_matrix=np.asarray(self.vertex_normals, dtype=np.float64),
+            v_color_matrix=v_color_matrix,
+        )
+        ms.add_mesh(mesh)
         return ms
     @property
     def to_vedo(self):
         """转换成vedo"""
         from vedo import Mesh
         vedo_mesh = Mesh([self.vertices, self.faces])
-        if self.vertex_colors is not None:
-            vedo_mesh.pointcolors = self.vertex_colors
+        vedo_mesh.pointdata["Normals"]=self.vertex_normals
+        vedo_mesh.pointdata["labels"]=self.vertex_labels
+        vedo_mesh.pointdata["curvature"]=self.vertex_curvature
+        vedo_mesh.celldata["Normals"]=self.face_normals
+        vedo_mesh.pointcolors = self.vertex_colors
         return vedo_mesh
     @property
     def to_open3d(self):
@@ -210,19 +305,35 @@ class SindreMesh:
         mesh = o3d.geometry.TriangleMesh()
         mesh.vertices = o3d.utility.Vector3dVector(self.vertices)
         mesh.triangles = o3d.utility.Vector3iVector(self.faces)
-        if self.vertex_normals is not None:
-            mesh.vertex_normals = o3d.utility.Vector3dVector(self.vertex_normals)
-        if self.vertex_colors is not None:
-            mesh.vertex_colors = o3d.utility.Vector3dVector(self.vertex_colors[...,:3]/255.0)
+        mesh.vertex_normals = o3d.utility.Vector3dVector(self.vertex_normals)
+        mesh.vertex_colors = o3d.utility.Vector3dVector(self.vertex_colors[...,:3]/255.0)
         return mesh
+    
+    @property
+    def to_open3d_t(self,device="CPU:0"):
+        """转换成open3d_t"""
+        import open3d as o3d
+        device = o3d.core.Device(device)
+        dtype_f = o3d.core.float32
+        dtype_i = o3d.core.int32
+        mesh = o3d.t.geometry.TriangleMesh(device)
+        mesh.vertex.positions  = o3d.core.Tensor(self.vertices,dtype=dtype_f,device=device)
+        mesh.triangle.indices= o3d.core.Tensor(self.faces,dtype=dtype_i,device=device)
+        mesh.vertex.normals = o3d.core.Tensor(self.vertex_normals,dtype=dtype_f,device=device)
+        mesh.vertex.colors= o3d.core.Tensor(self.vertex_colors[...,:3]/255.0,dtype=dtype_f,device=device)
+        mesh.vertex.labels=o3d.core.Tensor(self.vertex_labels,dtype=dtype_f,device=device)
+        return mesh
+    
     @property
     def to_dict(self):
         """将属性转换成python字典"""
         return {
-            'vertices': self.vertices if self.vertices is not None else [],
-            'faces': self.faces if self.faces is not None else [],
-            'vertex_colors': self.vertex_colors if self.vertex_colors is not None else [],
-            'vertex_normals': self.vertex_normals if self.vertex_normals is not None else []
+            'vertices': self.vertices ,
+            'vertex_colors': self.vertex_colors,
+            'vertex_normals': self.vertex_normals,
+            'vertex_curvature':self.vertex_curvature,
+            'vertex_labels':self.vertex_labels,
+            'faces': self.faces ,
         }
     @property
     def to_json(self):
@@ -237,12 +348,12 @@ class SindreMesh:
             vertices,faces,vertex_normals,vertex_colors: 顶点，面片,法线，颜色（没有则为None)
         """
         import torch
-        vertices= torch.from_numpy(self.vertices).to(device)
-        faces= torch.from_numpy(self.faces).to(device)
+        vertices= torch.from_numpy(self.vertices).to(device,dtype=torch.float32)
+        faces= torch.from_numpy(self.faces).to(device,dtype=torch.float32)
         
-        vertex_normals = torch.from_numpy(self.vertex_normals).to(device)
+        vertex_normals = torch.from_numpy(self.vertex_normals).to(device,dtype=torch.float32)
         if self.vertex_colors is not None:
-            vertex_colors = torch.from_numpy(self.vertex_colors).to(device)
+            vertex_colors = torch.from_numpy(self.vertex_colors).to(device,dtype=torch.int8)
         else:
             vertex_colors = None
         return vertices,faces,vertex_normals,vertex_colors
@@ -255,8 +366,8 @@ class SindreMesh:
         """
         import torch
         from pytorch3d.structures import Meshes
-        vertices= torch.from_numpy(self.vertices).to(device)
-        faces= torch.from_numpy(self.faces).to(device)
+        vertices= torch.from_numpy(self.vertices).to(device,dtype=torch.float32)
+        faces= torch.from_numpy(self.faces).to(device,dtype=torch.float32)
         mesh = Meshes(verts=vertices[None], faces=faces[None])
         return mesh
 
@@ -366,6 +477,26 @@ class SindreMesh:
         return len(self.get_edges) == 2*len(unique_edges)
     
     
+    
+    
+    
+    def get_color_mapping(self,value):
+        """将向量映射为颜色，遵从vcg映射标准"""
+        import matplotlib.colors as mcolors
+        colors = [
+            (1.0, 0.0, 0.0, 1.0),  # 红
+            (1.0, 1.0, 0.0, 1.0),  # 黄
+            (0.0, 1.0, 0.0, 1.0),  # 绿
+            (0.0, 1.0, 1.0, 1.0),  # 青
+            (0.0, 0.0, 1.0, 1.0)   # 蓝
+        ]
+        cmap = mcolors.LinearSegmentedColormap.from_list("VCG", colors)
+        norm = mcolors.Normalize(vmin=-1, vmax=1)
+        value = norm(np.asarray(value))
+        rgba = cmap(value)
+        return (rgba * 255).astype(np.uint8)
+    
+    
     def subdivison(self,face_mask,iterations=3,method="mid"):
         """局部细分"""
         
@@ -451,13 +582,19 @@ class SindreMesh:
         return resample_mesh(vertices=self.vertices,faces=self.faces,density=density,num_samples=num_samples)
     
     
+    def decimate(self,n=10000):
+        """将网格下采样到指定点数，采用面塌陷"""
+        vd_ms= self.to_vedo.decimate(n=n)
+        self.any_mesh=vd_ms
+        self._update()
+        
+    def homogenize(self,n=10000):
+        """ 均匀化网格到指定点数，采用聚类"""
+        self.any_mesh=isotropic_remeshing_by_acvd(self.to_vedo, target_num=n)
+        self._update()
+        
     
-    
-        
-        
 
-
-        
     
     def check(self):
         """检测数据完整性,正常返回True"""
@@ -473,22 +610,53 @@ class SindreMesh:
     
     
     
-    def __repr__(self):
-        return self.get_quality
 
 
     def get_curvature(self):
-        """会自动去除未使用点"""
+        """获取曲率"""
+        vd_ms = self.to_vedo.compute_curvature(method=1)
+        self.vertex_curvature =vd_ms.pointdata["Mean_Curvature"]
+        self.vertex_colors =self.get_color_mapping(self.vertex_curvature)
+        
+    def get_curvature_advanced(self):
+        """获取更加精确曲率,但要求网格质量"""
+        try:
+            # 限制太多，舍弃
+            assert self.npoints<100000,"顶点必须小于10W"
+            assert len(self.get_non_manifold_edges)==0,"存在非流形"
+            assert self._count_connected_components()[0]==1,"连通体数量应为1"
+            ms = self.to_meshlab
+            ms.compute_curvature_principal_directions_per_vertex(autoclean=False)
+            mmesh = ms.current_mesh()
+            self.vertex_colors =(mmesh.vertex_color_matrix()*255)[...,:3]
+            self.vertex_curvature =mmesh.vertex_scalar_array()
+        except Exception as e:
+            print(f"无法使用使用meshlab计算主曲率,{e}")
+            self.vertex_curvature =compute_curvature_by_igl(self.vertices,self.faces,False)
+            self.vertex_colors =self.get_color_mapping(self.vertex_curvature)
+    
+            
+    def get_near_idx(self,query_vertices):
+        """获取最近索引"""
+        if self.vertex_kdtree is None:
+            self.vertex_kdtree= KDTree( self.vertices)
+        _,idx = self.vertex_kdtree.query(query_vertices,workers=-1)
+        return idx
+            
+        
+        
+        
+    def remesh(self):
         ms = self.to_meshlab
-        ms.compute_curvature_principal_directions_per_vertex()
-        mmesh = ms.current_mesh()
-        self.vertex_colors =(mmesh.vertex_color_matrix()*255)[...,:3]
-        self.vertex_curvature =mmesh.vertex_scalar_array()
-        self.vertices=mmesh.vertex_matrix()
-        self.vertex_normals =np.asarray(mmesh.vertex_normal_matrix(), dtype=np.float64)
-        self.face_normals = np.asarray(mmesh.face_normal_matrix(), dtype=np.float64) 
-        self.faces = np.asarray(mmesh.face_matrix(), dtype=np.int32)
-        return self
+        # 去除较小连通体
+        fix_component_by_meshlab(ms)
+        # 先修复非流形
+        fix_topology_by_meshlab(ms)
+        # 清理无效结构
+        fix_invalid_by_meshlab(ms)
+        # 更新信息
+        self.any_mesh=ms
+        self._update()
 
     
     @lru_cache(maxsize=None)
@@ -581,8 +749,38 @@ class SindreMesh:
         return edges
         
     @cached_property
-    def get_quality(self):
+    def get_non_manifold_edges(self):
+        # 提取有效边并排序
+        edges =self.get_edges
+        valid_edges = edges[edges[:,0] != edges[:,1]]
+        edges_sorted = np.sort(valid_edges, axis=1)
+        unique_edges, counts = np.unique(edges_sorted, axis=0, return_counts=True)
+        # 返回非流形边
+        return unique_edges[counts >= 3]
+    
+
+    def __repr__(self):
         """网格质量检测"""
+
+        stats = [
+            "\033[91m\t网格质量检测(numpy): \033[0m",
+            f"\033[94m顶点数:             {len(self.vertices)} \033[0m",
+            f"\033[94m面片数:             {len(self.faces) }\033[0m",
+            f"\033[94m网格水密(闭合):     {self._is_watertight()}\033[0m",
+            f"\033[94m连通体数量：        {self._count_connected_components()[0]}\033[0m",
+            f"\033[94m未使用顶点:         {self._count_unused_vertices()}\033[0m",
+            f"\033[94m重复顶点:           {self._count_duplicate_vertices()}\033[0m",
+            f"\033[94m网格退化:           {self._count_degenerate_faces()}\033[0m",
+            f"\033[94m法线异常:           {np.isnan(self.vertex_normals).any()}\033[0m",
+            f"\033[94m边流形:             {len(self.get_non_manifold_edges)==0}\033[0m",
+        ]
+
+        return "\n".join(stats)
+    
+    
+    
+    def print_o3d(self):
+        """使用open3d网格质量检测"""
         mesh = self.to_open3d
         edge_manifold = mesh.is_edge_manifold(allow_boundary_edges=True)
         edge_manifold_boundary = mesh.is_edge_manifold(allow_boundary_edges=False)
@@ -592,7 +790,7 @@ class SindreMesh:
 
 
         stats = [
-            "\033[91m\t网格质量检测: \033[0m",
+            "\033[91m\t网格质量检测(open3d): \033[0m",
             f"\033[94m顶点数:             {len(self.vertices) if self.vertices is not None else 0}\033[0m",
             f"\033[94m面片数:             {len(self.faces) if self.faces is not None else 0}\033[0m",
             f"\033[94m网格水密(闭合):     {self._is_watertight()}\033[0m",
@@ -607,7 +805,8 @@ class SindreMesh:
             f"\033[94m可定向:             {orientable}\033[0m",
         ]
 
-        return "\n".join(stats)
+        print("\n".join(stats))
+
 
 
 
