@@ -4,13 +4,7 @@ import torch.nn.functional as F
 import numpy as np
 
 
-def pc_normalize(pc):
-    l = pc.shape[0]
-    centroid = np.mean(pc, axis=0)
-    pc = pc - centroid
-    m = np.max(np.sqrt(np.sum(pc**2, axis=1)))
-    pc = pc / m
-    return pc
+
 
 def square_distance(src, dst):
     """
@@ -360,4 +354,6 @@ def sdf2mesh_by_diso(sdf,diffdmc=None ,deform=None,return_quads=False, normalize
         sdf*=-1
     v, f = diffdmc(sdf, deform, return_quads=return_quads, normalize=normalize, isovalue=isovalue) 
     return v,f
+
+
 
