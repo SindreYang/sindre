@@ -30,9 +30,8 @@ class SindreMesh:
         
     def set_vertex_labels(self,vertex_labels):
         """设置顶点labels,并自动渲染颜色"""
-        vertex_labels = np.array(vertex_labels).reshape(-1)
-        self.vertex_labels=vertex_labels
-        self.vertex_colors=labels2colors(vertex_labels)[...,:3]
+        self.vertex_labels=np.array(vertex_labels).reshape(-1,1)
+        self.vertex_colors=labels2colors(self.vertex_labels)[...,:3]
         
         
     def computer_normals(self,force=False):
@@ -50,34 +49,43 @@ class SindreMesh:
         """处理顶点法线的变换,顶点法线变换后需要重新计算面片法线"""
         if mat.shape[0]==4:
             mat = mat[:3,:3]
-        inv_transpose = np.linalg.inv(mat).T  # 逆转置矩阵
-        self.vertex_normals = (inv_transpose @ self.vertex_normals.T).T
+        # 逆转置矩阵
+        inv_transpose = np.linalg.inv(mat).T  
+        self.vertex_normals = np.dot(self.vertex_normals,inv_transpose)
+        # 处理反射变换导致法线反向
+        if np.linalg.det(mat) < 0:
+            self.vertex_normals *= -1 
         norms = np.linalg.norm(self.vertex_normals, axis=1, keepdims=True)
         norms[norms == 0] = 1e-6  # 防止除零
         self.vertex_normals /= norms
-        # 将面片法线置为空
+        # 将面片法线重新计算
         self.face_normals = None
+        self.computer_normals()
         
     def apply_transform(self,mat):
-        """对顶点应用4*4/3*3变换矩阵"""
-        self.apply_transform_normals(mat)
+        """对顶点应用4x4/3x3变换矩阵"""
         if mat.shape[0]==4:
             self.vertices = apply_transform(self.vertices,mat)
         else:
             """对顶点应用3*3旋转矩阵"""
-            self.apply_transform_normals(mat)
-            self.vertices = (mat @ self.vertices.T).T
+            self.vertices = np.dot(self.vertices,mat)
+        
+        # 计算法线  
+        self.apply_transform_normals(mat)
         
     def apply_inv_transform(self,mat):
-        """对顶点应用4*4/3*3变换矩阵进行逆变换"""
+        """对顶点应用4x4/3x3变换矩阵进行逆变换"""
         mat=np.linalg.inv(mat)
-        self.apply_transform_normals(mat)
         if mat.shape[0]==4:
             """对顶点应用4*4变换矩阵的逆变换"""
             self.vertices = apply_transform(self.vertices,mat)
         else:
             """对顶点应用3*3旋转矩阵的逆变换"""
-            self.vertices = (mat @ self.vertices.T).T
+            self.vertices =np.dot(self.vertices,mat)
+            
+        # 计算法线  
+        self.apply_transform_normals(mat)
+        
             
     def shift(self,dxdydz_list):
         """平移指定量"""
@@ -372,7 +380,7 @@ class SindreMesh:
         return mesh
 
     
-    def show(self,show_append =[],labels=None,exclude_list=[0]):
+    def show(self,show_append =[],labels=None,exclude_list=[0],create_axes=True):
         """
         渲染展示网格数据，并根据标签添加标记和坐标轴。
 
@@ -380,6 +388,7 @@ class SindreMesh:
             show_append (list) : 需要一起渲染的vedo属性
             labels (numpy.ndarray, optional): 网格顶点的标签数组，默认为None。如果提供，将根据标签为顶点着色，并为每个非排除标签添加标记。
             exclude_list (list, optional): 要排除的标签列表，默认为[0]。列表中的标签对应的标记不会被显示。
+            create_axes: 是否强制绘制世界坐标系。
 
         Returns:
             None: 该方法没有返回值，直接进行渲染展示。
@@ -397,7 +406,8 @@ class SindreMesh:
             self.vertex_colors=colors
             
         show_list.append(mesh_vd)
-        show_list.append(self._create_vedo_axes(mesh_vd))
+        if create_axes:
+            show_list.append(self._create_vedo_axes(mesh_vd))
         
             
         # 渲染

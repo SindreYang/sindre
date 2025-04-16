@@ -310,6 +310,7 @@ class SingleStreamBlock(nn.Module):
     ):
         super().__init__()
         self.hidden_dim = hidden_size
+        self.hidden_size = hidden_size
         self.num_heads = num_heads
         head_dim = hidden_size // num_heads
         self.scale = qk_scale or head_dim ** -0.5
@@ -411,6 +412,19 @@ class Hunyuan3DDiT(nn.Module):
         **kwargs,
     ):
         super().__init__()
+        
+        self.in_channels = in_channels
+        self.context_in_dim = context_in_dim
+        self.hidden_size = hidden_size
+        self.mlp_ratio = mlp_ratio
+        self.num_heads = num_heads
+        self.depth = depth
+        self.depth_single_blocks = depth_single_blocks
+        self.axes_dim = axes_dim
+        self.theta = theta
+        self.qkv_bias = qkv_bias
+        self.time_factor = time_factor
+        self.out_channels = self.in_channels
         # 维度约束验证
         if hidden_size % num_heads != 0:
             raise ValueError(f"隐藏维度{hidden_size}必须能被注意力头数{num_heads}整除")
@@ -418,10 +432,11 @@ class Hunyuan3DDiT(nn.Module):
             raise ValueError(f"轴维度{axes_dim}之和必须等于{hidden_size//num_heads}")
 
         # 初始化核心组件
+        self.hidden_size = hidden_size
+        self.num_heads = num_heads
         self.latent_in = nn.Linear(in_channels, hidden_size)
         self.time_in = MLPEmbedder(256, hidden_size)
         self.cond_in = nn.Linear(context_in_dim, hidden_size)
-        self.guidance_in = MLPEmbedder(256, hidden_size) if guidance_embed else nn.Identity()
 
         # 构建Transformer块
         self.double_blocks = nn.ModuleList([
@@ -480,9 +495,6 @@ class Hunyuan3DDiT(nn.Module):
         
         # 时间与引导嵌入
         vec = self.time_in(timestep_embedding(t, 256, self.time_factor).to(x.dtype))
-        if self.guidance_embed:
-            guidance = kwargs['guidance']
-            vec += self.guidance_in(timestep_embedding(guidance, 256, self.time_factor))
 
         # 双流处理
         for block in self.double_blocks:
@@ -495,3 +507,26 @@ class Hunyuan3DDiT(nn.Module):
         
         # 最终投影
         return self.final_layer(combined[:, cond.shape[1]:], vec)
+    
+    
+    
+    
+if __name__ =="__main__":
+    # 初始化模型
+    model = Hunyuan3DDiT(
+        in_channels=64,
+        context_in_dim=1536,
+        hidden_size=1024,
+        num_heads=16,
+        depth=16,
+        depth_single_blocks=32
+    )
+
+    # 前向传播示例
+    x = torch.randn(2, 16, 64)   # 潜在表示
+    t = torch.rand(2)            # 扩散时间步
+    context = torch.randn(2, 77, 1536)  # 文本嵌入
+    
+    output = model(x, t, contexts={'main': context})
+    print(output.shape)
+    assert x.shape ==output.shape , "输出应该跟输入x形状一致"

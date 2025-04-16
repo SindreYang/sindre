@@ -330,3 +330,34 @@ class PointNetFeaturePropagation(nn.Module):
             new_points = F.relu(bn(conv(new_points)))
         return new_points
 
+
+
+def pca_with_svd(data, n_components=3):
+    """ 使用torch实现pca"""
+    # 数据中心化
+    mean = torch.mean(data, dim=0)
+    centered_data = data - mean
+
+    # 执行 SVD
+    _, _, v = torch.linalg.svd(centered_data, full_matrices=False)
+
+    # 提取前 n_components 个主成分
+    components = v[:n_components]
+    return components
+
+
+
+def sdf2mesh_by_diso(sdf,diffdmc=None ,deform=None,return_quads=False, normalize=True,isovalue=0 ,invert=True):
+    """用pytorch方式给，sdf 转换成 mesh"""
+    device = sdf.device
+    try:
+        from diso import DiffDMC
+    except ImportError:
+        print("请安装 pip install diso")
+    if diffdmc is None:
+        diffdmc =DiffDMC(dtype=torch.float32).to(device)
+    if invert:
+        sdf*=-1
+    v, f = diffdmc(sdf, deform, return_quads=return_quads, normalize=normalize, isovalue=isovalue) 
+    return v,f
+
