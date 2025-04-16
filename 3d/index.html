@@ -8139,7 +8139,7 @@ show([(Mesh([new_vertices, new_face]).c(&quot;green&quot;), Line(pts, lw = 2, c 
 
     <div class="doc doc-contents ">
 
-        <p>对顶点应用4<em>4/3</em>3变换矩阵进行逆变换</p>
+        <p>对顶点应用4x4/3x3变换矩阵进行逆变换</p>
 
     </div>
 
@@ -8156,7 +8156,7 @@ show([(Mesh([new_vertices, new_face]).c(&quot;green&quot;), Line(pts, lw = 2, c 
 
     <div class="doc doc-contents ">
 
-        <p>对顶点应用4<em>4/3</em>3变换矩阵</p>
+        <p>对顶点应用4x4/3x3变换矩阵</p>
 
     </div>
 
@@ -8450,7 +8450,7 @@ Args:
 
 
 <h3 id="utils3d.mesh.SindreMesh.show" class="doc doc-heading">
-            <code class="highlight language-python"><span class="n">show</span><span class="p">(</span><span class="n">show_append</span><span class="o">=</span><span class="p">[],</span> <span class="n">labels</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">exclude_list</span><span class="o">=</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span></code>
+            <code class="highlight language-python"><span class="n">show</span><span class="p">(</span><span class="n">show_append</span><span class="o">=</span><span class="p">[],</span> <span class="n">labels</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">exclude_list</span><span class="o">=</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">create_axes</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span></code>
 
 </h3>
 
@@ -8511,6 +8511,19 @@ Args:
             </td>
             <td>
                   <code>[0]</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td><code>create_axes</code></td>
+            <td>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>是否强制绘制世界坐标系。</p>
+              </div>
+            </td>
+            <td>
+                  <code>True</code>
             </td>
           </tr>
       </tbody>
