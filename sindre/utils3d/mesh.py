@@ -419,7 +419,7 @@ class SindreMesh:
         return mesh
 
     
-    def show(self,show_append =[],labels=None,exclude_list=[0],create_axes=True):
+    def show(self,show_append =[],labels=None,exclude_list=[0],create_axes=True,return_vedo_obj=False):
         """
         渲染展示网格数据，并根据标签添加标记和坐标轴。
 
@@ -428,6 +428,7 @@ class SindreMesh:
             labels (numpy.ndarray, optional): 网格顶点的标签数组，默认为None。如果提供，将根据标签为顶点着色，并为每个非排除标签添加标记。
             exclude_list (list, optional): 要排除的标签列表，默认为[0]。列表中的标签对应的标记不会被显示。
             create_axes: 是否强制绘制世界坐标系。
+            return_vedo_obj: 是否返回vedo显示对象列表；
 
         Returns:
             None: 该方法没有返回值，直接进行渲染展示。
@@ -448,7 +449,9 @@ class SindreMesh:
         if create_axes:
             show_list.append(self._create_vedo_axes(mesh_vd))
         
-            
+
+        if return_vedo_obj:
+            return show_list
         # 渲染
         vp = vedo.Plotter(N=1, title="SindreMesh", bg2="black", axes=3)
         vp.at(0).show(show_list)
