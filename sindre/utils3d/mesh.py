@@ -5,16 +5,18 @@ from sindre.utils3d.algorithm import *
 
 class SindreMesh:
     """三维网格中转类，假设都是三角面片 """
-    def __init__(self, any_mesh=None, vertices=None, faces=None) -> None:
+    def __init__(self, any_mesh=None) -> None:
         # 检查传入的参数
         
-        if any_mesh is None:
-            if any_mesh is None and (vertices is None or faces is None):
-                raise ValueError("必须传入 any_mesh 或者同时传入 vertices 和 faces")
-            else:
-                vertices,faces=np.array(vertices),np.array(faces)
-                import vedo
-                self.any_mesh=vedo.Mesh([vertices,faces])
+        if (isinstance(any_mesh, str) 
+            or  "vtk" in str(type(any_mesh)) 
+            or (isinstance(any_mesh, list)  and len(any_mesh)==2)
+            or "meshlib" in str(type(any_mesh)) 
+            or "meshio" in str(type(any_mesh))
+            ):
+            # 交由vedo处理
+            import vedo
+            self.any_mesh=vedo.Mesh(any_mesh)
         else:
             self.any_mesh = any_mesh
 
@@ -156,6 +158,7 @@ class SindreMesh:
     def _convert(self):
         """将模型转换到类中"""
         inputobj_type = str(type(self.any_mesh))
+
         
         # Trimesh 转换
         if "Trimesh" in inputobj_type or "primitives" in inputobj_type:
@@ -193,8 +196,8 @@ class SindreMesh:
             if self.any_mesh.has_vertex_colors():
                 self.vertex_colors = (np.asarray(self.any_mesh.vertex_colors)[...,:3] * 255).astype(np.uint8)
         
-        # Vedo/VTK 转换
-        elif "vedo" in inputobj_type or "vtk" in inputobj_type:
+        # Vedo 转换
+        elif "vedo" in inputobj_type:
             self.any_mesh.compute_normals()
             self.vertices = np.asarray(self.any_mesh.vertices, dtype=np.float64)
             self.faces = np.asarray(self.any_mesh.cells, dtype=np.int32)
@@ -202,6 +205,8 @@ class SindreMesh:
             self.face_normals =self.any_mesh.cell_normals
             if self.any_mesh.pointdata["PointsRGBA"] is not  None:
                 self.vertex_colors = np.asarray(self.any_mesh.pointdata["PointsRGBA"][...,:3], dtype=np.uint8)
+
+                
         # pytorch3d 转换
         elif "pytorch3d.structures.meshes.Meshes" in inputobj_type:
             self.any_mesh._compute_vertex_normals(True)
@@ -209,7 +214,8 @@ class SindreMesh:
             self.faces = np.asarray(self.any_mesh.faces_padded().cpu().numpy()[0], dtype=np.int32)
             self.vertex_normals =self.any_mesh.verts_normals_padded().cpu().numpy()[0]
             self.face_normals =self.any_mesh.faces_normals_padded().cpu().numpy()[0]
-            self.vertex_colors = np.asarray(self.any_mesh.textures.verts_features_padded().cpu().numpy()[0]*255, dtype=np.uint8)
+            if self.any_mesh.textures is not None:
+                self.vertex_colors = np.asarray(self.any_mesh.textures.verts_features_padded().cpu().numpy()[0]*255, dtype=np.uint8)
 
         
         elif "OCC" in inputobj_type:
@@ -254,7 +260,7 @@ class SindreMesh:
             self.vertices = np.array(vertices, dtype=np.float64)
             self.faces = np.array(faces, dtype=np.int64)
         else:
-            print("不支持类型：",inputobj_type)
+            raise RuntimeError(f"不支持类型：{inputobj_type}")
     @property
     def to_occ(self):
         try:
