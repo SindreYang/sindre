@@ -10,13 +10,13 @@ def angle_axis_np(angle, axis):
         axis (np.ndarray): 旋转轴，形状为 (3,) 的 numpy 数组。
 
     Returns:
-        torch.Tensor: 3x3 的旋转矩阵，数据类型为 torch.float32。
+        np.array: 3x3 的旋转矩阵，数据类型为 np.float32。
     """
     u = axis / np.linalg.norm(axis)
     cosval, sinval = np.cos(angle), np.sin(angle)
     cross_prod_mat = np.array([[0.0, -u[2], u[1]],
-                                [u[2], 0.0, -u[0]],
-                                [-u[1], u[0], 0.0]])
+                                        [u[2], 0.0, -u[0]],
+                                        [-u[1], u[0], 0.0]])
     R =cosval * np.eye(3)+ sinval * cross_prod_mat+ (1.0 - cosval) * np.outer(u, u)
     return R
 
@@ -172,7 +172,7 @@ class Translate_np(object):
 
 
 class RandomDropout_np(object):
-    def __init__(self, max_dropout_ratio=0.5): 
+    def __init__(self, max_dropout_ratio=0.5,return_idx=False): 
         """
         用于随机丢弃点云数据中的点。
 
@@ -181,14 +181,17 @@ class RandomDropout_np(object):
         """
         assert max_dropout_ratio >= 0 and max_dropout_ratio < 1
         self.max_dropout_ratio = max_dropout_ratio
+        self.return_idx = return_idx
 
-    def __call__(self, pc):
+    def __call__(self, pc,):
         dropout_ratio = np.random.random() * self.max_dropout_ratio  
         ran = np.random.random(pc.shape[0])
         # 找出需要保留的点的索引
         keep_idx = np.where(ran > dropout_ratio)[0]
-        pc = pc[keep_idx]
-        return pc
+        if self.return_idx:
+            return keep_idx
+        else:
+            return pc[keep_idx]
 
 
 
@@ -552,7 +555,33 @@ class ToTensor:
         else:
             return points.to(dtype=torch.float32, device=self.device)
 
+class RandomCrop:
+    def __init__(self, radius=0.15):
+        """
+        随机移除一个点周围指定半径内的所有点
+        
+        Args:
+            radius (float): 移除半径，默认为0.15
+        """
+        assert radius >= 0, "Radius must be non-negative"
+        self.radius = radius
 
+    def __call__(self, inputs):
+        from scipy.spatial import KDTree
+        # 提取点云坐标（保留所有通道）
+        points = inputs[..., :3]
+        # 随机选择一个中心点
+        center_idx = np.random.randint(len(points))
+        center = points[center_idx]
+        # 构建KDTree加速搜索
+        tree = KDTree(points)
+        # 查询半径范围内的点索引
+        remove_indices = tree.query_ball_point(center, self.radius)
+        # 生成保留掩码（排除要删除的点）
+        mask = np.ones(len(points), dtype=bool)
+        mask[remove_indices] = False
+        
+        return inputs[mask]
 
 
 

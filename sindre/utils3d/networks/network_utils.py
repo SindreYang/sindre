@@ -117,6 +117,17 @@ def query_ball_point(radius, nsample, xyz, new_xyz):
     return group_idx
 
 
+def query_knn(nsample, xyz, new_xyz, include_self=True):
+    """Find k-NN of new_xyz in xyz"""
+    pad = 0 if include_self else 1
+    sqrdists = square_distance(new_xyz, xyz)  # B, S, N
+    sorted_dist, indices = torch.sort(sqrdists, dim=-1, descending=False)
+    idx = indices[:, :, pad: nsample+pad]
+    #sdist = sorted_dist[:,:,pad: nsample+pad]
+    return idx.int()
+
+
+
 def sample_and_group(npoint, radius, nsample, xyz, points, returnfps=False):
     """
     Input:
@@ -326,18 +337,35 @@ class PointNetFeaturePropagation(nn.Module):
 
 
 
-def pca_with_svd(data, n_components=3):
-    """ 使用torch实现pca"""
-    # 数据中心化
-    mean = torch.mean(data, dim=0)
-    centered_data = data - mean
 
-    # 执行 SVD
-    _, _, v = torch.linalg.svd(centered_data, full_matrices=False)
 
-    # 提取前 n_components 个主成分
-    components = v[:n_components]
-    return components
+
+
+
+def pca_with_svd(data,eps=1e-6):
+    """PCA预测旋转正交矩阵 
+    `
+    def pca_with_svd(data, n_components=3):
+        # 数据中心化
+        mean = torch.mean(data, dim=0)
+        centered_data = data - mean
+        # 执行 SVD
+        _, _, v = torch.linalg.svd(centered_data, full_matrices=False)
+        # 提取前 n_components 个主成分
+        components = v[:n_components]
+        return components
+    `
+
+    """
+    identity = torch.eye(data.size(-1), device=data.device) * eps 
+    cov = torch.matmul(data.transpose(-2, -1), data) / (data.size(-2) - 1)
+    cov_reg = cov + identity
+    _, _, v = torch.linalg.svd(cov_reg, full_matrices=False)
+    rotation = v.transpose(1,2)  
+    det = torch.det(rotation)    # 确保右手坐标系
+    new_last_column = rotation[:, :, -1] * det.unsqueeze(-1)
+    rotation = torch.cat([rotation[:, :, :-1], new_last_column.unsqueeze(-1)], dim=-1)
+    return rotation
 
 
 

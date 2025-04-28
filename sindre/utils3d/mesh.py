@@ -34,38 +34,40 @@ class SindreMesh:
         self.vertex_colors=labels2colors(self.vertex_labels)[...,:3]
         
         
-    def computer_normals(self,force=False):
+    def compute_normals(self,force=False):
         """计算顶点法线及面片法线.force代表是否强制重新计算"""
-        if force:
-            self.vertex_normals =compute_vertex_normals(self.vertices, self.faces)
-            self.face_normals  = compute_face_normals(self.vertices, self.faces)
-        else:    
-            if self.vertex_normals is None:
-                self.vertex_normals =compute_vertex_normals(self.vertices, self.faces)
-            if self.face_normals is None:
-                self.face_normals  = compute_face_normals(self.vertices, self.faces)     
+        if force or self.vertex_normals is None:
+            self.vertex_normals = compute_vertex_normals(self.vertices, self.faces)
+        if force or self.face_normals is None:
+            self.face_normals = compute_face_normals(self.vertices, self.faces)
             
     def apply_transform_normals(self,mat):
-        """处理顶点法线的变换,顶点法线变换后需要重新计算面片法线"""
-        if mat.shape[0]==4:
-            mat = mat[:3,:3]
-        # 逆转置矩阵
-        inv_transpose = np.linalg.inv(mat).T  
+        """处理顶点法线的变换（支持非均匀缩放和反射变换）"""
+        # 提取3x3线性变换部分
+        linear_mat = mat[:3, :3] if mat.shape == (4, 4) else mat
+        # 计算法线变换矩阵（逆转置矩阵）(正交的逆转置是本身)
+        try:
+            inv_transpose = np.linalg.inv(linear_mat).T
+        except np.linalg.LinAlgError:
+            inv_transpose = np.eye(3)  # 退化情况处理
+
+        # 应用变换并归一化
         self.vertex_normals = np.dot(self.vertex_normals,inv_transpose)
-        # 处理反射变换导致法线反向
-        if np.linalg.det(mat) < 0:
-            self.vertex_normals *= -1 
         norms = np.linalg.norm(self.vertex_normals, axis=1, keepdims=True)
         norms[norms == 0] = 1e-6  # 防止除零
         self.vertex_normals /= norms
+
+        
         # 将面片法线重新计算
         self.face_normals = None
-        self.computer_normals()
+        self.compute_normals()
         
     def apply_transform(self,mat):
-        """对顶点应用4x4/3x3变换矩阵"""
+        """对顶点应用4x4/3x3变换矩阵(支持非正交矩阵)"""
         if mat.shape[0]==4:
-            self.vertices = apply_transform(self.vertices,mat)
+             #齐次坐标变换
+            homogeneous = np.hstack([self.vertices, np.ones((len(self.vertices), 1))])
+            self.vertices = (homogeneous @ mat.T)[:, :3]
         else:
             """对顶点应用3*3旋转矩阵"""
             self.vertices = np.dot(self.vertices,mat)
@@ -74,22 +76,42 @@ class SindreMesh:
         self.apply_transform_normals(mat)
         
     def apply_inv_transform(self,mat):
-        """对顶点应用4x4/3x3变换矩阵进行逆变换"""
+        """对顶点应用4x4/3x3变换矩阵进行逆变换(支持非正交矩阵)"""
         mat=np.linalg.inv(mat)
-        if mat.shape[0]==4:
-            """对顶点应用4*4变换矩阵的逆变换"""
-            self.vertices = apply_transform(self.vertices,mat)
+        self.vertices = self.apply_transform(self.vertices,mat)
+            
+    def shift_xyz(self,dxdydz):
+        """平移xyz指定量,支持输入3个向量和1个向量"""
+        dxdydz = np.asarray(dxdydz, dtype=np.float64)  # 统一转换为数组
+        if dxdydz.size == 1:
+            delta = np.full(3, dxdydz.item())  # 标量扩展为三维
+        elif dxdydz.size == 3:
+            delta = dxdydz.reshape(3)  # 确保形状正确
         else:
-            """对顶点应用3*3旋转矩阵的逆变换"""
-            self.vertices =np.dot(self.vertices,mat)
-            
-        # 计算法线  
-        self.apply_transform_normals(mat)
+            raise ValueError("dxdydz 应为标量或3元素数组")
         
-            
-    def shift(self,dxdydz_list):
-        """平移指定量"""
-        self.vertices +=np.array(dxdydz_list) 
+        self.vertices += delta
+    def scale_xyz(self,dxdydz):
+        """缩放xyz指定量,支持输入3个向量和1个向量"""
+        dxdydz = np.asarray(dxdydz, dtype=np.float64)
+        if dxdydz.size == 1:
+            scale = np.full(3, dxdydz.item())
+        elif dxdydz.size == 3:
+            scale = dxdydz.reshape(3)
+        else:
+            raise ValueError("dxdydz 应为标量或3元素数组")
+        self.vertices *= scale 
+        
+    def rotate_xyz(self,angles_xyz,return_mat=False):
+        """按照给定xyz角度列表进行xyz对应旋转"""
+        Rx = angle_axis_np(angles_xyz[0], np.array([1.0, 0.0, 0.0]))
+        Ry = angle_axis_np(angles_xyz[1], np.array([0.0, 1.0, 0.0]))
+        Rz = angle_axis_np(angles_xyz[2], np.array([0.0, 0.0, 1.0]))
+        rotation_matrix = np.matmul(np.matmul(Rz, Ry), Rx)
+        if return_mat:
+            return rotation_matrix
+        else:
+            self.apply_transform(rotation_matrix)
 
        
     
@@ -118,6 +140,10 @@ class SindreMesh:
         if len(self.vertex_labels)!=len(self.vertices):
             print(f"顶点发生改变，标签重新映射{len(self.vertex_labels),len(self.vertices)} ")
             self.vertex_labels = self.vertex_labels[self.get_near_idx(self.vertices)] 
+            
+        if len(self.vertex_colors)!=len(self.vertices):
+            print(f"顶点发生改变，颜色重新映射{len(self.vertex_colors),len(self.vertices)} ")
+            self.vertex_colors = self.vertex_colors[self.get_near_idx(self.vertices)] 
             
         if len(self.vertex_curvature)!=len(self.vertices):
             print(f"顶点发生改变，曲率重新映射 {len(self.vertex_curvature),len(self.vertices)}")
@@ -176,7 +202,16 @@ class SindreMesh:
             self.face_normals =self.any_mesh.cell_normals
             if self.any_mesh.pointdata["PointsRGBA"] is not  None:
                 self.vertex_colors = np.asarray(self.any_mesh.pointdata["PointsRGBA"][...,:3], dtype=np.uint8)
-            
+        # pytorch3d 转换
+        elif "pytorch3d.structures.meshes.Meshes" in inputobj_type:
+            self.any_mesh._compute_vertex_normals(True)
+            self.vertices = np.asarray(self.any_mesh.verts_padded().cpu().numpy()[0] ,dtype=np.float64)
+            self.faces = np.asarray(self.any_mesh.faces_padded().cpu().numpy()[0], dtype=np.int32)
+            self.vertex_normals =self.any_mesh.verts_normals_padded().cpu().numpy()[0]
+            self.face_normals =self.any_mesh.faces_normals_padded().cpu().numpy()[0]
+            self.vertex_colors = np.asarray(self.any_mesh.textures.verts_features_padded().cpu().numpy()[0]*255, dtype=np.uint8)
+
+        
         elif "OCC" in inputobj_type:
             from OCC.Core.BRepMesh import BRepMesh_IncrementalMesh
             from OCC.Core.TopExp import TopExp_Explorer
@@ -348,7 +383,6 @@ class SindreMesh:
         """转换成json"""
         return json.dumps(self.to_dict,cls=NpEncoder)
 
-    @property
     def to_torch(self,device="cpu"):
         """将顶点&面片转换成torch形式
 
@@ -365,7 +399,6 @@ class SindreMesh:
         else:
             vertex_colors = None
         return vertices,faces,vertex_normals,vertex_colors
-    @property
     def to_pytorch3d(self,device="cpu"):
         """转换成pytorch3d形式
 
@@ -374,9 +407,15 @@ class SindreMesh:
         """
         import torch
         from pytorch3d.structures import Meshes
+        from pytorch3d.renderer import  TexturesVertex
         vertices= torch.from_numpy(self.vertices).to(device,dtype=torch.float32)
         faces= torch.from_numpy(self.faces).to(device,dtype=torch.float32)
-        mesh = Meshes(verts=vertices[None], faces=faces[None])
+        if self.vertex_colors is not None:
+            verts_rgb = torch.from_numpy(self.vertex_colors)/255
+        else:
+            verts_rgb = torch.ones_like(vertices)
+        textures = TexturesVertex(verts_features=verts_rgb[None].to(device))
+        mesh = Meshes(verts=vertices[None], faces=faces[None],textures=textures)
         return mesh
 
     

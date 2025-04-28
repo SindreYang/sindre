@@ -2357,3 +2357,24 @@ def subdivide_loop_by_trimesh(
             break
         
     return current_v, current_f,face_mask
+
+
+
+def angle_axis_np(angle, axis):
+    """
+    计算绕给定轴旋转指定角度的旋转矩阵。
+
+    Args:
+        angle (float): 旋转角度（弧度）。
+        axis (np.ndarray): 旋转轴，形状为 (3,) 的 numpy 数组。
+
+    Returns:
+        np.array: 3x3 的旋转矩阵，数据类型为 np.float32。
+    """
+    u = axis / np.linalg.norm(axis)
+    cosval, sinval = np.cos(angle), np.sin(angle)
+    cross_prod_mat = np.array([[0.0, -u[2], u[1]],
+                                        [u[2], 0.0, -u[0]],
+                                        [-u[1], u[0], 0.0]])
+    R =cosval * np.eye(3)+ sinval * cross_prod_mat+ (1.0 - cosval) * np.outer(u, u)
+    return R
