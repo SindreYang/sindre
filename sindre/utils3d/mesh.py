@@ -7,7 +7,6 @@ class SindreMesh:
     """三维网格中转类，假设都是三角面片 """
     def __init__(self, any_mesh=None) -> None:
         # 检查传入的参数
-        
         if (isinstance(any_mesh, str) 
             or  "vtk" in str(type(any_mesh)) 
             or (isinstance(any_mesh, list)  and len(any_mesh)==2)
@@ -28,7 +27,8 @@ class SindreMesh:
         self.vertex_kdtree=None
         self.face_normals = None
         self.faces = None
-        self._update()
+        if self.any_mesh is not None:
+            self._update()
         
     def set_vertex_labels(self,vertex_labels):
         """设置顶点labels,并自动渲染颜色"""
@@ -391,6 +391,44 @@ class SindreMesh:
         """转换成json"""
         return json.dumps(self.to_dict,cls=NpEncoder)
 
+    def save(self,write_path):
+        """保存mesh,实际保存是pickle"""
+        try:
+            import pickle
+            # 确保文件路径以 .sm 结尾
+            new_write_path = write_path if write_path[-3:] == ".sm" else write_path + ".sm"
+            with open(new_write_path, 'wb') as f:
+                pickle.dump(self.to_dict, f)
+            print(f"Mesh saved to {new_write_path}")
+        except Exception as e:
+            print(f"Failed to save mesh: {e}")
+
+            
+    def load(self,load_path):
+        """读取sm文件"""
+        if not os.path.exists(load_path):
+            print(f"File {load_path} does not exist.")
+            return
+        try:
+            import pickle
+            with open(load_path, 'rb') as f:
+                data = pickle.load(f)
+            # 从读取的数据中赋值给对象的属性
+            self.vertices = data['vertices']
+            self.vertex_colors = data['vertex_colors']
+            self.vertex_normals = data['vertex_normals']
+            self.vertex_curvature = data['vertex_curvature']
+            self.vertex_labels = data['vertex_labels']
+            self.faces = data['faces']
+            self.compute_normals()
+            
+            print(f"Mesh loaded from {load_path}")
+            
+        except Exception as e:
+            print(f"Failed to load mesh: {e}")
+        
+
+            
     def to_torch(self,device="cpu"):
         """将顶点&面片转换成torch形式
 
