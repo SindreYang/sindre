@@ -72,7 +72,7 @@ class SindreMesh:
             self.vertices = (homogeneous @ mat.T)[:, :3]
         else:
             """对顶点应用3*3旋转矩阵"""
-            self.vertices = np.dot(self.vertices,mat)
+            self.vertices = np.dot(self.vertices,mat.T)
         
         # 计算法线  
         self.apply_transform_normals(mat)
@@ -106,9 +106,11 @@ class SindreMesh:
         
     def rotate_xyz(self,angles_xyz,return_mat=False):
         """按照给定xyz角度列表进行xyz对应旋转"""
-        Rx = angle_axis_np(angles_xyz[0], np.array([1.0, 0.0, 0.0]))
-        Ry = angle_axis_np(angles_xyz[1], np.array([0.0, 1.0, 0.0]))
-        Rz = angle_axis_np(angles_xyz[2], np.array([0.0, 0.0, 1.0]))
+        # 将角度转换为弧度
+        angles_xyz_rad = np.radians(angles_xyz)
+        Rx = angle_axis_np(angles_xyz_rad[0], np.array([1.0, 0.0, 0.0]))
+        Ry = angle_axis_np(angles_xyz_rad[1], np.array([0.0, 1.0, 0.0]))
+        Rz = angle_axis_np(angles_xyz_rad[2], np.array([0.0, 0.0, 1.0]))
         rotation_matrix = np.matmul(np.matmul(Rz, Ry), Rx)
         if return_mat:
             return rotation_matrix

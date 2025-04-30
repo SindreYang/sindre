@@ -3,10 +3,11 @@ import torch
 
 def angle_axis_np(angle, axis):
     """
-    计算绕给定轴旋转指定角度的旋转矩阵。
+    计算绕给定轴旋转指定弧度的旋转矩阵。
+    罗德里格斯公式;
 
     Args:
-        angle (float): 旋转角度（弧度）。
+        angle (float): 旋转弧度。
         axis (np.ndarray): 旋转轴，形状为 (3,) 的 numpy 数组。
 
     Returns:
@@ -101,15 +102,16 @@ class RotateAxis_np:
 
 
 class RotateXYZ_np(object):
-    def __init__(self, angle_sigma=0.05, angle_clip=0.15):
+    def __init__(self, angle_sigma=2, angle_clip=np.pi):
         """
         用于在三个轴上随机微扰旋转点云数据。
 
         Args:
-            angle_sigma (float): 旋转角度的高斯分布标准差，默认为 0.05。
-            angle_clip (float): 旋转角度的裁剪范围，默认为 0.15。
+            angle_sigma (float): 旋转弧度的高斯分布标准差，默认为 2;
+            angle_clip (float): 旋转弧度的裁剪范围，默认为 np.pi。
         """
         self.angle_sigma, self.angle_clip = angle_sigma, angle_clip
+        
 
 
     def __call__(self, points):
@@ -121,6 +123,7 @@ class RotateXYZ_np(object):
         Rz = angle_axis_np(angles[2], np.array([0.0, 0.0, 1.0]))
 
         rotation_matrix = np.matmul(np.matmul(Rz, Ry), Rx)
+        self.R=rotation_matrix
 
         normals = points.shape[1] > 3
         if not normals:
@@ -132,6 +135,9 @@ class RotateXYZ_np(object):
             points[:, 3:6] = np.matmul(pc_normals, rotation_matrix.T)
 
             return points
+
+    def get_R(self):
+        return self.R
 
 
 class Jitter_np(object):
@@ -353,6 +359,7 @@ class RotateAxis:
         """
         rotation_angle = torch.empty(1).uniform_(0, 2*torch.pi).to(points.device)
         rotation_matrix = angle_axis(rotation_angle, self.axis.to(dtype=torch.float32, device=points.device))
+        self.R= rotation_matrix
 
         normals = points.size(1) > 3
         points[:, 0:3] = torch.mm(points[:, 0:3], rotation_matrix.t())
@@ -360,16 +367,19 @@ class RotateAxis:
             points[:, 3:6] = torch.mm(points[:, 3:6], rotation_matrix.t())
         return points
 
+    def get_R(self):
+        return self.R
+
 class RotateXYZ:
     """绕XYZ轴应用随机欧拉角旋转。"""
 
-    def __init__(self, angle_sigma=0.05, angle_clip=0.15):
+    def __init__(self, angle_sigma=2, angle_clip=torch.pi):
         """
         初始化旋转增强器。
 
         Args:
-            angle_sigma (float, optional): 旋转角度的标准差. Defaults to 0.05.
-            angle_clip (float, optional): 旋转角度的截断范围. Defaults to 0.15.
+            angle_sigma (float, optional): 旋转角度的标准差. Defaults to 2.
+            angle_clip (float, optional): 旋转角度的截断范围. Defaults to torch.pi.
         """
         self.angle_sigma = angle_sigma
         self.angle_clip = angle_clip
@@ -394,12 +404,15 @@ class RotateXYZ:
         Rz = angle_axis(angles[2], torch.tensor([0.0, 0.0, 1.0], device=points.device))
         
         rotation_matrix = torch.mm(torch.mm(Rz, Ry), Rx)
+        self.R=rotation_matrix
         
         normals = points.size(1) > 3
         points[:, 0:3] = torch.mm(points[:, 0:3], rotation_matrix.t())
         if normals:
             points[:, 3:6] = torch.mm(points[:, 3:6], rotation_matrix.t())
         return points
+    def get_R(self):
+        return self.R
 
 class Jitter:
     """对点云坐标添加随机噪声。"""
