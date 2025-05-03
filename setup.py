@@ -141,6 +141,7 @@ setup(
         'scikit-learn',
         'vedo>=2025.5.3',
         'numba',
+        'loguru',
     ],
     #data_files=find_files("sindre\Resources"),
     url='https://github.com/SindreYang/Sindre',
