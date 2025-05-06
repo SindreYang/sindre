@@ -212,20 +212,27 @@ class Normalize_np:
     def __call__(self,points):
         vertices =points[:,0:3]
         if self.method =="std":
-            centroid = np.mean(vertices, axis=0)
-            vertices = vertices - centroid
-            m = np.max(np.sqrt(np.sum(vertices**2, axis=1)))
-            vertices = vertices / m
+            self.centroid = np.mean(vertices, axis=0)
+            vertices = vertices -  self.centroid
+            self.m = np.max(np.sqrt(np.sum(vertices**2, axis=1)))
+            vertices = vertices /  self.m
             return vertices
         else:
-            vmax = vertices.max(0, keepdims=True)
-            vmin = vertices.min(0, keepdims=True)
-            vertices = (vertices - vmin) / (vmax - vmin).max()
+            self.vmax = vertices.max(0, keepdims=True)
+            self.vmin = vertices.min(0, keepdims=True)
+            vertices = (vertices - self.vmin) / (self.vmax - self.vmin).max()
             # 再从 [0, 1] 区间缩放到 [min_val, max_val] 区间
             vertices = vertices * (self.v_range[-1] - self.v_range[0]) + self.v_range[0]
             
         points[:, 0:3]=vertices
         return points
+    
+    def get_info(self):
+        if self.method =="std":
+            return self.centroid,self.m
+        else:
+            return self.vmax,self.vmin
+
 
 
 
