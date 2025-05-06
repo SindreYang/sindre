@@ -38,12 +38,12 @@ class pointnet2_ssg(nn.Module):
                                                 )
         if part_seg_class is not None:
             self.part_seg_class=part_seg_class
-            self.hot_labels = torch.eye(part_seg_class)
+            self.register_buffer('hot_labels', torch.eye(part_seg_class))
             self.fp1 = PointNetFeaturePropagation(in_channel=128+part_seg_class+3+in_channel,
                                                 mlp=[128, 128, 128]
                                                 )
 
-    def forward(self, xyz, cls_label=None):
+    def forward(self, xyz, cls_label=None,cls_label_one_hot=None):
         # Set Abstraction layers
         B,C,N = xyz.shape
         l0_points = xyz
@@ -56,7 +56,8 @@ class pointnet2_ssg(nn.Module):
         l2_points = self.fp3(l2_xyz, l3_xyz, l2_points, l3_points)
         l1_points = self.fp2(l1_xyz, l2_xyz, l1_points, l2_points)
         if cls_label is not None and self.part_seg_class is not None:
-            cls_label_one_hot = self.hot_labels[cls_label,].unsqueeze(-1).repeat(1,1,N)
+            if cls_label_one_hot is None:
+                cls_label_one_hot = self.hot_labels[cls_label,].unsqueeze(-1).repeat(1,1,N)
             l0_points = self.fp1(l0_xyz, l1_xyz, torch.cat([cls_label_one_hot,l0_xyz,l0_points],1), l1_points)
         else:
             l0_points = self.fp1(l0_xyz, l1_xyz, None, l1_points)
@@ -105,7 +106,7 @@ class pointnet2_msg(nn.Module):
                                               )
         if part_seg_class is not None:
             self.part_seg_class=part_seg_class
-            self.hot_labels = torch.eye(part_seg_class)
+            self.register_buffer('hot_labels', torch.eye(part_seg_class))
             self.fp1 = PointNetFeaturePropagation(in_channel=128+in_channel+part_seg_class+3,
                                               mlp=[128, 128]
                                               )
@@ -144,8 +145,8 @@ if __name__ == '__main__':
     # 假设有3个类别，每个类别有n个部件，共计8个部件，3个类别---3个类别作为输入，net预测8个类别
     part_classes = {'Airplane': [0, 1, 2, 3],'Bag': [4, 5],  'Cap': [6, 7]}
     num_classes = len(part_classes.keys())
-    select_classes = torch.randint(0,num_classes,(6,))
-    print(select_classes)
+    select_classes = torch.randint(0,num_classes,(6,)) #每个样本一个类别
+    print(select_classes,num_classes,select_classes.shape)
     
     # 测试msg
     model = pointnet2_msg(9)

@@ -20,7 +20,7 @@ class CustomLogger:
         log_dir="logs",
         console_output=True,
         file_output=False,
-        capture_print=True,
+        capture_print=False,
         filter_log=None,
     ):
         """
