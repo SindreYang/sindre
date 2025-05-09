@@ -178,12 +178,12 @@ class Translate_np(object):
 
 
 class RandomDropout_np(object):
-    def __init__(self, max_dropout_ratio=0.5,return_idx=False): 
+    def __init__(self, max_dropout_ratio=0.2,return_idx=False): 
         """
         用于随机丢弃点云数据中的点。
 
         Args:
-            max_dropout_ratio (float): 最大丢弃比例，范围为 [0, 1)，默认为 0.5。
+            max_dropout_ratio (float): 最大丢弃比例，范围为 [0, 1)，默认为 0.2。
         """
         assert max_dropout_ratio >= 0 and max_dropout_ratio < 1
         self.max_dropout_ratio = max_dropout_ratio
@@ -216,7 +216,6 @@ class Normalize_np:
             vertices = vertices -  self.centroid
             self.m = np.max(np.sqrt(np.sum(vertices**2, axis=1)))
             vertices = vertices /  self.m
-            return vertices
         else:
             self.vmax = vertices.max(0, keepdims=True)
             self.vmin = vertices.min(0, keepdims=True)
@@ -536,17 +535,23 @@ class Normalize:
         """
         vertices = points[:, 0:3]
         if self.method == "std":
-            centroid = torch.mean(vertices, dim=0)
-            vertices -= centroid
-            m = torch.max(torch.norm(vertices, dim=1))
-            vertices /= m
+            self.centroid = torch.mean(vertices, dim=0)
+            vertices -= self.centroid
+            self.m = torch.max(torch.norm(vertices, dim=1))
+            vertices /= self.m
         else:
-            vmin = torch.min(vertices, dim=0)[0]
-            vmax = torch.max(vertices, dim=0)[0]
-            vertices = (vertices - vmin) / (vmax - vmin).max()
+            self.vmin = torch.min(vertices, dim=0)[0]
+            self.vmax = torch.max(vertices, dim=0)[0]
+            vertices = (vertices - self.vmin) / (self.vmax - self.vmin).max()
             vertices = vertices * (self.v_range[1] - self.v_range[0]) + self.v_range[0]
         points[:, 0:3] = vertices
         return points
+    
+    def get_info(self):
+        if self.method =="std":
+            return self.centroid,self.m
+        else:
+            return self.vmax,self.vmin
 
 class ToTensor:
     """将输入数据转换为torch.Tensor格式。"""
