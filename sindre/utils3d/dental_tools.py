@@ -14,11 +14,18 @@ from sindre.utils3d.algorithm import apply_transform,cut_mesh_point_loop,  subdi
 def convert_fdi2idx(labels):
     """
     
-    将口腔牙列的fid (11-18,21-28,31-38,41-48) 转换成1-18;
+    将口腔牙列的FDI编号(11-18,21-28/31-38,41-48)转换为(1-16),只支持单颌:
+    上颌：
+    - 右上(11-18) → 1-8
+    - 左上(21-28) → 9-16
+
+    下颌：
+    - 左下(31-38) → 1-8
+    - 右下(41-48) → 9-16
+    - 0或小于0    → 0
     
     """
-    
-
+    labels=np.array(labels)
     if labels.max()>30:
         labels -= 20
     labels[labels//10==1] %= 10

@@ -34,7 +34,8 @@ from scipy.spatial import KDTree
 import vtk
 import os
 from numba import njit, prange
-
+from sindre.general.logs import CustomLogger
+log = CustomLogger(logger_name="algorithm").get_logger()
 
 
 def labels2colors(labels:np.array):
@@ -356,7 +357,7 @@ def get_obb_box(x_pts: np.array, z_pts: np.array, vertices: np.array) -> Tuple[l
 
     # 计算中心
     center = np.mean(vertices, axis=0)
-    print(center)
+    log.debug(center)
 
     # 定义三个射线
     x_axis = np.array(x_pts - center).reshape(3)
@@ -549,7 +550,7 @@ def create_voxels(vertices, resolution: int = 256):
     translation = np.array([x_min, y_min, z_min])
 
     verts = np.stack((x.ravel(), y.ravel(), z.ravel()), axis=-1)
-    # print(verts.shape)
+    # log.info(verts.shape)
     # vedo.show(vedo.Points(verts[::30]),self.crown).close()
     return verts, scale, translation
 
@@ -708,7 +709,7 @@ def isotropic_remeshing_by_acvd(vedo_mesh, target_num=10000):
     """
     from pyacvd import Clustering
     from pyvista import wrap
-    print(" Clustering target_num:{}".format(target_num))
+    log.info(" Clustering target_num:{}".format(target_num))
     clus = Clustering(wrap(vedo_mesh.dataset))
     if vedo_mesh.npoints<=target_num:
         clus.subdivide(3)
@@ -924,6 +925,192 @@ class BestKFinder:
 
 
 
+class UnifiedLabelRefiner:
+    def __init__(self, vertices, faces, labels, class_num, smooth_factor=None, temperature=None):
+        """
+        统一多标签优化器，支持顶点/面片概率输入
+        
+        Args:
+            vertices (np.ndarray): 顶点坐标数组，形状 (Nv, 3)
+            faces (np.ndarray):    面片索引数组，形状 (Nf, 3)
+            labels (np.ndarray):   初始标签，可以是类别索引（一维）或概率矩阵，形状为：
+                                        - 顶点模式：(Nv, class_num)
+                                        - 面片模式：(Nf, class_num)
+            class_num (int):       总类别数量（必须等于labels.shape[1]）
+            smooth_factor (float): 边权缩放因子，默认自动计算
+            temperature (float):   标签软化温度（None表示不软化）
+        """
+        # 输入验证
+        if len(labels.shape) == 1:
+            num_samples = labels.shape[0]
+            self.labels = np.zeros((num_samples, class_num), dtype=np.float32)
+            self.labels[np.arange(num_samples), labels] = 1.0
+        else:
+            self.labels = labels.astype(np.float32)
+   
+        
+        # 构建trimesh对象
+        import trimesh
+        self.mesh = trimesh.Trimesh(vertices=vertices, faces=faces)
+        
+        # 检测输入类型
+        self.class_num = class_num
+        self.label_type = self._detect_label_type()
+        
+        # 预处理几何特征
+        self._precompute_geometry()
+        
+        # 初始化参数
+        self.smooth_factor = smooth_factor
+        self.temperature = temperature
+
+    def _detect_label_type(self):
+        """检测输入类型并验证形状"""
+        n_vertices = len(self.mesh.vertices)
+        n_faces = len(self.mesh.faces)
+        
+        if self.labels.shape[0] == n_vertices:
+            assert self.labels.shape == (n_vertices, self.class_num), \
+                "顶点概率矩阵形状应为({}, {})".format(n_vertices, self.class_num)
+            return 'vertex'
+        
+        if self.labels.shape[0] == n_faces:
+            assert self.labels.shape == (n_faces, self.class_num), \
+                "面片概率矩阵形状应为({}, {})".format(n_faces, self.class_num)
+            return 'face'
+        
+        raise ValueError("概率矩阵的样本维度应与顶点数或面片数一致")
+
+    def _precompute_geometry(self):
+        """预计算几何特征"""
+        # 顶点级特征
+        self.mesh.fix_normals()
+        self.vertex_normals = self.mesh.vertex_normals.copy()
+        self.vertex_adj = [np.array(list(adj)) for adj in self.mesh.vertex_neighbors]
+        
+        # 面片级特征
+        self.face_normals = self.mesh.face_normals.copy()
+        self.face_centers = self.mesh.triangles_center.copy()
+        self.face_adj = self._compute_face_adjacency()
+
+    def _compute_face_adjacency(self):
+        """计算面片邻接关系"""
+        face_adj = []
+        for i, face in enumerate(self.mesh.faces):
+            # 查找共享两个顶点的面片
+            shared = np.sum(np.isin(self.mesh.faces, face), axis=1)
+            adj_faces = np.where(shared == 2)[0]
+            # 排除自身并排序防止重复
+            face_adj.append(adj_faces[adj_faces > i])
+        return face_adj
+
+    def refine(self):
+        """执行优化并返回优化后的标签索引"""
+        # 概率软化处理
+        processed_prob = self._process_probability()
+        
+        # 计算unary势能
+        unaries = (-100 * np.log10(processed_prob)).astype(np.int32)
+        
+        # 自动参数计算
+        if self.smooth_factor is None:
+            self.smooth_factor = self._auto_tune_smoothness(unaries)
+        
+        # 构建图结构并优化
+        edges = self._compute_edges()
+        pairwise = (1 - np.eye(self.class_num, dtype=np.int32))
+
+    
+        from pygco import cut_from_graph
+        return cut_from_graph(edges, unaries, pairwise)
+
+    def _process_probability(self):
+        """概率矩阵后处理"""
+        prob = np.clip(self.labels, 1e-6, 1.0)
+        
+        # 温度软化
+        if self.temperature is not None and self.temperature != 1.0:
+            prob = np.exp(np.log(prob) / self.temperature)
+            prob /= prob.sum(axis=1, keepdims=True)
+        
+        return prob
+
+    def _compute_edges(self):
+        """根据类型计算边权"""
+        if self.label_type == 'vertex':
+            return self._compute_vertex_edges()
+        return self._compute_face_edges()
+
+    def _compute_vertex_edges(self):
+        """计算顶点间边权"""
+        edges = []
+        for i, neighbors in enumerate(self.vertex_adj):
+            for j in neighbors:
+                if j <= i:
+                    continue  # 避免重复
+                
+                # 计算几何特征
+                ni, nj = self.vertex_normals[i], self.vertex_normals[j]
+                theta = np.arccos(np.clip(np.dot(ni, nj), -1.0, 1.0))
+                dist = np.linalg.norm(self.mesh.vertices[i] - self.mesh.vertices[j])
+                
+                # 边权计算
+                weight = self._calculate_edge_weight(theta, dist)
+                edges.append([i, j, int(weight * self.smooth_factor)])
+        
+        return np.array(edges, dtype=np.int32)
+
+    def _compute_face_edges(self):
+        """计算面片间边权"""
+        edges = []
+        for i, neighbors in enumerate(self.face_adj):
+            for j in neighbors:
+                # 计算面片特征
+                ni, nj = self.face_normals[i], self.face_normals[j]
+                theta = np.arccos(np.clip(np.dot(ni, nj)/np.linalg.norm(ni)/np.linalg.norm(nj), -1.0, 1.0))
+                dist = np.linalg.norm(self.face_centers[i] - self.face_centers[j])
+                
+                # 边权计算（放大权重）
+                weight = self._calculate_edge_weight(theta, dist) 
+                edges.append([i, j, int(weight*self.smooth_factor)])
+        
+        return np.array(edges, dtype=np.int32)
+
+    @staticmethod
+    def _calculate_edge_weight(theta, distance):
+        """统一边权计算公式"""
+        theta = max(theta, 1e-6)  # 防止除零
+        if theta > np.pi/2:
+            return -np.log10(theta/np.pi) * distance
+        return -10 * np.log10(theta/np.pi) * distance
+
+    def _auto_tune_smoothness(self, unaries):
+        """自适应调整平滑系数"""
+        # 计算初始边权
+        self.smooth_factor=1
+        test_edges = self._compute_edges()
+        if test_edges.size == 0:
+            return 1.0
+        
+        # 平衡unary和pairwise的量级
+        edge_median = np.median(np.abs(test_edges[:,2]))
+        unary_median = np.median(np.abs(unaries))
+        return unary_median / max(edge_median, 1e-6) * 0.8
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+    
 class GraphCutRefiner:
     def __init__(self, vertices, faces, vertex_labels, smooth_factor=None,temperature=None, keep_label=True):
         """
@@ -951,7 +1138,7 @@ class GraphCutRefiner:
         else:
             self.temperature = temperature
         self.prob_matrix = self._labels_to_prob(mapped_labels, self.unique_labels.size)
-        print(self.prob_matrix.shape)
+        log.debug(self.prob_matrix.shape)
        
 
     def _precompute_geometry(self):
@@ -1040,7 +1227,7 @@ class GraphCutRefiner:
                     if len(np.unique(optimized_labels_it))== n_classes:
                         optimized_labels =optimized_labels_it
                         self.smooth_factor*=1.5
-                        print(f"当前smooth_factor={self.smooth_factor},优化中({i+1}/10)....")
+                        log.info(f"当前smooth_factor={self.smooth_factor},优化中({i+1}/10)....")
                     else:
                         break
 
@@ -1103,7 +1290,7 @@ def load_all(path):
     读取各种格式的文件
 
     Returns:
-        data: 读取的数据，失败返回None；
+        data: 读取的数据,失败返回None;
     """
     try:
         if path.endswith(".json"):
@@ -1124,21 +1311,95 @@ def load_all(path):
             with open(path, 'r') as f:
                 data = f.read()
                 
-        elif path.endswith((".db",".lmdb","mdb",".yx")) or  os.path.isdir(path):
+        elif path.endswith((".db",".lmdb",".mdb",".yx")) or  os.path.isdir(path):
             import sindre     
             data= sindre.lmdb.Reader(path,True)
-            print("使用完成请关闭 data.close()")
+            log.info("使用完成请关闭 data.close()")
             
         elif path.endswith((".pt", ".pth")):
             import torch
             # 使用 map_location='cpu' 避免CUDA设备不可用时的错误
             data = torch.load(path, map_location='cpu')
 
+          
+        elif path.endswith(".pts"):
+            # up3d线格式
+            data = []
+            tooth_id=None 
+            with open(path, 'r') as f:
+                data_pts = f.readlines()
+                try:
+                    tooth_id = int(data_pts[0][-3:-1])
+                except:
+                    pass
+                lines =data_pts[1:-1]
+
+            data = [[float(i) for i in line.split()] for line in lines]
+            data = {"id":tooth_id,"margin_points":np.array(data).reshape(-1,3)}
+               
+                        
+        elif path.endswith('.constructionInfo'):
+            # exo导出格式
+            import xml.etree.ElementTree as ET
+            root = ET.parse(path).getroot()
+            
+            project_name = root.findtext("ProjectName", "")
+            teeth_data = []
+            
+            for tooth in root.findall('Teeth/Tooth'):
+                tooth_id = tooth.findtext('Number')
+                if not tooth_id:
+                    continue
+                    
+                # 解析中心点
+                center_xml = tooth.find('Center')
+                if center_xml is None:
+                    continue
+                    
+                center = [
+                    float(center_xml.findtext('x', '0')),
+                    float(center_xml.findtext('y', '0')),
+                    float(center_xml.findtext('z', '0'))
+                ]
+                
+                # 解析旋转矩阵 (3x3)
+                axis_elements = ['Axis', 'AxisMesial', 'AxisBuccal']
+                matrix = []
+                for element in axis_elements:
+                    e = tooth.find(element)
+                    if e is None:
+                        matrix.extend([0.0, 0.0, 0.0])  # 默认值
+                    else:
+                        matrix.extend([
+                            float(e.findtext('x', '0')),
+                            float(e.findtext('y', '0')),
+                            float(e.findtext('z', '0'))
+                        ])
+                
+                # 解析边缘点
+                margin = []
+                margin_xml = tooth.find('Margin')
+                if margin_xml is not None:
+                    for vec in margin_xml.findall('Vec3'):
+                        p = [
+                            float(vec.findtext('x', '0')),
+                            float(vec.findtext('y', '0')),
+                            float(vec.findtext('z', '0'))
+                        ]
+                        margin.append(p)
+                
+                teeth_data.append({
+                    'id': int(tooth_id),
+                    'center': np.array(center).reshape(1,3),
+                    'rotation_matrix': np.array(matrix).reshape(3,3),
+                    'margin_points':np.array(margin).reshape(-1,3),
+                })
+            return {"project_name":project_name,"teeth_data":teeth_data}
         else:
             data = vedo.load(path)
         return data
     except Exception as e:
-        print("读取失败",e)
+        log.error(f"Error loading .pts file: {e}")
         return None 
   
   
@@ -1549,7 +1810,7 @@ def collision_depth(mesh1, mesh2) -> float:
     """
     # 性能优化提示
     if mesh1.npoints > 1000 or mesh2.npoints > 1000:
-        print("[性能警告] 检测到高精度网格(顶点数>1000)，建议执行 mesh.decimate(n=500) 进行降采样")
+        log.info("[性能警告] 检测到高精度网格(顶点数>1000)，建议执行 mesh.decimate(n=500) 进行降采样")
 
     try:
         # 初始化VTK距离计算器
@@ -1624,7 +1885,7 @@ def compute_curvature_by_igl(v,f,max_curvature=False):
     try:
         import igl
     except ImportError:
-        print("请安装igl, pip install libigl")
+        log.info("请安装igl, pip install libigl")
     _, _, K_max, K = igl.principal_curvature(v, f)
     if max_curvature:
         K=K_max
@@ -1691,7 +1952,7 @@ def harmonic_by_igl(v,f,map_vertices_to_circle=True):
                 plt.render()
                 
             except Exception as e:
-                print(f"Error processing click: {str(e)}")
+                log.info(f"Error processing click: {str(e)}")
 
         plt.at(0).show(mesh_3d, "3D Visualization", viewup="z")
         plt.at(1).show(mesh_2d, "2D Parametrization").add_callback('mouse_click', on_click)
@@ -1704,7 +1965,7 @@ def harmonic_by_igl(v,f,map_vertices_to_circle=True):
     try:
         import igl
     except ImportError:
-        print("请安装igl, pip install libigl")
+        log.info("请安装igl, pip install libigl")
 
     # 正方形边界映射）
     def map_to_square(bnd):
@@ -1729,7 +1990,7 @@ def harmonic_by_igl(v,f,map_vertices_to_circle=True):
             bnd_uv = map_to_square(bnd)                # 正方形参数化
         uv = igl.harmonic(v, f, bnd, bnd_uv, 1)
     except Exception as e:
-        print(f"生成错误，请检测连通体数量，{e}")
+        log.info(f"生成错误，请检测连通体数量，{e}")
     # 创建参数化后的2D网格（3D坐标）
     v_p = np.hstack([uv, np.zeros((uv.shape[0], 1))])
     
@@ -2160,7 +2421,7 @@ def mesh2sdf(v, f, size=64):
     try:
         from mesh_to_sdf import mesh_to_voxels
     except ImportError:
-        print("请安装依赖库：pip install mesh-to-sdf")
+        log.info("请安装依赖库：pip install mesh-to-sdf")
 
     mesh = trimesh.Trimesh(v, f)
 
@@ -2188,7 +2449,7 @@ def sample_sdf_mesh(v, f, number_of_points=200000):
     try:
         from mesh_to_sdf import sample_sdf_near_surface
     except ImportError:
-        print("请安装依赖库：pip install mesh-to-sdf")
+        log.info("请安装依赖库：pip install mesh-to-sdf")
 
     mesh = trimesh.Trimesh(v, f)
 
@@ -2353,7 +2614,7 @@ def subdivide_loop_by_trimesh(
         face_mask = np.asarray(np.concatenate(list(face_mask_dict.values()))).reshape(-1)
         # 检查停止条件
         if len(current_f)>max_face_num:
-            print(f"subdivide: {len(current_f)} >{ max_face_num},break")
+            log.info(f"subdivide: {len(current_f)} >{ max_face_num},break")
             break
         
     return current_v, current_f,face_mask

@@ -2,23 +2,14 @@ from functools import cached_property,lru_cache
 import numpy as np
 import json
 from sindre.utils3d.algorithm import *
+from sindre.general.logs import CustomLogger
 
 class SindreMesh:
     """三维网格中转类，假设都是三角面片 """
     def __init__(self, any_mesh=None) -> None:
-        # 检查传入的参数
-        if (isinstance(any_mesh, str) 
-            or  "vtk" in str(type(any_mesh)) 
-            or (isinstance(any_mesh, list)  and len(any_mesh)==2)
-            or "meshlib" in str(type(any_mesh)) 
-            or "meshio" in str(type(any_mesh))
-            ):
-            # 交由vedo处理
-            import vedo
-            self.any_mesh=vedo.Mesh(any_mesh)
-        else:
-            self.any_mesh = any_mesh
-
+        # 日志
+        self.log = CustomLogger(logger_name="SindreMesh").get_logger()
+        self.any_mesh = any_mesh
         self.vertices = None
         self.vertex_colors = None
         self.vertex_normals = None
@@ -29,11 +20,83 @@ class SindreMesh:
         self.faces = None
         if self.any_mesh is not None:
             self._update()
+       
         
     def set_vertex_labels(self,vertex_labels):
         """设置顶点labels,并自动渲染颜色"""
         self.vertex_labels=np.array(vertex_labels).reshape(-1,1)
         self.vertex_colors=labels2colors(self.vertex_labels)[...,:3]
+
+
+    
+
+    def set_vertices(self,new_vertices,new_faces=None):
+        """ 
+
+        强制改变顶点坐标，其他属性根据最近邻关系重新映射
+    
+        args:
+            new_vertices: 形状为(N,3)的浮点型数组，表示新的顶点坐标
+            new_faces: 可选参数，形状为(M,3)的整数型数组，表示新的面片索引
+            
+        """
+        
+        new_vertices = np.asarray(new_vertices, dtype=np.float64)
+        if new_vertices.ndim != 2 or new_vertices.shape[1] != 3:
+            raise ValueError("顶点坐标必须是(N,3)的二维数组")
+
+
+
+        near_indices = self.get_near_idx(new_vertices)
+        self.vertex_labels = self.vertex_labels[near_indices] 
+        self.vertex_colors = self.vertex_colors[near_indices] 
+        self.vertex_curvature = self.vertex_curvature[near_indices] 
+            
+        if new_faces is None:
+            old_count = len(self.vertices)
+            if np.max(self.faces) >= old_count:
+                self.log.debug(f"警告: 顶点数量发生改变({old_count}→{len(new_vertices)})，但未提供新的面片信息,开始重新映射")
+                # 创建旧顶点到新顶点的映射字典
+                vertex_map = {}
+                for new_idx, old_idx in enumerate(near_indices):
+                    if old_idx not in vertex_map:
+                        vertex_map[old_idx] = new_idx
+                
+                # 重新映射面片索引
+                new_faces = np.zeros_like(self.faces)
+                remapped_count = 0
+                invalid_count = 0
+                
+                for i, face in enumerate(self.faces):
+                    new_face = np.array([vertex_map.get(v_idx, -1) for v_idx in face])
+                    
+                    # 检查映射后的面片是否有效
+                    if -1 not in new_face and len(np.unique(new_face)) == 3:
+                        new_faces[remapped_count] = new_face
+                        remapped_count += 1
+                    else:
+                        invalid_count += 1
+                
+                # 只保留有效映射的面片
+                if remapped_count > 0:
+                    new_faces = new_faces[:remapped_count]
+                    self.log.debug(f"成功映射 {remapped_count} 个面片，丢弃 {invalid_count} 个无效面片")
+                else:
+                    self.log.warning("警告: 没有找到有效的面片映射，创建空的面片集合")
+        else:
+            if np.max(new_faces) >= len(new_vertices):
+                raise IndexError(f"面片包含非法索引: {np.max(new_faces)}，新顶点数量: {len(new_vertices)}")
+            self.faces = new_faces
+
+
+
+        # 重置kdtree
+        self.vertex_kdtree=None
+        # 设置新的顶点
+        self.vertices = new_vertices
+        # 重新计算法线
+        self.compute_normals(force=True)
+
         
         
     def compute_normals(self,force=False):
@@ -118,18 +181,15 @@ class SindreMesh:
             self.apply_transform(rotation_matrix)
 
        
-    
-         
-   
-        
-       
-        
             
     def _update(self):
-        try:
+        """内部函数，更新相关变量"""
+
+        # 自动转换类型
+        if self.any_mesh is not None:
             self._convert()
-        except Exception as e:
-            raise RuntimeError(f"转换错误:{e}")
+            # 用完置空，防止使用混乱
+            self.any_mesh=None
         # 给定默认颜色
         if self.vertex_colors is None:
             self.vertex_colors = np.ones_like(self.vertices)*np.array([255,0,0]).astype(np.uint8)
@@ -139,31 +199,24 @@ class SindreMesh:
         # 给定默认曲率
         if self.vertex_curvature is None:
             self.vertex_curvature = np.zeros(len(self.vertices))
-            
-        
-        if len(self.vertex_labels)!=len(self.vertices):
-            print(f"顶点发生改变，标签重新映射{len(self.vertex_labels),len(self.vertices)} ")
-            self.vertex_labels = self.vertex_labels[self.get_near_idx(self.vertices)] 
-            
-        if len(self.vertex_colors)!=len(self.vertices):
-            print(f"顶点发生改变，颜色重新映射{len(self.vertex_colors),len(self.vertices)} ")
-            self.vertex_colors = self.vertex_colors[self.get_near_idx(self.vertices)] 
-            
-        if len(self.vertex_curvature)!=len(self.vertices):
-            print(f"顶点发生改变，曲率重新映射 {len(self.vertex_curvature),len(self.vertices)}")
-            self.vertex_curvature = self.vertex_curvature[self.get_near_idx(self.vertices)] 
-            
-        # 重置kdtree
-        self.vertex_kdtree=None
-    
+        # 默认启动kdtree
+        if self.vertex_kdtree is None:
+            self.vertex_kdtree= KDTree( self.vertices)
+        # 默认检测法线
+        if self.vertices is not None and self.faces is not None:
+            self.compute_normals()
+
         
     def _convert(self):
-        """将模型转换到类中"""
+        """内部函数，将模型转换到类中"""
         inputobj_type = str(type(self.any_mesh))
+        # 专用格式
+        if isinstance(self.any_mesh, str) and self.any_mesh.endswith(".sm"):
+            self.load(self.any_mesh)
 
         
         # Trimesh 转换
-        if "Trimesh" in inputobj_type or "primitives" in inputobj_type:
+        elif "Trimesh" in inputobj_type or "primitives" in inputobj_type:
             self.vertices = np.asarray(self.any_mesh.vertices, dtype=np.float64)
             self.faces = np.asarray(self.any_mesh.faces, dtype=np.int32)
             self.vertex_normals = np.asarray(self.any_mesh.vertex_normals, dtype=np.float64)
@@ -173,6 +226,9 @@ class SindreMesh:
                 self.vertex_colors = np.asarray(self.any_mesh.visual.face_colors, dtype=np.uint8)
             else:
                 self.vertex_colors = np.asarray(self.any_mesh.visual.to_color().vertex_colors, dtype=np.uint8)
+
+
+        
         
         # MeshLab 转换
         elif "MeshSet" in inputobj_type:
@@ -197,9 +253,21 @@ class SindreMesh:
             
             if self.any_mesh.has_vertex_colors():
                 self.vertex_colors = (np.asarray(self.any_mesh.vertex_colors)[...,:3] * 255).astype(np.uint8)
+
+
+          
         
         # Vedo 转换
-        elif "vedo" in inputobj_type:
+        elif (isinstance(self.any_mesh, str) 
+              or (isinstance(self.any_mesh, list)  and len(self.any_mesh)==2)
+              or "vedo" in inputobj_type 
+              or "vtk" in inputobj_type 
+              or "meshlib" in inputobj_type
+              or "meshio" in inputobj_type
+              ):
+            import vedo
+            if "vedo" not in inputobj_type:
+                self.any_mesh=vedo.Mesh(self.any_mesh)
             self.any_mesh.compute_normals()
             self.vertices = np.asarray(self.any_mesh.vertices, dtype=np.float64)
             self.faces = np.asarray(self.any_mesh.cells, dtype=np.int32)
@@ -207,6 +275,7 @@ class SindreMesh:
             self.face_normals =self.any_mesh.cell_normals
             if self.any_mesh.pointdata["PointsRGBA"] is not  None:
                 self.vertex_colors = np.asarray(self.any_mesh.pointdata["PointsRGBA"][...,:3], dtype=np.uint8)
+                
 
                 
         # pytorch3d 转换
@@ -306,10 +375,10 @@ class SindreMesh:
                 BRepMesh_IncrementalMesh(solid, 0.1).Perform()
                 return solid 
             else:
-                print("警告：Shell无法生成Solid，返回Shell")
+                self.log.warning("警告：Shell无法生成Solid，返回Shell")
                 return shell  
         else:
-            print("返回原始缝合结果（如Compound）")
+            self.log.info("返回原始缝合结果（如Compound）")
             return sewed_shape 
 
     @property
@@ -392,22 +461,27 @@ class SindreMesh:
         return json.dumps(self.to_dict,cls=NpEncoder)
 
     def save(self,write_path):
-        """保存mesh,实际保存是pickle"""
+        """保存mesh,pickle(.sm),其他由vedo支持 """
         try:
-            import pickle
-            # 确保文件路径以 .sm 结尾
-            new_write_path = write_path if write_path[-3:] == ".sm" else write_path + ".sm"
-            with open(new_write_path, 'wb') as f:
-                pickle.dump(self.to_dict, f)
-            print(f"Mesh saved to {new_write_path}")
+
+            if write_path.endswith(".sm"):
+                import pickle
+                with open(write_path, 'wb') as f:
+                    pickle.dump(self.to_dict, f)
+            else:
+                self.to_vedo.write(write_path)
+            self.log.info(f"Mesh saved to {write_path}")
         except Exception as e:
-            print(f"Failed to save mesh: {e}")
+            self.log.error(f"Failed to save mesh: {e}")
 
             
     def load(self,load_path):
         """读取sm文件"""
         if not os.path.exists(load_path):
-            print(f"File {load_path} does not exist.")
+            self.log.error(f"File {load_path} does not exist.")
+            return
+        if not load_path.endswith(".sm"):
+            self.log.error(f"Only .sm format is supported.")
             return
         try:
             import pickle
@@ -422,10 +496,10 @@ class SindreMesh:
             self.faces = data['faces']
             self.compute_normals()
             
-            print(f"Mesh loaded from {load_path}")
+            self.log.info(f"Mesh loaded from {load_path}")
             
         except Exception as e:
-            print(f"Failed to load mesh: {e}")
+            self.log.error(f"Failed to load mesh: {e}")
         
 
             
@@ -729,7 +803,7 @@ class SindreMesh:
             self.vertex_colors =(mmesh.vertex_color_matrix()*255)[...,:3]
             self.vertex_curvature =mmesh.vertex_scalar_array()
         except Exception as e:
-            print(f"无法使用使用meshlab计算主曲率,{e}")
+            self.log.warning(f"无法使用使用meshlab计算主曲率,{e}")
             self.vertex_curvature =compute_curvature_by_igl(self.vertices,self.faces,False)
             self.vertex_colors =self.get_color_mapping(self.vertex_curvature)
     
