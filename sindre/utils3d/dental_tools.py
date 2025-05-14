@@ -23,7 +23,15 @@ def convert_fdi2idx(labels):
     - 左下(31-38) → 1-8
     - 右下(41-48) → 9-16
     - 0或小于0    → 0
-    
+
+                  1 9
+                2    10
+              3        11
+            4            12
+          5                13
+        6                    14
+      7                        15
+    8                            16
     """
     labels=np.array(labels)
     if labels.max()>30:

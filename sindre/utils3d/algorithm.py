@@ -129,12 +129,17 @@ def vertex_labels_to_face_labels(faces: Union[np.array, list], vertex_labels: Un
 def face_labels_to_vertex_labels(vertices: Union[np.array, list], faces: Union[np.array, list],
                                  face_labels: np.array) -> np.array:
     """
-        将三角网格的面片标签转换成顶点标签
+
+    
+    将三角网格的面片标签转换成顶点标签
 
     Args:
-        vertices: 牙颌三角网格
-        faces: 面片标签
-        face_labels: 顶点标签
+        vertices: 
+            牙颌三角网格
+        faces: 
+            面片标签
+        face_labels: 
+            顶点标签
 
     Returns:
         顶点属性
@@ -924,6 +929,81 @@ class BestKFinder:
 
 
 
+class LabelUpsampler:
+    def __init__(self,
+                 classifier_type='gbdt', 
+                 knn_params =  {'n_neighbors':3},
+                 gbdt_params={'n_estimators': 100, 'max_depth': 5}
+                 ):
+        """
+        标签上采样，用于将简化后的标签映射回原始网格/点云
+
+        Args:
+            classifier_type : str, optional (default='gbdt')
+                分类器类型，支持 'knn', 'gbdt', 'hgbdt', 'rfc'
+        
+            knn_params : dict, optional
+                KNN分类器参数,默认 {'n_neighbors': 3}
+            
+            gbdt_params : dict, optional
+                GBDT/HGBDT/RFC分类器参数,默认 {'n_estimators': 100, 'max_depth': 5}
+        
+        """
+        self.gbdt_params = gbdt_params
+        self.knn_params = knn_params
+        self.classifier_type = classifier_type.lower()
+        self.clf =None
+        
+        # 初始化组件
+        from sklearn.preprocessing import StandardScaler
+        self.scaler = StandardScaler()
+        self._init_classifier()
+        
+    def _init_classifier(self):
+        """初始化内置分类器"""
+        if self.classifier_type == 'knn':
+            from sklearn.neighbors import KNeighborsClassifier
+            self.clf = KNeighborsClassifier(**self.knn_params)
+        elif self.classifier_type == 'gbdt':
+            from sklearn.ensemble import GradientBoostingClassifier
+            self.clf = GradientBoostingClassifier(**self.gbdt_params)
+        elif self.classifier_type == "hgbdt":
+            from sklearn.ensemble import HistGradientBoostingClassifier
+            self.clf = HistGradientBoostingClassifier(**self.gbdt_params)
+        elif self.classifier_type == "rfc":
+            from sklearn.ensemble import RandomForestClassifier
+            self.clf = RandomForestClassifier(**self.gbdt_params)
+        else:
+            raise ValueError(f"不支持的分类器类型: {self.classifier_type}。"
+                             f"支持的类型: ['knn', 'gbdt', 'hgbdt', 'rfc']")
+
+
+    def fit(self, train_features,  train_labels):
+        """
+        训练模型: 建议：
+        点云： 按照[x,y,z,nx,ny,nz,cv] # 顶点坐标+顶点法线+曲率+其他特征
+        网格： 按照[bx,by,bz,fnx,fny,fny] # 面片重心坐标+面片法线+其他特征
+        """
+        # 特征标准化
+        self.scaler.fit(train_features)
+        self.clf.fit(self.scaler.transform(train_features), train_labels)
+        
+    def predict(self, query_features):
+        """
+        预测标签，输入特征应与训练特征一一对应；
+        
+        """
+        # 预测
+        labels = self.clf.predict(self.scaler.transform(query_features))
+        return labels
+
+
+
+
+
+
+
+
 
 class UnifiedLabelRefiner:
     def __init__(self, vertices, faces, labels, class_num, smooth_factor=None, temperature=None):
@@ -933,8 +1013,8 @@ class UnifiedLabelRefiner:
         Args:
             vertices (np.ndarray): 顶点坐标数组，形状 (Nv, 3)
             faces (np.ndarray):    面片索引数组，形状 (Nf, 3)
-            labels (np.ndarray):   初始标签，可以是类别索引（一维）或概率矩阵，形状为：
-                                        - 顶点模式：(Nv, class_num)
+            labels (np.ndarray):   初始标签，可以是类别索引（一维）(n,) 或概率矩阵，形状为：
+                                        - 顶点模式：(Nv, class_num) 
                                         - 面片模式：(Nf, class_num)
             class_num (int):       总类别数量（必须等于labels.shape[1]）
             smooth_factor (float): 边权缩放因子，默认自动计算
@@ -1014,15 +1094,30 @@ class UnifiedLabelRefiner:
         
         # 自动参数计算
         if self.smooth_factor is None:
-            self.smooth_factor = self._auto_tune_smoothness(unaries)
+            edges_raw = self._compute_edges(scale=1.0)
+            weights_raw = edges_raw[:, 2]
+            unary_median = np.median(np.abs(unaries))
+            weight_median = np.median(weights_raw) if weights_raw.size else 1.0
+            self.smooth_factor= min([unary_median / max(weight_median, 1e-6)*0.8 ,1e4])#经验值
         
         # 构建图结构并优化
-        edges = self._compute_edges()
         pairwise = (1 - np.eye(self.class_num, dtype=np.int32))
 
     
         from pygco import cut_from_graph
-        return cut_from_graph(edges, unaries, pairwise)
+        optimized_labels = self.labels
+        for i  in  range(10):
+            # 计算边权重
+            edges = self._compute_edges(self.smooth_factor)
+            optimized_labels_it = cut_from_graph(edges, unaries, pairwise)
+            if len(np.unique(optimized_labels_it))== self.class_num:
+                optimized_labels =optimized_labels_it
+                self.smooth_factor*=1.5
+                log.info(f"当前smooth_factor={self.smooth_factor},优化中({i+1}/10)....")
+            else:
+                break
+            
+        return optimized_labels #cut_from_graph(edges, unaries, pairwise)
 
     def _process_probability(self):
         """概率矩阵后处理"""
@@ -1035,13 +1130,13 @@ class UnifiedLabelRefiner:
         
         return prob
 
-    def _compute_edges(self):
+    def _compute_edges(self,scale=1.0):
         """根据类型计算边权"""
         if self.label_type == 'vertex':
-            return self._compute_vertex_edges()
-        return self._compute_face_edges()
+            return self._compute_vertex_edges(scale)
+        return self._compute_face_edges(scale)
 
-    def _compute_vertex_edges(self):
+    def _compute_vertex_edges(self,scale):
         """计算顶点间边权"""
         edges = []
         for i, neighbors in enumerate(self.vertex_adj):
@@ -1056,11 +1151,11 @@ class UnifiedLabelRefiner:
                 
                 # 边权计算
                 weight = self._calculate_edge_weight(theta, dist)
-                edges.append([i, j, int(weight * self.smooth_factor)])
+                edges.append([i, j, int(weight * scale)])
         
         return np.array(edges, dtype=np.int32)
 
-    def _compute_face_edges(self):
+    def _compute_face_edges(self,scale):
         """计算面片间边权"""
         edges = []
         for i, neighbors in enumerate(self.face_adj):
@@ -1072,7 +1167,7 @@ class UnifiedLabelRefiner:
                 
                 # 边权计算（放大权重）
                 weight = self._calculate_edge_weight(theta, dist) 
-                edges.append([i, j, int(weight*self.smooth_factor)])
+                edges.append([i, j, int(weight*scale)])
         
         return np.array(edges, dtype=np.int32)
 
@@ -1083,21 +1178,6 @@ class UnifiedLabelRefiner:
         if theta > np.pi/2:
             return -np.log10(theta/np.pi) * distance
         return -10 * np.log10(theta/np.pi) * distance
-
-    def _auto_tune_smoothness(self, unaries):
-        """自适应调整平滑系数"""
-        # 计算初始边权
-        self.smooth_factor=1
-        test_edges = self._compute_edges()
-        if test_edges.size == 0:
-            return 1.0
-        
-        # 平衡unary和pairwise的量级
-        edge_median = np.median(np.abs(test_edges[:,2]))
-        unary_median = np.median(np.abs(unaries))
-        return unary_median / max(edge_median, 1e-6) * 0.8
-
-
 
 
 

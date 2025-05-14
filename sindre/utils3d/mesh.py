@@ -20,6 +20,21 @@ class SindreMesh:
         self.faces = None
         if self.any_mesh is not None:
             self._update()
+
+
+    def clone(self):
+        """快速克隆当前网格对象"""
+        new_mesh = SindreMesh()
+        # 深拷贝数组属性, 因为所有属性一定存在默认值
+        new_mesh.vertices = self.vertices.copy()
+        new_mesh.vertex_colors = self.vertex_colors.copy()
+        new_mesh.vertex_normals = self.vertex_normals.copy()
+        new_mesh.vertex_curvature = self.vertex_curvature.copy()
+        new_mesh.vertex_labels = self.vertex_labels.copy()
+        new_mesh.vertex_kdtree=KDTree(new_mesh.vertices)
+        new_mesh.face_normals = self.face_normals.copy()
+        new_mesh.faces = self.faces.copy()
+        return new_mesh
        
         
     def set_vertex_labels(self,vertex_labels):
@@ -30,14 +45,20 @@ class SindreMesh:
 
     
 
-    def set_vertices(self,new_vertices,new_faces=None):
+    def update_geometry(self,new_vertices,new_faces=None):
         """ 
-
-        强制改变顶点坐标，其他属性根据最近邻关系重新映射
     
+        更新网格的几何结构（顶点和面片），并通过最近邻算法将原有的顶点属性映射到新顶点上。
+        
+        适用于在保持网格拓扑结构基本不变的情况下，对网格进行变形，细化，简化的场景。
+        
         args:
             new_vertices: 形状为(N,3)的浮点型数组，表示新的顶点坐标
             new_faces: 可选参数，形状为(M,3)的整数型数组，表示新的面片索引
+            
+        notes:
+            - 当新顶点数量与原顶点数量不同时，原顶点属性会根据最近邻关系进行映射
+            - 如果未提供新的面片信息，函数会尝试根据旧面片和顶点映射关系重建面片
             
         """
         
@@ -211,7 +232,7 @@ class SindreMesh:
         """内部函数，将模型转换到类中"""
         inputobj_type = str(type(self.any_mesh))
         # 专用格式
-        if isinstance(self.any_mesh, str) and self.any_mesh.endswith(".sm"):
+        if isinstance(self.any_mesh, str) and self.any_mesh.endswith((".sm",".smesh")):
             self.load(self.any_mesh)
 
         
@@ -418,6 +439,20 @@ class SindreMesh:
         vedo_mesh.celldata["Normals"]=self.face_normals
         vedo_mesh.pointcolors = self.vertex_colors
         return vedo_mesh
+
+    @property
+    def to_vedo_pointcloud(self):
+        """转换成vedo点云"""
+        from vedo import Points
+        vedo_points = Points(self.vertices)
+        vedo_points.pointdata["Normals"]=self.vertex_normals
+        vedo_points.pointdata["labels"]=self.vertex_labels
+        vedo_points.pointdata["curvature"]=self.vertex_curvature
+        vedo_points.pointcolors = self.vertex_colors
+        return vedo_points
+        
+
+        
     @property
     def to_open3d(self):
         """转换成open3d"""
@@ -460,11 +495,12 @@ class SindreMesh:
         """转换成json"""
         return json.dumps(self.to_dict,cls=NpEncoder)
 
-    def save(self,write_path):
-        """保存mesh,pickle(.sm),其他由vedo支持 """
-        try:
 
-            if write_path.endswith(".sm"):
+
+    def save(self,write_path):
+        """保存mesh,pickle(.sm .smesh),其他由vedo支持 """
+        try:
+            if write_path.endswith((".sm",".smesh")):
                 import pickle
                 with open(write_path, 'wb') as f:
                     pickle.dump(self.to_dict, f)
@@ -476,12 +512,12 @@ class SindreMesh:
 
             
     def load(self,load_path):
-        """读取sm文件"""
+        """读取(.sm .smesh)文件"""
         if not os.path.exists(load_path):
             self.log.error(f"File {load_path} does not exist.")
             return
-        if not load_path.endswith(".sm"):
-            self.log.error(f"Only .sm format is supported.")
+        if not load_path.endswith((".sm",".smesh")):
+            self.log.error(f"Only .sm/.smesh format is supported.")
             return
         try:
             import pickle
