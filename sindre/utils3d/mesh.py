@@ -62,61 +62,85 @@ class SindreMesh:
             
         """
         
-        new_vertices = np.asarray(new_vertices, dtype=np.float64)
+        new_vertices = np.array(new_vertices, dtype=np.float64)
         if new_vertices.ndim != 2 or new_vertices.shape[1] != 3:
             raise ValueError("顶点坐标必须是(N,3)的二维数组")
 
-
-
+        # 重新映射
         near_indices = self.get_near_idx(new_vertices)
         self.vertex_labels = self.vertex_labels[near_indices] 
         self.vertex_colors = self.vertex_colors[near_indices] 
         self.vertex_curvature = self.vertex_curvature[near_indices] 
-            
+        
+      
+
+
+        # 更新面片
         if new_faces is None:
-            old_count = len(self.vertices)
-            if np.max(self.faces) >= old_count:
-                self.log.debug(f"警告: 顶点数量发生改变({old_count}→{len(new_vertices)})，但未提供新的面片信息,开始重新映射")
-                # 创建旧顶点到新顶点的映射字典
-                vertex_map = {}
-                for new_idx, old_idx in enumerate(near_indices):
-                    if old_idx not in vertex_map:
-                        vertex_map[old_idx] = new_idx
+            new_vertex_count=len(new_vertices)
+            if np.max(self.faces) >= new_vertex_count:
+                self.log.warning(f"警告: 顶点数量发生改变({len(self.vertices)} → {new_vertex_count})，但未提供新的面片信息, 开始重新映射")
+                # # 创建旧顶点到新顶点的映射字典
+                # vertex_map = {}
+                # for new_idx, old_idx in enumerate(near_indices):
+                #     if old_idx not in vertex_map:
+                #         vertex_map[old_idx] = new_idx
                 
-                # 重新映射面片索引
-                new_faces = np.zeros_like(self.faces)
-                remapped_count = 0
-                invalid_count = 0
+                # # 重新映射面片索引
+                # new_faces_list = []
+                # invalid_count = 0
                 
-                for i, face in enumerate(self.faces):
-                    new_face = np.array([vertex_map.get(v_idx, -1) for v_idx in face])
-                    
-                    # 检查映射后的面片是否有效
-                    if -1 not in new_face and len(np.unique(new_face)) == 3:
-                        new_faces[remapped_count] = new_face
-                        remapped_count += 1
-                    else:
-                        invalid_count += 1
+                # for  f in self.faces:
+                #     new_f = np.array([vertex_map.get(v_idx, -1) for v_idx in f])
+                #     # 检查映射后的面片是否有效(不为-1，且face为有效，)
+                #     if (-1 not in new_f) and (len(np.unique(new_f)) == 3):
+                #         new_faces_list.append(new_f)
+                #     else:
+                #         invalid_count += 1
                 
-                # 只保留有效映射的面片
-                if remapped_count > 0:
-                    new_faces = new_faces[:remapped_count]
-                    self.log.debug(f"成功映射 {remapped_count} 个面片，丢弃 {invalid_count} 个无效面片")
-                else:
-                    self.log.warning("警告: 没有找到有效的面片映射，创建空的面片集合")
+                # # 只保留有效映射的面片
+                # new_faces = np.array(new_faces_list)
+                # self.log.debug(f"成功映射 {len(new_faces)} 个面片，丢弃 {invalid_count} 个无效面片")
+                # self.faces=new_faces
+
+                # 创建旧顶点到新顶点的映射数组
+                vertex_map_arr = np.full(len(self.vertices), -1, dtype=np.int64)
+                unique_old, first_indices = np.unique(near_indices, return_index=True)
+                vertex_map_arr[unique_old] = first_indices
+
+                # 批量转换面片索引（向量化操作替代循环）
+                new_faces_arr = vertex_map_arr[self.faces]
+
+                # 生成有效性掩码（向量化替代逐面片检查）
+                valid_no_invalid = np.all(new_faces_arr != -1, axis=1)
+                # 检查三个顶点是否各不相同
+                v0, v1, v2 = new_faces_arr.T  # 将面片分解为三个顶点数组
+                valid_no_duplicate = (v0 != v1) & (v0 != v2) & (v1 != v2)
+                valid_mask = valid_no_invalid & valid_no_duplicate
+
+                # 应用有效性筛选
+                new_faces = new_faces_arr[valid_mask]
+                invalid_count = len(new_faces_arr) - len(new_faces)
+
+                self.log.debug(f"成功映射 {len(new_faces)} 个面片，丢弃 {invalid_count} 个无效面片")
+                self.faces = new_faces
+
         else:
-            if np.max(new_faces) >= len(new_vertices):
-                raise IndexError(f"面片包含非法索引: {np.max(new_faces)}，新顶点数量: {len(new_vertices)}")
             self.faces = new_faces
 
-
-
-        # 重置kdtree
-        self.vertex_kdtree=None
         # 设置新的顶点
         self.vertices = new_vertices
+         # 重置kdtree
+        self.vertex_kdtree=None
+
+
+        # 检测面片合法性
+        if np.max(self.faces) >= len(self.vertices):
+            raise IndexError(f"面片包含非法索引: {np.max(self.faces)}，新顶点数量: {len(self.vertices)}")
+        
         # 重新计算法线
-        self.compute_normals(force=True)
+        self.compute_normals(force=True) 
+        
 
         
         
@@ -793,13 +817,12 @@ class SindreMesh:
     def decimate(self,n=10000):
         """将网格下采样到指定点数，采用面塌陷"""
         vd_ms= self.to_vedo.decimate(n=n)
-        self.any_mesh=vd_ms
-        self._update()
+        self.update_geometry(np.asarray(vd_ms.vertices),np.asarray(vd_ms.cells))
         
     def homogenize(self,n=10000):
         """ 均匀化网格到指定点数，采用聚类"""
-        self.any_mesh=isotropic_remeshing_by_acvd(self.to_vedo, target_num=n)
-        self._update()
+        vd_ms=isotropic_remeshing_by_acvd(self.to_vedo, target_num=n)
+        self.update_geometry(np.asarray(vd_ms.vertices),np.asarray(vd_ms.cells))
         
     
 
@@ -864,7 +887,8 @@ class SindreMesh:
         fix_invalid_by_meshlab(ms)
         # 更新信息
         self.any_mesh=ms
-        self._update()
+        self.update_geometry( np.asarray(mmesh.vertex_matrix(), dtype=np.float64),
+                             np.asarray(mmesh.face_matrix(), dtype=np.int32))
 
     
     @lru_cache(maxsize=None)

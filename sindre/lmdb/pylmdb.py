@@ -38,6 +38,7 @@ class Reader(object):
 
         self.dirpath = dirpath
         self.multiprocessing=multiprocessing
+        
 
         # 以只读模式打开LMDB环境
         subdir_bool =False if  bool(os.path.splitext(dirpath)[1])  else True
@@ -318,6 +319,7 @@ class Reader(object):
                 key, spec[key]["dtype"], spec[key]["shape"]
             )
         out += "\n\t提示:如果需要查看更多键类型可以使用-->get_data_specification(i=1)查看. "
+        out += f"\n\t如果数据库文件在固态硬盘,这样可以避免内存占用,请使用with Reader(db_path) as db: data=db[i] "
         out += "\033[0m\n"
         return out
 

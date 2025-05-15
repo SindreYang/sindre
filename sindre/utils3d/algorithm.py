@@ -568,6 +568,8 @@ def compute_face_normals(vertices, faces):
     Returns:
         面法线数组，形状为 (M, 3)
     """
+    vertices = np.array(vertices)
+    faces = np.array(faces)
     v0 = vertices[faces[:, 0]]
     v1 = vertices[faces[:, 1]]
     v2 = vertices[faces[:, 2]]
@@ -592,6 +594,8 @@ def compute_vertex_normals(vertices, faces):
     Returns:
         顶点法线数组，形状为 (N, 3)
     """
+    vertices = np.array(vertices)
+    faces = np.array(faces)
     v0 = vertices[faces[:, 0]]
     v1 = vertices[faces[:, 1]]
     v2 = vertices[faces[:, 2]]
@@ -1106,15 +1110,27 @@ class UnifiedLabelRefiner:
     
         from pygco import cut_from_graph
         optimized_labels = self.labels
+        terminate_after_next = False  # 标记是否在下一次迭代后终止
         for i  in  range(10):
             # 计算边权重
-            edges = self._compute_edges(self.smooth_factor)
-            optimized_labels_it = cut_from_graph(edges, unaries, pairwise)
-            if len(np.unique(optimized_labels_it))== self.class_num:
-                optimized_labels =optimized_labels_it
+            edges = edges = self._compute_edges(self.smooth_factor)
+            refine_labels = cut_from_graph(edges, unaries, pairwise)
+            unique_count =len(np.unique(refine_labels))
+            if optimized_labels is None:
+                optimized_labels =refine_labels
+            if terminate_after_next and unique_count== n_classes:
+                break  # 执行了额外的一次优化，终止循环
+            if unique_count== n_classes:
+                optimized_labels =refine_labels
                 self.smooth_factor*=1.5
                 log.info(f"当前smooth_factor={self.smooth_factor},优化中({i+1}/10)....")
+            elif unique_count== 1:
+                self.smooth_factor*=0.6
+                log.info(f"当前smooth_factor={self.smooth_factor},优化中({i+1}/10)....")
+                terminate_after_next = True  # 标记下次迭代后终止
+                optimized_labels = None
             else:
+                # 优化结束
                 break
             
         return optimized_labels #cut_from_graph(edges, unaries, pairwise)
@@ -1205,7 +1221,7 @@ class GraphCutRefiner:
             keep_label (bool, optional): 是否保持优化前后标签类别一致性，默认值为 True。
         """
         import trimesh
-        self.mesh = trimesh.Trimesh(vertices, faces)
+        self.mesh = trimesh.Trimesh(vertices, faces,process=False)
         self._precompute_geometry()
         self.smooth_factor = smooth_factor
         self.keep_label=keep_label
@@ -1218,7 +1234,7 @@ class GraphCutRefiner:
         else:
             self.temperature = temperature
         self.prob_matrix = self._labels_to_prob(mapped_labels, self.unique_labels.size)
-        log.debug(self.prob_matrix.shape)
+        log.debug(f"prob_matrix : {self.prob_matrix.shape}")
        
 
     def _precompute_geometry(self):
@@ -1233,7 +1249,6 @@ class GraphCutRefiner:
         """根据邻域标签一致性计算温度参数"""
         n = len(labels)
         total_inconsistency = 0.0
-        
         for i in range(n):
             neighbors = self.adjacency[i]
             if not neighbors.size:
@@ -1271,12 +1286,13 @@ class GraphCutRefiner:
             weights_raw = edges_raw[:, 2]
             unary_median = np.median(np.abs(unaries))
             weight_median = np.median(weights_raw) if weights_raw.size else 1.0
-            self.smooth_factor = unary_median / max(weight_median, 1e-6)*4#*0.8* 4 #经验值
+            self.smooth_factor = np.clip(unary_median / max(weight_median, 1e-6)*4,1e2,1e5) #经验值
         
-        #print(self.smooth_factor)
+       
         # 构造pairwise potential
         n_classes = self.prob_matrix.shape[-1]
         pairwise = (1 - np.eye(n_classes, dtype=np.int32))
+        log.debug(f"smooth_factor:{self.smooth_factor} , n_class :{n_classes}")
         
         # 执行图切优化
         try:
@@ -1300,15 +1316,27 @@ class GraphCutRefiner:
             
             if self.keep_label:
                 optimized_labels = None
+                terminate_after_next = False  # 标记是否在下一次迭代后终止
                 for i  in  range(10):
                     # 计算边权重
                     edges = self._compute_edge_weights(self.smooth_factor)
-                    optimized_labels_it = cut_from_graph(edges, unaries, pairwise)
-                    if len(np.unique(optimized_labels_it))== n_classes:
-                        optimized_labels =optimized_labels_it
+                    refine_labels = cut_from_graph(edges, unaries, pairwise)
+                    unique_count =len(np.unique(refine_labels))
+                    if optimized_labels is None:
+                        optimized_labels =refine_labels
+                    if terminate_after_next and unique_count== n_classes:
+                        break  # 执行了额外的一次优化，终止循环
+                    if unique_count== n_classes:
+                        optimized_labels =refine_labels
                         self.smooth_factor*=1.5
                         log.info(f"当前smooth_factor={self.smooth_factor},优化中({i+1}/10)....")
+                    elif unique_count== 1:
+                        self.smooth_factor*=0.6
+                        log.info(f"当前smooth_factor={self.smooth_factor},优化中({i+1}/10)....")
+                        terminate_after_next = True  # 标记下次迭代后终止
+                        optimized_labels = None
                     else:
+                        # 优化结束
                         break
 
             else:
@@ -1320,7 +1348,7 @@ class GraphCutRefiner:
             import traceback
             traceback.print_exc()
             raise RuntimeError(f"图切优化失败: {str(e)}") from e
-        
+
         return self.unique_labels[optimized_labels]
 
 
