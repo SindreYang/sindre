@@ -78,8 +78,10 @@ class SindreMesh:
         # 更新面片
         if new_faces is None:
             new_vertex_count=len(new_vertices)
-            if np.max(self.faces) >= new_vertex_count:
-                self.log.warning(f"警告: 顶点数量发生改变({len(self.vertices)} → {new_vertex_count})，但未提供新的面片信息, 开始重新映射")
+            # 使用 np.array_equal 比较顶点数组，包括顺序和值
+            vertices_changed = not np.array_equal(self.vertices, new_vertices)
+            if np.max(self.faces) >= new_vertex_count or vertices_changed:
+                self.log.warning(f"警告: 顶点数量/索引发生改变({len(self.vertices)} → {new_vertex_count})，但未提供新的面片信息, 开始重新映射")
                 # # 创建旧顶点到新顶点的映射字典
                 # vertex_map = {}
                 # for new_idx, old_idx in enumerate(near_indices):
@@ -873,6 +875,7 @@ class SindreMesh:
             self.vertex_kdtree= KDTree( self.vertices)
         _,idx = self.vertex_kdtree.query(query_vertices,workers=-1)
         return idx
+
             
         
         

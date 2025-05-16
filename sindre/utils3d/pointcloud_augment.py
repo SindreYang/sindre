@@ -118,6 +118,7 @@ class RotateXYZ_np(object):
         angles = np.clip(
             self.angle_sigma * np.random.randn(3), -self.angle_clip, self.angle_clip
         )
+        
         Rx = angle_axis_np(angles[0], np.array([1.0, 0.0, 0.0]))
         Ry = angle_axis_np(angles[1], np.array([0.0, 1.0, 0.0]))
         Rz = angle_axis_np(angles[2], np.array([0.0, 0.0, 1.0]))

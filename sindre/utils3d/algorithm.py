@@ -1118,9 +1118,9 @@ class UnifiedLabelRefiner:
             unique_count =len(np.unique(refine_labels))
             if optimized_labels is None:
                 optimized_labels =refine_labels
-            if terminate_after_next and unique_count== n_classes:
+            if terminate_after_next and unique_count== self.class_num:
                 break  # 执行了额外的一次优化，终止循环
-            if unique_count== n_classes:
+            if unique_count==  self.class_num:
                 optimized_labels =refine_labels
                 self.smooth_factor*=1.5
                 log.info(f"当前smooth_factor={self.smooth_factor},优化中({i+1}/10)....")
