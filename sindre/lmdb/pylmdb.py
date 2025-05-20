@@ -15,8 +15,43 @@ except ImportError:
         "instructions."
     )
 
-__all__ = ["Reader", "Writer", "merge_lmdb", "repair_windows_size", "split_lmdb","parallel_write"]
+__all__ = ["Reader","Reader_list", "Writer", "split_lmdb", "merge_lmdb", "repair_windows_size","parallel_write"]
 
+
+class Reader_list:
+    def __init__(self, db_path_list: list):
+        self.db_list = []
+        self.db_mapping = []  # 数据库索引映射表
+        self.real_idx_mapping = []  # 真实索引映射表
+        
+        for db_idx, db_path in enumerate(db_path_list):
+            db = Reader(db_path, True)
+            db_length = len(db)
+            self.db_list.append(db)
+            # 扩展映射表
+            self.db_mapping.extend([db_idx] * db_length)
+            self.real_idx_mapping.extend(range(db_length))
+            print(f"load: {db_path} --> len: {db_length}")
+    def __len__(self):
+        return len(self.real_idx_mapping)
+    
+    def __getitem__(self, idx):
+        db_idx = self.db_mapping[idx]
+        real_idx = self.real_idx_mapping[idx]
+        return self.db_list[db_idx][real_idx]
+
+    def __del__(self):
+        self.close()
+
+    def close(self):
+        for db in self.db_list:
+            db.close()
+        
+    
+        
+        
+        
+    
 
 class Reader(object):
     """
