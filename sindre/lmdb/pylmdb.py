@@ -15,45 +15,155 @@ except ImportError:
         "instructions."
     )
 
-__all__ = ["Reader","Reader_list", "Writer", "split_lmdb", "merge_lmdb", "repair_windows_size","parallel_write"]
+__all__ = ["Reader","ReaderList","ReaderSSD", "Writer", "SplitLmdb", "MergeLmdb", "fix_lmdb_windows_size","parallel_write"]
 
 
-class Reader_list:
-    def __init__(self, db_path_list: list):
+class ReaderList:
+    """组合多个LMDB数据库进行统一读取的类，提供序列协议的接口
+    
+    该类用于将多个LMDB数据库合并为一个逻辑数据集，支持通过索引访问和获取长度。
+    内部维护数据库索引映射表和真实索引映射表，实现跨数据库的透明访问。
+    
+    Attributes:
+        db_list (List[Reader]): 存储打开的LMDB数据库实例列表
+        db_mapping (List[int]): 索引到数据库索引的映射表，每个元素表示对应索引数据所在的数据库下标
+        real_idx_mapping (List[int]): 索引到数据库内真实索引的映射表，每个元素表示数据在对应数据库中的原始索引
+    """
+
+    def __init__(self, db_path_list: list[str],multiprocessing:bool=True):
+        """初始化组合数据库读取器
+        
+        Args:
+            db_path_list (List[str]): LMDB数据库文件路径列表，按顺序加载每个数据库
+        """
         self.db_list = []
         self.db_mapping = []  # 数据库索引映射表
         self.real_idx_mapping = []  # 真实索引映射表
         
         for db_idx, db_path in enumerate(db_path_list):
-            db = Reader(db_path, True)
+            db = Reader(db_path, multiprocessing)
             db_length = len(db)
             self.db_list.append(db)
             # 扩展映射表
             self.db_mapping.extend([db_idx] * db_length)
             self.real_idx_mapping.extend(range(db_length))
             print(f"load: {db_path} --> len: {db_length}")
-    def __len__(self):
+
+    def __len__(self) -> int:
+        """获取组合数据集的总条目数
+        
+        Returns:
+            int: 所有LMDB数据库的条目数之和
+        """
         return len(self.real_idx_mapping)
-    
-    def __getitem__(self, idx):
+
+    def __getitem__(self, idx: int) -> object:
+        """通过索引获取数据条目
+        
+        Args:
+            idx (int): 数据条目在组合数据集中的逻辑索引
+        
+        Returns:
+            object: 对应位置的数据条目，具体类型取决于LMDB存储的数据格式
+        
+        Raises:
+            IndexError: 当索引超出组合数据集范围时抛出
+        """
         db_idx = self.db_mapping[idx]
         real_idx = self.real_idx_mapping[idx]
         return self.db_list[db_idx][real_idx]
 
-    def __del__(self):
-        self.close()
-
     def close(self):
+        """关闭所有打开的LMDB数据库连接
+        
+        该方法应在使用完毕后显式调用，确保资源正确释放
+        """
         for db in self.db_list:
             db.close()
+
+    def __del__(self):
+        """析构函数，自动调用close方法释放资源
         
+        注意：不保证析构函数会被及时调用，建议显式调用close()
+        """
+        self.close()
+        
+class ReaderSSD:
+    """针对SSD优化的LMDB数据库读取器，支持高效随机访问
     
+    该类针对SSD存储特性优化，每次读取时动态打开数据库连接，
+    适合需要高并发随机访问的场景，可充分利用SSD的IOPS性能。
+    
+    Attributes:
+        db_len (int): 数据库条目总数
+        db_path (str): LMDB数据库文件路径
+        multiprocessing (bool): 是否启用多进程模式
+    """
+    
+    def __init__(self, db_path: str, multiprocessing: bool = False):
+        """初始化SSD优化的LMDB读取器
         
+        Args:
+            db_path (str): LMDB数据库文件路径
+            multiprocessing (bool, optional): 是否启用多进程支持。
+                启用后将允许在多个进程中同时打开数据库连接。默认为False。
+        """
+        self.db_len = 0
+        self.db_path = db_path
+        self.multiprocessing = multiprocessing
+        with Reader(self.db_path, multiprocessing=self.multiprocessing) as db:
+            self.db_len = len(db)  # 修正: 使用传入的db变量
+    
+    def __len__(self) -> int:
+        """获取数据库的总条目数
         
+        Returns:
+            int: 数据库中的条目总数
+        """
+        return self.db_len
+    
+    def __getitem__(self, idx: int) -> object:
+        """通过索引获取单个数据条目
+        
+        每次调用时动态打开数据库连接，读取完成后立即关闭。
+        适合随机访问模式，特别是在SSD存储上。
+        
+        Args:
+            idx (int): 数据条目索引
+        
+        Returns:
+            object: 索引对应的数据条目
+        
+        Raises:
+            IndexError: 当索引超出有效范围时抛出
+        """
+        with Reader(self.db_path, multiprocessing=self.multiprocessing) as db:
+            return db[idx]
+    
+    def get_batch(self, indices: list[int]) -> list[object]:
+        """批量获取多个数据条目
+        
+        优化的批量读取接口，在一个数据库连接中读取多个条目，
+        减少频繁打开/关闭连接的开销。
+        
+        Args:
+            indices (list[int]): 数据条目索引列表
+        
+        Returns:
+            list[object]: 索引对应的数据条目列表
+        
+        Raises:
+            IndexError: 当任何索引超出有效范围时抛出
+        """
+        with Reader(self.db_path, multiprocessing=self.multiprocessing) as db:
+            return [db[idx] for idx in indices]
+
+    
+
         
     
 
-class Reader(object):
+class Reader:
     """
     用于读取包含张量(`numpy.ndarray`)数据集的对象。
     这些张量是通过使用MessagePack从Lightning Memory-Mapped Database (LMDB)中读取的。
@@ -368,7 +478,7 @@ class Reader(object):
         self._lmdb_env.close()
 
 
-class Writer(object):
+class Writer:
     """
     用于将数据集的对象 ('numpy.ndarray') 写入闪电内存映射数据库 (LMDB),并带有MessagePack压缩。
     Note:
@@ -660,9 +770,9 @@ class Writer(object):
            
             
 
-def repair_windows_size(dirpath: str):
+def fix_lmdb_windows_size(dirpath: str):
     """
-    解决windows没法实时变化大小问题;
+    修复lmdb在windows系统上创建大小异常问题(windows上lmdb没法实时变化大小);
 
     Args:
         dirpath:  lmdb目录路径
@@ -676,7 +786,7 @@ def repair_windows_size(dirpath: str):
 
 
 
-def merge_lmdb(target_dir: str, source_dirs: list, map_size_limit: int, multiprocessing: bool = False):
+def MergeLmdb(target_dir: str, source_dirs: list, map_size_limit: int, multiprocessing: bool = False):
     """
     将多个源LMDB数据库合并到目标数据库
     
@@ -690,7 +800,7 @@ def merge_lmdb(target_dir: str, source_dirs: list, map_size_limit: int, multipro
     Example:
         ```
         # 合并示例
-        merge_lmdb(
+        MergeLmdb(
             target_dir="merged.db",
             source_dirs=["db1", "db2"],
             map_size_limit=1024  # 1GB
@@ -726,7 +836,7 @@ def merge_lmdb(target_dir: str, source_dirs: list, map_size_limit: int, multipro
 
 
 
-def split_lmdb(source_dir: str, target_dirs: list, map_size_limit: int, multiprocessing: bool = False):
+def SplitLmdb(source_dir: str, target_dirs: list, map_size_limit: int, multiprocessing: bool = False):
     """
     将源LMDB数据库均匀拆分到多个目标数据库
     
@@ -739,7 +849,7 @@ def split_lmdb(source_dir: str, target_dirs: list, map_size_limit: int, multipro
     
     Example:
         ```
-        split_lmdb(
+        SplitLmdb(
         source_dir="large.db",
         target_dirs=[f"split_{i}.db" for i in range(4)],
         map_size_limit=256
@@ -783,11 +893,6 @@ def split_lmdb(source_dir: str, target_dirs: list, map_size_limit: int, multipro
     # 关闭所有Writer实例
     for w in writers:
         w.close()
-
-
-        
-        
-
 
 
 
