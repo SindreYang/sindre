@@ -3,7 +3,10 @@ __pycache__/
 *.py[cod]
 *$py.class
 .history
-sindre/test/date
+*.bmp
+*.onnx
+*.engine
+*.engine.cache
 
 
 
