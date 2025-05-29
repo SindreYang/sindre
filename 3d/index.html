@@ -579,6 +579,66 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#utils3d.algorithm.FlyByGenerator" class="md-nav__link">
+    <span class="md-ellipsis">
+      FlyByGenerator
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="FlyByGenerator">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#utils3d.algorithm.FlyByGenerator.__init__" class="md-nav__link">
+    <span class="md-ellipsis">
+      __init__
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#utils3d.algorithm.FlyByGenerator.get_mesh_labels" class="md-nav__link">
+    <span class="md-ellipsis">
+      get_mesh_labels
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#utils3d.algorithm.FlyByGenerator.get_pixel2point" class="md-nav__link">
+    <span class="md-ellipsis">
+      get_pixel2point
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#utils3d.algorithm.FlyByGenerator.render_views" class="md-nav__link">
+    <span class="md-ellipsis">
+      render_views
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#utils3d.algorithm.FlyByGenerator.set_sphere_sampling" class="md-nav__link">
+    <span class="md-ellipsis">
+      set_sphere_sampling
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#utils3d.algorithm.GraphCutRefiner" class="md-nav__link">
     <span class="md-ellipsis">
       GraphCutRefiner
@@ -831,6 +891,15 @@
   <a href="#utils3d.algorithm.cut_mesh_point_loop" class="md-nav__link">
     <span class="md-ellipsis">
       cut_mesh_point_loop
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#utils3d.algorithm.detect_boundary_points" class="md-nav__link">
+    <span class="md-ellipsis">
+      detect_boundary_points
     </span>
   </a>
   
@@ -2364,6 +2433,66 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#utils3d.algorithm.FlyByGenerator" class="md-nav__link">
+    <span class="md-ellipsis">
+      FlyByGenerator
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="FlyByGenerator">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#utils3d.algorithm.FlyByGenerator.__init__" class="md-nav__link">
+    <span class="md-ellipsis">
+      __init__
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#utils3d.algorithm.FlyByGenerator.get_mesh_labels" class="md-nav__link">
+    <span class="md-ellipsis">
+      get_mesh_labels
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#utils3d.algorithm.FlyByGenerator.get_pixel2point" class="md-nav__link">
+    <span class="md-ellipsis">
+      get_pixel2point
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#utils3d.algorithm.FlyByGenerator.render_views" class="md-nav__link">
+    <span class="md-ellipsis">
+      render_views
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#utils3d.algorithm.FlyByGenerator.set_sphere_sampling" class="md-nav__link">
+    <span class="md-ellipsis">
+      set_sphere_sampling
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#utils3d.algorithm.GraphCutRefiner" class="md-nav__link">
     <span class="md-ellipsis">
       GraphCutRefiner
@@ -2616,6 +2745,15 @@
   <a href="#utils3d.algorithm.cut_mesh_point_loop" class="md-nav__link">
     <span class="md-ellipsis">
       cut_mesh_point_loop
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#utils3d.algorithm.detect_boundary_points" class="md-nav__link">
+    <span class="md-ellipsis">
+      detect_boundary_points
     </span>
   </a>
   
@@ -4291,6 +4429,427 @@ path: 列表，表示从起点到终点的顶点索引路径，若不可达返�
 
 
 
+<h2 id="utils3d.algorithm.FlyByGenerator" class="doc doc-heading">
+            <code>FlyByGenerator</code>
+
+
+</h2>
+
+
+    <div class="doc doc-contents ">
+
+
+        <p>从3D网格模型生成多视角2D图像的渲染器</p>
+<p>支持从不同视角渲染3D网格，生成包含法线、深度等特征的2D图像，
+并提供像素到顶点的映射功能，用于后续网格顶点标签的生成。</p>
+
+
+
+
+  <div class="doc doc-children">
+
+
+
+
+
+
+
+
+
+<div class="doc doc-object doc-function">
+
+
+<h3 id="utils3d.algorithm.FlyByGenerator.__init__" class="doc doc-heading">
+            <code class="highlight language-python"><span class="fm">__init__</span><span class="p">(</span><span class="n">mesh</span><span class="p">,</span> <span class="n">resolution</span><span class="o">=</span><span class="mi">224</span><span class="p">,</span> <span class="n">use_z</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">split_z</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">rescale_features</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span></code>
+
+</h3>
+
+
+    <div class="doc doc-contents ">
+
+        <p>初始化渲染器</p>
+
+
+<p><span class="doc-section-title">Parameters:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Type</th>
+          <th>Description</th>
+          <th>Default</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td><code>mesh</code></td>
+            <td>
+                  <code><span title="vedo.Mesh">Mesh</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>vedo.Mesh对象，输入的3D网格模型</p>
+              </div>
+            </td>
+            <td>
+                <em>required</em>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td><code>resolution</code></td>
+            <td>
+                  <code>int</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>输出图像的分辨率，默认为224×224</p>
+              </div>
+            </td>
+            <td>
+                  <code>224</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td><code>use_z</code></td>
+            <td>
+                  <code>bool</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>是否启用深度缓冲(z-buffer)</p>
+              </div>
+            </td>
+            <td>
+                  <code>False</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td><code>split_z</code></td>
+            <td>
+                  <code>bool</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>是否将深度作为独立通道输出</p>
+              </div>
+            </td>
+            <td>
+                  <code>False</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td><code>rescale_features</code></td>
+            <td>
+                  <code>bool</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>是否将特征值归一化到[-1, 1]或[0, 1]</p>
+              </div>
+            </td>
+            <td>
+                  <code>False</code>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h3 id="utils3d.algorithm.FlyByGenerator.get_mesh_labels" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">get_mesh_labels</span><span class="p">(</span><span class="n">view_labels</span><span class="p">,</span> <span class="n">pixel_mappings</span><span class="p">)</span></code>
+
+</h3>
+
+
+    <div class="doc doc-contents ">
+
+        <p>从多个视图的标签生成网格顶点的标签</p>
+
+
+<p><span class="doc-section-title">Parameters:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Type</th>
+          <th>Description</th>
+          <th>Default</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td><code>view_labels</code></td>
+            <td>
+                  <code>List[<span title="numpy.ndarray">ndarray</span>]</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>每个视图的标签图像列表</p>
+              </div>
+            </td>
+            <td>
+                <em>required</em>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td><code>pixel_mappings</code></td>
+            <td>
+                  <code>List[Dict]</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>每个视图的像素到顶点映射字典列表</p>
+              </div>
+            </td>
+            <td>
+                <em>required</em>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+    <p><span class="doc-section-title">Returns:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Type</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                  <code><span title="numpy.ndarray">ndarray</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>网格顶点的标签数组，形状为(num_vertices,)</p>
+              </div>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h3 id="utils3d.algorithm.FlyByGenerator.get_pixel2point" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">get_pixel2point</span><span class="p">(</span><span class="n">view_index</span><span class="p">)</span></code>
+
+</h3>
+
+
+    <div class="doc doc-contents ">
+
+        <p>获取指定视图的像素到顶点的映射</p>
+
+
+<p><span class="doc-section-title">Parameters:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Type</th>
+          <th>Description</th>
+          <th>Default</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td><code>view_index</code></td>
+            <td>
+                  <code>int</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>视图索引</p>
+              </div>
+            </td>
+            <td>
+                <em>required</em>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+    <p><span class="doc-section-title">Returns:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Type</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                  <code>Dict[Tuple[int, int], int]</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>像素到顶点的映射字典，键为(x,y)坐标，值为顶点ID</p>
+              </div>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h3 id="utils3d.algorithm.FlyByGenerator.render_views" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">render_views</span><span class="p">()</span></code>
+
+</h3>
+
+
+    <div class="doc doc-contents ">
+
+        <p>渲染所有视角的图像</p>
+
+
+    <p><span class="doc-section-title">Returns:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Type</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                  <code><span title="numpy.ndarray">ndarray</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>渲染结果数组，形状为[num_views, height, width, channels]</p>
+              </div>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h3 id="utils3d.algorithm.FlyByGenerator.set_sphere_sampling" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">set_sphere_sampling</span><span class="p">(</span><span class="n">method</span><span class="p">,</span> <span class="n">param</span><span class="p">,</span> <span class="n">radius</span><span class="o">=</span><span class="mf">4.0</span><span class="p">,</span> <span class="n">turns</span><span class="o">=</span><span class="mi">4</span><span class="p">)</span></code>
+
+</h3>
+
+
+    <div class="doc doc-contents ">
+
+        <p>设置球体采样点方法</p>
+
+
+<p><span class="doc-section-title">Parameters:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Type</th>
+          <th>Description</th>
+          <th>Default</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td><code>method</code></td>
+            <td>
+                  <code>str</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>采样方法，"subdivision"或"spiral"</p>
+              </div>
+            </td>
+            <td>
+                <em>required</em>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td><code>param</code></td>
+            <td>
+                  <code>int</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>细分级别(用于subdivision)或点数(用于spiral)</p>
+              </div>
+            </td>
+            <td>
+                <em>required</em>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td><code>radius</code></td>
+            <td>
+                  <code>float</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>采样球半径</p>
+              </div>
+            </td>
+            <td>
+                  <code>4.0</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td><code>turns</code></td>
+            <td>
+                  <code>int</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>螺旋方法的旋转圈数</p>
+              </div>
+            </td>
+            <td>
+                  <code>4</code>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+    </div>
+
+</div>
+
+
+
+  </div>
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-class">
+
+
+
 <h2 id="utils3d.algorithm.GraphCutRefiner" class="doc doc-heading">
             <code>GraphCutRefiner</code>
 
@@ -5844,6 +6403,104 @@ Returns:
             <td>
               <div class="doc-md-description">
                 <p>切割后的网格</p>
+              </div>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h2 id="utils3d.algorithm.detect_boundary_points" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">detect_boundary_points</span><span class="p">(</span><span class="n">points</span><span class="p">,</span> <span class="n">labels</span><span class="p">,</span> <span class="n">config</span><span class="o">=</span><span class="kc">None</span><span class="p">)</span></code>
+
+</h2>
+
+
+    <div class="doc doc-contents ">
+
+        <p>基于局部标签一致性的边界点检测函数</p>
+
+
+<p><span class="doc-section-title">Parameters:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Type</th>
+          <th>Description</th>
+          <th>Default</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td><code>points</code></td>
+            <td>
+                  <code><span title="numpy.ndarray">ndarray</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>点云坐标，形状为 (N, 3)</p>
+              </div>
+            </td>
+            <td>
+                <em>required</em>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td><code>labels</code></td>
+            <td>
+                  <code><span title="numpy.ndarray">ndarray</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>点云标签，形状为 (N,)</p>
+              </div>
+            </td>
+            <td>
+                <em>required</em>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td><code>config</code></td>
+            <td>
+                  <code>dict</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>配置参数，包含:
+- knn_k: KNN查询的邻居数（默认40）
+- bdl_ratio: 边界判定阈值（默认0.8）</p>
+              </div>
+            </td>
+            <td>
+                  <code>None</code>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+    <p><span class="doc-section-title">Returns:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Type</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>np.ndarray: 边界点掩码，形状为 (N,)，边界点为True，非边界点为False</p>
               </div>
             </td>
           </tr>
