@@ -30,7 +30,7 @@ class ReaderList:
         real_idx_mapping (List[int]): 索引到数据库内真实索引的映射表，每个元素表示数据在对应数据库中的原始索引
     """
 
-    def __init__(self, db_path_list: list[str],multiprocessing:bool=True):
+    def __init__(self, db_path_list: list,multiprocessing:bool=True):
         """初始化组合数据库读取器
         
         Args:
@@ -57,7 +57,7 @@ class ReaderList:
         """
         return len(self.real_idx_mapping)
 
-    def __getitem__(self, idx: int) -> object:
+    def __getitem__(self, idx: int):
         """通过索引获取数据条目
         
         Args:
@@ -140,7 +140,7 @@ class ReaderSSD:
         with Reader(self.db_path, multiprocessing=self.multiprocessing) as db:
             return db[idx]
     
-    def get_batch(self, indices: list[int]) -> list[object]:
+    def get_batch(self, indices: list) :
         """批量获取多个数据条目
         
         优化的批量读取接口，在一个数据库连接中读取多个条目，
