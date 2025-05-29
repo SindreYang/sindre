@@ -2747,3 +2747,478 @@ def angle_axis_np(angle, axis):
                                         [-u[1], u[0], 0.0]])
     R =cosval * np.eye(3)+ sinval * cross_prod_mat+ (1.0 - cosval) * np.outer(u, u)
     return R
+
+
+
+
+
+def detect_boundary_points(points, labels, config=None):
+    """
+    基于局部标签一致性的边界点检测函数
+    
+    Args:
+        points (np.ndarray): 点云坐标，形状为 (N, 3)
+        labels (np.ndarray): 点云标签，形状为 (N,)
+        config (dict): 配置参数，包含:
+            - knn_k: KNN查询的邻居数（默认40）
+            - bdl_ratio: 边界判定阈值（默认0.8）
+            
+    Returns:
+        np.ndarray: 边界点掩码，形状为 (N,)，边界点为True，非边界点为False
+    """
+    from sklearn.neighbors import KDTree
+    from scipy.stats import mode
+    # 设置默认配置
+    default_config = {
+        "knn_k": 40,
+        "bdl_ratio": 0.8
+    }
+    if config:
+        default_config.update(config)
+    config = default_config
+    
+    # 构建KD树
+    tree = KDTree(points, leaf_size=2)
+    
+    # 查询k近邻索引
+    near_points_indices = tree.query(points, k=config["knn_k"], return_distance=False)
+    
+    # 获取邻居标签
+    neighbor_labels = labels[near_points_indices]  # 形状: (N, knn_k)
+    
+    # 统计每个点的邻居中主要标签的出现次数
+    # def count_dominant_label(row):
+    #     return np.bincount(row).max() if len(row) > 0 else 0
+    # label_counts = np.apply_along_axis(count_dominant_label, axis=1, arr=neighbor_labels)
+    if neighbor_labels.size == 0:
+        label_counts = np.zeros(len(points), dtype=int)
+    else:
+        label_counts = mode(neighbor_labels, axis=1, keepdims=False).count
+        
+    # 计算主要标签比例并生成边界掩码
+    label_ratio = label_counts / config["knn_k"]
+    boundary_mask = label_ratio < config["bdl_ratio"]
+    
+    return boundary_mask
+
+
+
+
+class FlyByGenerator:
+    """
+    从3D网格模型生成多视角2D图像的渲染器
+    
+    支持从不同视角渲染3D网格，生成包含法线、深度等特征的2D图像，
+    并提供像素到顶点的映射功能，用于后续网格顶点标签的生成。
+    """
+    
+    def __init__(self, 
+                 mesh: vedo.Mesh, 
+                 resolution: int = 224,
+                 use_z: bool = False,
+                 split_z: bool = False,
+                 rescale_features: bool = False):
+        """
+        初始化渲染器
+        
+        Args:
+            mesh: vedo.Mesh对象，输入的3D网格模型
+            resolution: 输出图像的分辨率，默认为224×224
+            use_z: 是否启用深度缓冲(z-buffer)
+            split_z: 是否将深度作为独立通道输出
+            rescale_features: 是否将特征值归一化到[-1, 1]或[0, 1]
+        """
+        self.mesh = self._normalize_mesh(mesh)  # 归一化处理后的网格
+        self.resolution = resolution
+        self.use_z = use_z
+        self.split_z = split_z
+        self.rescale_features = rescale_features
+        
+        # 初始化VTK渲染组件
+        self.renderer = vtk.vtkRenderer()
+        self.render_window = vtk.vtkRenderWindow()
+        self.render_window.AddRenderer(self.renderer)
+        self.render_window.SetSize(resolution, resolution)
+        self.render_window.SetMultiSamples(0)  # 禁用抗锯齿
+        self.render_window.OffScreenRenderingOn()
+        
+        # 用于捕获渲染结果的过滤器
+        self.color_filter = vtk.vtkWindowToImageFilter()
+        self.color_filter.SetInputBufferTypeToRGB()
+        self.color_filter.SetInput(self.render_window)
+        
+        self.depth_filter = vtk.vtkWindowToImageFilter()
+        self.depth_filter.SetInputBufferTypeToZBuffer()
+        self.depth_filter.SetInput(self.render_window)
+        
+        # 存储当前渲染的actor
+        self.current_actor = None
+        
+        # 初始化采样点相关变量
+        self.sphere_points = None
+        self.view_up_points = None
+        self.focal_points = None
+    
+    def _normalize_mesh(self, mesh: vedo.Mesh) -> vedo.Mesh:
+        """
+        将网格缩放到单位球体并居中
+        
+        Args:
+            mesh: 输入的vedo网格
+        
+        Returns:
+            归一化后的vedo网格
+        """
+        # 计算网格的边界框和中心
+        bounds = mesh.bounds()
+        center = [(bounds[1] + bounds[0])/2, 
+                  (bounds[3] + bounds[2])/2, 
+                  (bounds[5] + bounds[4])/2]
+        
+        # 居中处理
+        normalized_mesh = mesh.clone().center()
+        
+        # 计算缩放因子，使网格完全包含在单位球体内
+        max_dim = max(bounds[1] - bounds[0], 
+                      bounds[3] - bounds[2], 
+                      bounds[5] - bounds[4])
+        scale_factor = 1.0 / max_dim if max_dim > 0 else 1.0
+        
+        # 缩放处理
+        normalized_mesh.scale(scale_factor)
+        
+        # 计算并设置法线（如果没有的话）
+        if not normalized_mesh.GetPointData().GetNormals():
+            normalized_mesh.computeNormals()
+        
+        return normalized_mesh
+    
+    def set_sphere_sampling(self, method: str, 
+                           param: int, 
+                           radius: float = 4.0,
+                           turns: int = 4) -> None:
+        """
+        设置球体采样点方法
+        
+        Args:
+            method: 采样方法，"subdivision"或"spiral"
+            param: 细分级别(用于subdivision)或点数(用于spiral)
+            radius: 采样球半径
+            turns: 螺旋方法的旋转圈数
+        """
+        if method == "subdivision":
+            # 使用二十面体细分生成采样点
+            ico = vedo.Icosahedron(r=radius, subdivisions=param)
+            self.sphere_points = ico.points()
+            # 默认视图向上方向和焦点
+            self.view_up_points = np.array([[0, 0, -1]] * len(self.sphere_points))
+            self.focal_points = np.zeros((len(self.sphere_points), 3))
+            
+        elif method == "spiral":
+            # 使用螺旋方法生成采样点
+            self.sphere_points = self._generate_spiral_points(param, radius, turns)
+            # 为螺旋点计算视图向上方向
+            self.view_up_points = self._compute_view_up_for_spiral(self.sphere_points)
+            self.focal_points = np.zeros((len(self.sphere_points), 3))
+            
+        else:
+            raise ValueError(f"Unsupported sampling method: {method}")
+    
+    def _generate_spiral_points(self, num_points: int, radius: float, turns: int) -> np.ndarray:
+        """
+        生成球面上的螺旋分布点
+        
+        Args:
+            num_points: 采样点数
+            radius: 球半径
+            turns: 螺旋圈数
+        
+        Returns:
+            采样点坐标数组，形状为(num_points, 3)
+        """
+        points = []
+        for i in range(num_points):
+            # 使用黄金螺旋算法
+            phi = np.arccos(1 - 2 * (i + 0.5) / num_points)
+            theta = 2 * np.pi * turns * (i + 0.5) / num_points
+            
+            x = radius * np.sin(phi) * np.cos(theta)
+            y = radius * np.sin(phi) * np.sin(theta)
+            z = radius * np.cos(phi)
+            
+            points.append([x, y, z])
+        
+        return np.array(points)
+    
+    def _compute_view_up_for_spiral(self, points: np.ndarray) -> np.ndarray:
+        """
+        为螺旋采样点计算视图向上方向
+        
+        Args:
+            points: 采样点坐标数组
+        
+        Returns:
+            视图向上方向数组
+        """
+        view_up = np.zeros_like(points)
+        
+        for i, point in enumerate(points):
+            # 默认向上方向，避免与观察方向共线
+            if abs(point[2]) < 0.9:  # 如果点不在z轴附近
+                view_up[i] = [0, 0, -1]
+            else:  # 如果点在z轴附近，使用x轴作为向上方向
+                view_up[i] = [1, 0, 0]
+        
+        return view_up
+    
+    def render_views(self) -> np.ndarray:
+        """
+        渲染所有视角的图像
+        
+        Returns:
+            渲染结果数组，形状为[num_views, height, width, channels]
+        """
+        if self.sphere_points is None:
+            raise ValueError("Sampling points not set. Call set_sphere_sampling first.")
+        
+        # 清除现有actor
+        self.renderer.RemoveAllViewProps()
+        
+        # 创建并添加网格actor到渲染器
+        self.current_actor = self._create_actor_from_mesh(self.mesh)
+        self.renderer.AddActor(self.current_actor)
+        
+        # 设置背景为黑色
+        self.renderer.SetBackground(0, 0, 0)
+        
+        # 存储所有视角的渲染结果
+        views = []
+        
+        # 获取相机对象
+        camera = self.renderer.GetActiveCamera()
+        
+        # 渲染每个视角
+        for i, (position, view_up, focal_point) in enumerate(
+            zip(self.sphere_points, self.view_up_points, self.focal_points)):
+            
+            # 设置相机位置和方向
+            camera.SetPosition(position)
+            camera.SetFocalPoint(focal_point)
+            camera.SetViewUp(view_up)
+            
+            # 重置裁剪范围以确保正确渲染
+            self.renderer.ResetCameraClippingRange()
+            
+            # 强制渲染
+            self.render_window.Render()
+            
+            # 捕获颜色图像
+            self.color_filter.Modified()
+            self.color_filter.Update()
+            color_image = self._vtk_image_to_numpy(self.color_filter.GetOutput())
+            
+            # 处理深度图像(如果启用)
+            if self.use_z:
+                self.depth_filter.Modified()
+                self.depth_filter.Update()
+                depth_image = self._vtk_image_to_numpy(self.depth_filter.GetOutput())
+                
+                # 处理深度值
+                z_near, z_far = camera.GetClippingRange()
+                depth_image = self._process_depth(depth_image, z_near, z_far)
+                
+                if self.split_z:
+                    # 将深度作为独立通道
+                    view = np.dstack((color_image, depth_image))
+                else:
+                    # 将颜色与深度相乘
+                    view = color_image * depth_image[:, :, np.newaxis]
+            else:
+                view = color_image
+            
+            # 归一化特征(如果启用)
+            if self.rescale_features:
+                view = self._rescale_features(view)
+            
+            views.append(view)
+        
+        return np.array(views)
+    
+    def _create_actor_from_mesh(self, mesh: vedo.Mesh) -> vtk.vtkActor:
+        """
+        从vedo网格创建VTK actor
+        
+        Args:
+            mesh: vedo网格对象
+        
+        Returns:
+            vtk actor对象
+        """
+        # 获取VTK表示
+        vtk_mesh = mesh.GetMapper().GetInput()
+        
+        # 创建映射器和actor
+        mapper = vtk.vtkPolyDataMapper()
+        mapper.SetInputData(vtk_mesh)
+        
+        actor = vtk.vtkActor()
+        actor.SetMapper(mapper)
+        
+        # 使用法线作为颜色
+        actor.GetProperty().SetInterpolationToFlat()
+        actor.GetProperty().LightingOff()
+        
+        return actor
+    
+    def _vtk_image_to_numpy(self, vtk_image: vtk.vtkImageData) -> np.ndarray:
+        """
+        将VTK图像数据转换为NumPy数组
+        
+        Args:
+            vtk_image: VTK图像对象
+        
+        Returns:
+            NumPy数组
+        """
+        # 获取图像尺寸和像素数据
+        width, height, _ = vtk_image.GetDimensions()
+        vtk_array = vtk_image.GetPointData().GetScalars()
+        num_components = vtk_array.GetNumberOfComponents()
+        
+        # 转换为NumPy数组
+        numpy_array = vtk_to_numpy(vtk_array)
+        numpy_array = numpy_array.reshape(height, width, num_components)
+        
+        return numpy_array
+    
+    def _process_depth(self, depth_image: np.ndarray, z_near: float, z_far: float) -> np.ndarray:
+        """
+        处理深度图像，将归一化的z-buffer值转换为实际深度值
+        
+        Args:
+            depth_image: 深度图像数组
+            z_near: 近裁剪面距离
+            z_far: 远裁剪面距离
+        
+        Returns:
+            处理后的深度图像
+        """
+        # 将[0,1]范围的z-buffer值转换为实际深度值
+        depth = 2.0 * z_far * z_near / (z_far + z_near - (z_far - z_near) * (2.0 * depth_image - 1.0))
+        
+        # 处理无穷远处的点(设置为0)
+        depth[depth > (z_far - 0.1)] = 0
+        
+        return depth
+    
+    def _rescale_features(self, image: np.ndarray) -> np.ndarray:
+        """
+        归一化特征值到[-1, 1]或[0, 1]
+        
+        Args:
+            image: 输入图像数组
+        
+        Returns:
+            归一化后的图像数组
+        """
+        if image.dtype == np.uint8:
+            # 对颜色通道进行归一化
+            image = image.astype(np.float32) / 255.0
+            
+            # 转换到[-1, 1]范围
+            image = 2.0 * image - 1.0
+        
+        return image
+    
+    def get_pixel2point(self, view_index: int) -> Dict[Tuple[int, int], int]:
+        """
+        获取指定视图的像素到顶点的映射
+        
+        Args:
+            view_index: 视图索引
+        
+        Returns:
+            像素到顶点的映射字典，键为(x,y)坐标，值为顶点ID
+        """
+        if self.current_actor is None:
+            raise ValueError("No mesh has been rendered yet. Call render_views first.")
+        
+        # 获取相机
+        camera = self.renderer.GetActiveCamera()
+        
+        # 设置相机到指定视图
+        camera.SetPosition(self.sphere_points[view_index])
+        camera.SetFocalPoint(self.focal_points[view_index])
+        camera.SetViewUp(self.view_up_points[view_index])
+        self.renderer.ResetCameraClippingRange()
+        self.render_window.Render()
+        
+        # 创建拾取器
+        picker = vtk.vtkCellPicker()
+        pixel_to_point = {}
+        
+        # 遍历每个像素
+        for y in range(self.resolution):
+            for x in range(self.resolution):
+                # 拾取该像素对应的3D点
+                picker.Pick(x, self.resolution - y - 1, 0, self.renderer)
+                
+                # 获取拾取的单元格ID和重心坐标
+                cell_id = picker.GetCellId()
+                if cell_id != -1:  # 如果有拾取到单元格
+                    # 获取单元格的顶点ID
+                    poly_data = self.current_actor.GetMapper().GetInput()
+                    cell = poly_data.GetCell(cell_id)
+                    
+                    # 使用重心坐标确定最可能的顶点
+                    pcoords = picker.GetPCoords()
+                    weights = [1.0 - pcoords[0] - pcoords[1], pcoords[0], pcoords[1]]
+                    
+                    # 三角形的三个顶点
+                    point_ids = [cell.GetPointId(i) for i in range(cell.GetNumberOfPoints())]
+                    
+                    # 选择权重最大的顶点
+                    max_weight_idx = np.argmax(weights)
+                    point_id = point_ids[max_weight_idx]
+                    
+                    pixel_to_point[(x, y)] = point_id
+        
+        return pixel_to_point
+    
+    def get_mesh_labels(self, view_labels: List[np.ndarray], pixel_mappings: List[Dict]) -> np.ndarray:
+        """
+        从多个视图的标签生成网格顶点的标签
+        
+        Args:
+            view_labels: 每个视图的标签图像列表
+            pixel_mappings: 每个视图的像素到顶点映射字典列表
+        
+        Returns:
+            网格顶点的标签数组，形状为(num_vertices,)
+        """
+        if not view_labels or not pixel_mappings:
+            raise ValueError("view_labels and pixel_mappings must not be empty")
+        
+        # 获取网格的顶点数
+        num_vertices = self.mesh.N()
+        
+        # 初始化顶点标签数组
+        vertex_labels = np.zeros(num_vertices, dtype=np.int32)
+        vertex_votes = np.zeros(num_vertices, dtype=np.int32)
+        
+        # 处理每个视图
+        for view_label, pixel_map in zip(view_labels, pixel_mappings):
+            # 遍历每个像素的标签
+            for (x, y), vertex_id in pixel_map.items():
+                # 获取该像素的标签
+                label = view_label[y, x]
+                
+                # 累加投票
+                vertex_labels[vertex_id] += label
+                vertex_votes[vertex_id] += 1
+        
+        # 计算最终标签(使用多数投票)
+        valid_votes = vertex_votes > 0
+        vertex_labels[valid_votes] = vertex_labels[valid_votes] / vertex_votes[valid_votes]
+        
+        return vertex_labels

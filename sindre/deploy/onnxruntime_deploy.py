@@ -141,6 +141,64 @@ class OnnxInfer:
             onnx.save(model_simp, save_onnx)
         print(f"优化后的模型已保存至: {save_onnx}")
         
+    def convert_opset_version(self, save_path: str, target_version: int) -> None:
+        """
+        转换ONNX模型的Opset版本
+        :param save_path: 保存路径
+        :param target_version: 目标Opset版本（如16）
+        """
+        model = onnx.load(self.onnx_path)
+        # 版本转换（自动处理兼容检查）
+        model = onnx.version_converter.convert_version(model, target_version)
+        onnx.save(model, save_path)
+        print(f"Opset {target_version} 模型已保存至: {save_path}")
+
+    def fix_input_shape(self, save_path: str, input_shapes: list) -> None:
+        """
+        固定ONNX模型的输入尺寸（支持多输入）
+        :param save_path: 保存路径
+        :param input_shapes: 输入形状列表，如 [[1,3,416,480], [1,3,416,480]] or [[1,3,416,480]]
+        """
+        model = onnx.load(self.onnx_path)
+        inputs = model.graph.input
+        # 校验输入数量匹配
+        if len(inputs) != len(input_shapes):
+            raise ValueError(
+                f"输入节点数({len(inputs)})与形状列表数({len(input_shapes)})不匹配"
+            )
+        for idx, (input_node, shape) in enumerate(zip(inputs, input_shapes)):
+            tensor_type = input_node.type.tensor_type
+            # 清除原有动态维度
+            del tensor_type.shape.dim[:]
+            # 添加固定维度（支持静态形状，如[1,3,416,480]）
+            for dim_val in shape:
+                tensor_type.shape.dim.append(onnx.helper.make_dimension(None, dim_val))
+        onnx.save(model, save_path)
+        print(f"固定输入形状模型已保存至: {save_path}")
+
+    def dynamic_input_shape(self, save_path: str, dynamic_dims: list) -> None:
+        """
+        设置ONNX模型的输入为动态尺寸（支持多输入，None表示动态维度）
+        :param dynamic_dims: 动态维度列表，如 [[None, 3, None, 480], [None, 3, None, 480]]
+                            每个子列表对应一个输入的维度，None表示该维度动态可变
+        """
+        model = onnx.load(self.onnx_path)
+        inputs = model.graph.input
+        if len(inputs) != len(dynamic_dims):
+            raise ValueError(f"输入节点数与动态维度列表不匹配: {len(inputs)} vs {len(dynamic_dims)}")
+        for in_node, dims in zip(inputs, dynamic_dims):
+            tensor_type = in_node.type.tensor_type
+            del tensor_type.shape.dim[:]
+            for dim in dims:
+                # 动态维度（None）或固定维度（数值）
+                tensor_type.shape.dim.append(
+                    onnx.helper.make_dimension(None, dim) if dim is not None else onnx.helper.make_dimension(None, None)
+                )
+        onnx.save(model, save_path)
+        print(f"动态输入形状模型已保存至: {save_path}")
+
+        
+        
         
         
     def test_performance(self, loop: int = 10, warmup: int = 3):

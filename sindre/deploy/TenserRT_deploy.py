@@ -11,14 +11,14 @@ except ImportError:
     raise RuntimeError("需安装 pip install cuda-python")
 if int(trt.__version__.split('.')[0])< 10:
     raise RuntimeError(f"需要TensorRT 10或更高版本，当前版本是{trt.__version__}")
-
+from sindre.general.logs import CustomLogger
 
 
 
 
 class TRTInfer:
     def __init__(self):
-        self.trt_logger = trt.Logger(trt.Logger.ERROR)
+        self.trt_logger = trt.Logger(trt.Logger.WARNING)#'ERROR', 'INFO', 'INTERNAL_ERROR', 'Severity', 'VERBOSE', 'WARNING',
         self.runtime = trt.Runtime(self.trt_logger)
         self.engine = None
         self.context = None
@@ -26,6 +26,9 @@ class TRTInfer:
         self.outputs = None
         self.allocated_buffers = False
         self.stream = None
+        self.log = CustomLogger("TRTInfer").get_logger()
+        self.log.info(f"当前TensorRT版本是:{trt.__version__}")
+        
 
     def __del__(self):
         if not getattr(self, '_is_shutdown', True):
@@ -99,10 +102,11 @@ class TRTInfer:
                 bindings.append(int(bindingMemory["device"]))  # 添加设备内存地址到绑定列表
                 if self.engine.get_tensor_mode(binding) == trt.TensorIOMode.INPUT:
                     inputs.append(bindingMemory)
-                    print(f"输入: {bindingMemory["name"]}, 形状: {bindingMemory["shape"]}, 类型: {bindingMemory["trt_type"]}")
+                
+                    self.log.info(f"输入: {bindingMemory["name"]}, 形状: {bindingMemory["shape"]}, 类型: {bindingMemory["trt_type"]}")
                 else:
                     outputs.append(bindingMemory)
-                    print(f"输出: {bindingMemory["name"]}, 形状: {bindingMemory["shape"]}, 类型: {bindingMemory["trt_type"]}")
+                    self.log.info(f"输出: {bindingMemory["name"]}, 形状: {bindingMemory["shape"]}, 类型: {bindingMemory["trt_type"]}")
 
             self.inputs = inputs
             self.outputs =  outputs
@@ -111,7 +115,7 @@ class TRTInfer:
                 
          
         except Exception as e:
-            print(f"内存分配失败: {e}")
+            self.log.error(f"内存分配失败: {e}")
             self._free_buffers()
             raise
 
@@ -130,7 +134,7 @@ class TRTInfer:
             self.stream = None
             self.allocated_buffers = False
         except Exception as e:
-            print(f"释放资源时出错: {e}")
+            self.log.error(f"释放资源时出错: {e}")
 
 
     def __call__(self, data):
@@ -180,7 +184,7 @@ class TRTInfer:
             return [out["host"].reshape(out["shape"]) for out in self.outputs]
             
         except Exception as e:
-            print(f"推理过程中出错: {e}")
+            self.log.error(f"推理过程中出错: {e}")
             raise
     def test_performance(self, loop: int = 10, warmup: int = 3) -> float:
         """
@@ -213,25 +217,25 @@ class TRTInfer:
             test_inputs.append(data)
         
         # 预热运行
-        print(f"开始预热 ({warmup} 次)...")
+        self.log.info(f"开始预热 ({warmup} 次)...")
         start = time.time()
         for _ in range(warmup):
             _ = self(test_inputs)
-        print(f"预热3次耗时:  {time.time()-start}秒")
+        self.log.info(f"预热3次耗时:  {time.time()-start}秒")
             
         # 性能测试
-        print(f"开始性能测试 ({loop} 次)...")
+        self.log.info(f"开始性能测试 ({loop} 次)...")
         start_time = time.time()
         for i in range(loop):
             start = time.time()
             _ = self(test_inputs)
             elapsed = time.time() - start
-            print(f"第 {i+1}/{loop} 次推理，耗时: {elapsed:.4f} 秒")
+            self.log.info(f"第 {i+1}/{loop} 次推理，耗时: {elapsed:.4f} 秒")
             
         avg_time = (time.time() - start_time) / loop
-        print(f"平均推理耗时: {avg_time:.4f} 秒 ({1/avg_time:.2f} FPS)")
+        self.log.info(f"平均推理耗时: {avg_time:.4f} 秒 ({1/avg_time:.2f} FPS)")
 
-        print("测试性能，将占用内存空间，如涉及有关变量，请deepcopy()")
+        self.log.info("测试性能，将占用内存空间，如涉及有关变量，请deepcopy()")
         
 
     def load_model(self, engine_path):
@@ -242,6 +246,9 @@ class TRTInfer:
         try:
             with open(engine_path, "rb") as f:
                 serialized_engine = f.read()
+
+             # 启用信任主机代码
+            #self.runtime.engine_host_code_allowed=True
                 
             self.engine = self.runtime.deserialize_cuda_engine(serialized_engine)
             if self.engine is None:
@@ -254,17 +261,20 @@ class TRTInfer:
 
             # 分配内存缓冲区
             self._allocate_buffers()
-            print(f"模型加载成功: {engine_path}")
+            self.log.info(f"模型加载成功: {engine_path}")
          
             
         except Exception as e:
-            print(f"加载模型时出错: {e}")
+            self.log.error(f"加载模型时出错: {e}")
             self.engine = None
             self.context = None
             raise
 
+
+
     def build_engine(self, onnx_path, engine_path, max_workspace_size=4<<30, 
-                    fp16=False,dynamic_shape_profile=None, hardware_compatibility="",optimization_level=3):
+                    fp16=False, dynamic_shape_profile=None, hardware_compatibility="", 
+                    optimization_level=3, version_compatible=False):
         """
         从ONNX模型构建TensorRT引擎
         
@@ -272,7 +282,7 @@ class TRTInfer:
             onnx_path (str): ONNX模型路径
             engine_path (str, optional): 引擎保存路径
             max_workspace_size (int, optional): 最大工作空间大小，默认为4GB
-            fp16_mode (bool, optional): 是否启用FP16精度
+            fp16 (bool, optional): 是否启用FP16精度
             dynamic_shape_profile (dict, optional): 动态形状配置，格式为:
                 {
                     "input_name": {
@@ -282,21 +292,21 @@ class TRTInfer:
                     }
                 }
             hardware_compatibility (str, optional): 硬件兼容性级别，可选值:
-                - "None": 默认(最快)
+                - "": 默认(最快)
                 - "same_sm": 相同计算能力(其次)
                 - "ampere_plus": Ampere及更高架构(最慢)
                 Pascal(10系)、Volta(V100)、Turing(20系)、Ampere(30系)、
                 Ada(40系)、Hopper(H100)、Blackwell(50系)
-
             optimization_level (int): 优化级别,默认最优级别3;
-                ・等级 0：通过禁用动态内核生成并选择执行成功的第一个策略，实现最快的编译。这也不会考虑计时缓存。
-                ・等级 1：可用策略按启发式方法排序，但仅测试排名靠前的策略以选择最佳策略。如果生成动态内核，其编译优化程度较低。
-                ・等级 2：可用策略按启发式方法排序，但仅测试最快的策略以选择最佳策略。
-                ・等级 3：应用启发式方法，判断静态预编译内核是否适用，或者是否必须动态编译新内核。
-                ・等级 4：始终编译动态内核。
-                ・等级 5：始终编译动态内核，并将其与静态内核进行比较。
-                
+                ・等级0：通过禁用动态内核生成并选择执行成功的第一个策略，实现最快的编译。这也不会考虑计时缓存。
+                ・等级1：可用策略按启发式方法排序，但仅测试排名靠前的策略以选择最佳策略。如果生成动态内核，其编译优化程度较低。
+                ・等级2：可用策略按启发式方法排序，但仅测试最快的策略以选择最佳策略。
+                ・等级3：应用启发式方法，判断静态预编译内核是否适用，或者是否必须动态编译新内核。
+                ・等级4：始终编译动态内核。
+                ・等级5：始终编译动态内核，并将其与静态内核进行比较。
+            version_compatible (bool): 是否启用版本兼容模式(8.6构建的引擎可以在10.x上运行)
         """
+
         if not os.path.exists(onnx_path):
             raise FileNotFoundError(f"ONNX文件不存在: {onnx_path}")
             
@@ -322,21 +332,26 @@ class TRTInfer:
            
             
             
+            # 设置版本兼容性
+            if version_compatible:
+                config.set_flag(trt.BuilderFlag.VERSION_COMPATIBLE)
+                config.set_flag(trt.BuilderFlag.EXCLUDE_LEAN_RUNTIME)
+                self.log.info("启用版本兼容模式（8.6构建版本可以在10.x上运行）")
             
             # 设置硬件兼容性
             if hardware_compatibility == "ampere_plus":
                 config.hardware_compatibility_level=trt.HardwareCompatibilityLevel.AMPERE_PLUS
-                print("启用Ampere+硬件兼容性模式")
+                self.log.info("启用Ampere+硬件兼容性模式(30系及以上)")
             elif hardware_compatibility == "same_sm":
                 config.hardware_compatibility_level=trt.HardwareCompatibilityLevel.SAME_COMPUTE_CAPABILITY
-                print("启用相同计算能力兼容性模式:计算能力:https://developer.nvidia.cn/cuda-gpus")
+                self.log.info("启用相同计算能力兼容性模式:\n\t计算能力:https://developer.nvidia.cn/cuda-gpus,\n\t比较显卡参数:https://www.nvidia.cn/geforce/graphics-cards/compare/?section=compare-16")
 
 
             
             # 设置精度模式
             if fp16 and builder.platform_has_fast_fp16:
                 config.set_flag(trt.BuilderFlag.FP16)
-                print("启用FP16模式")
+                self.log.info("启用FP16模式")
 
             # 构建缓存处理
             timing_cache = None
@@ -347,13 +362,13 @@ class TRTInfer:
                         cache_data = f.read()
                         timing_cache = config.create_timing_cache(cache_data)
                         config.set_timing_cache(timing_cache, ignore_mismatch=False)
-                        print(f"已加载构建缓存: {cache_path}")
+                        self.log.info(f"已加载构建缓存: {cache_path}")
                 except Exception as e:
-                    print(f"加载缓存失败: {e}，将创建新缓存")
+                    self.log.warning(f"加载缓存失败: {e}，将创建新缓存")
                     timing_cache = config.create_timing_cache(b"")
             else:
                 timing_cache = config.create_timing_cache(b"")
-                print("创建新的构建缓存")
+                self.log.info("创建新的构建缓存")
             config.set_timing_cache(timing_cache, ignore_mismatch=False)
 
   
@@ -373,13 +388,13 @@ class TRTInfer:
                         raise ValueError(f"动态形状配置缺少必要参数: {input_name}")
                         
                     profile.set_shape(input_name, min=min_shape, opt=opt_shape, max=max_shape)
-                    print(f"为输入 '{input_name}' 设置动态形状范围: {min_shape} - {opt_shape} - {max_shape}")
+                    self.log.info(f"为输入 '{input_name}' 设置动态形状范围: {min_shape} - {opt_shape} - {max_shape}")
                     
                 config.add_optimization_profile(profile)
             
 
             # 构建引擎
-            print("正在构建TensorRT引擎...")
+            self.log.info("正在构建TensorRT引擎...")
             engine = builder.build_serialized_network(network, config)
             if engine is None:
                 raise RuntimeError("引擎构建失败")
@@ -389,15 +404,15 @@ class TRTInfer:
                 cache_data = updated_cache.serialize()
                 with open(cache_path, 'wb') as f:
                     f.write(cache_data)
-                print(f"已保存构建缓存: {cache_path}")
+                self.log.info(f"已保存构建缓存: {cache_path}")
                 # 保存引擎到文件
                 with open(engine_path, "wb") as f:
                     f.write(engine)
-                print(f"引擎已保存到: {engine_path}")
+                self.log.info(f"引擎已保存到: {engine_path}")
                 return self.load_model(engine_path)
             
         except Exception as e:
-            print(f"构建引擎时出错: {e}")
+            self.log.error(f"构建引擎时出错: {e}")
             self.engine = None
             self.context = None
             raise 
@@ -411,14 +426,16 @@ if __name__ == "__main__":
     import cv2
     import copy
     trt_infer = TRTInfer()
-    # # 构建或加载引擎
+    # 构建或加载引擎
     trt_infer.build_engine(
         onnx_path=onnx_path,
         engine_path=engine_path,
         max_workspace_size=2 << 30,  
-        fp16=True,
+        #fp16=True,
         #hardware_compatibility="same_sm"
+        version_compatible=True,
     )
+    #trt_infer.load_model(engine_path)
     # 生成测试输入
     img = cv2.imread(img_path)
     img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
