@@ -1725,6 +1725,15 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#utils3d.pointcloud_augment.set_seeds" class="md-nav__link">
+    <span class="md-ellipsis">
+      set_seeds
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#utils3d.dental_tools" class="md-nav__link">
     <span class="md-ellipsis">
       dental_tools
@@ -3573,6 +3582,15 @@
   <a href="#utils3d.pointcloud_augment.angle_axis_np" class="md-nav__link">
     <span class="md-ellipsis">
       angle_axis_np
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#utils3d.pointcloud_augment.set_seeds" class="md-nav__link">
+    <span class="md-ellipsis">
+      set_seeds
     </span>
   </a>
   
@@ -11692,6 +11710,29 @@ o3d.visualization.draw_geometries([pcd, cc, o3d_voxel])
       </tbody>
     </table>
 
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h2 id="utils3d.pointcloud_augment.set_seeds" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">set_seeds</span><span class="p">(</span><span class="n">seed</span><span class="o">=</span><span class="mi">1024</span><span class="p">,</span> <span class="n">cudnn_enable</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span></code>
+
+</h2>
+
+
+    <div class="doc doc-contents ">
+
+        <p>为Python环境和主要深度学习库设置固定的随机数种子，确保结果可复现。</p>
+
+
+<details class="参数" open>
+  <summary>参数</summary>
+  <p>seed (int): 要使用的基础随机数种子，默认值为42。
+cudnn_enable (bool): 是否将CuDNN设置为确定性模式，默认值为False。</p>
+</details>
     </div>
 
 </div>
