@@ -766,7 +766,7 @@ class Writer:
         self.set_meta_str(NB_SAMPLES, str(self.nb_samples))
         self._lmdb_env.close()
         if sys.platform.startswith('win') and not self.multiprocessing:
-            print(f"检测到windows系统, 请运行  repair_windows_size({self.dirpath}) 修复文件大小问题")
+            print(f"检测到windows系统, 请运行  fix_lmdb_windows_size({self.dirpath}) 修复文件大小问题")
            
             
 
@@ -992,7 +992,7 @@ def parallel_write(output_dir: str,
                 time.sleep(0.1)
 
         # 合并临时数据库
-        merge_lmdb(
+        MergeLmdb(
                     target_dir=output_dir,
                     source_dirs=temp_dirs,
                     map_size_limit=map_size_limit, 
@@ -1003,7 +1003,7 @@ def parallel_write(output_dir: str,
         print(f"处理失败: {str(e)}")
         traceback.print_exc()
         print(f"请手动合并目录: \
-              merge_lmdb(target_dir={output_dir},\
+              MergeLmdb(target_dir={output_dir},\
               source_dirs={temp_dirs},\
               map_size_limit={map_size_limit},\
               multiprocessing={multiprocessing})")
