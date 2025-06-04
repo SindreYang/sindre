@@ -765,6 +765,57 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#lmdb.pylmdb.ReaderSSDList" class="md-nav__link">
+    <span class="md-ellipsis">
+      ReaderSSDList
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="ReaderSSDList">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#lmdb.pylmdb.ReaderSSDList.__getitem__" class="md-nav__link">
+    <span class="md-ellipsis">
+      __getitem__
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#lmdb.pylmdb.ReaderSSDList.__init__" class="md-nav__link">
+    <span class="md-ellipsis">
+      __init__
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#lmdb.pylmdb.ReaderSSDList.__len__" class="md-nav__link">
+    <span class="md-ellipsis">
+      __len__
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#lmdb.pylmdb.ReaderSSDList.get_batch" class="md-nav__link">
+    <span class="md-ellipsis">
+      get_batch
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#lmdb.pylmdb.Writer" class="md-nav__link">
     <span class="md-ellipsis">
       Writer
@@ -1325,6 +1376,57 @@
         
           <li class="md-nav__item">
   <a href="#lmdb.pylmdb.ReaderSSD.get_batch" class="md-nav__link">
+    <span class="md-ellipsis">
+      get_batch
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#lmdb.pylmdb.ReaderSSDList" class="md-nav__link">
+    <span class="md-ellipsis">
+      ReaderSSDList
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="ReaderSSDList">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#lmdb.pylmdb.ReaderSSDList.__getitem__" class="md-nav__link">
+    <span class="md-ellipsis">
+      __getitem__
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#lmdb.pylmdb.ReaderSSDList.__init__" class="md-nav__link">
+    <span class="md-ellipsis">
+      __init__
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#lmdb.pylmdb.ReaderSSDList.__len__" class="md-nav__link">
+    <span class="md-ellipsis">
+      __len__
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#lmdb.pylmdb.ReaderSSDList.get_batch" class="md-nav__link">
     <span class="md-ellipsis">
       get_batch
     </span>
@@ -2921,6 +3023,387 @@ Args:
 
         <p>批量获取多个数据条目</p>
 <p>优化的批量读取接口，在一个数据库连接中读取多个条目，
+减少频繁打开/关闭连接的开销。</p>
+
+
+<p><span class="doc-section-title">Parameters:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Type</th>
+          <th>Description</th>
+          <th>Default</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td><code>indices</code></td>
+            <td>
+                  <code>list[int]</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>数据条目索引列表</p>
+              </div>
+            </td>
+            <td>
+                <em>required</em>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+    <p><span class="doc-section-title">Returns:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Type</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>list[object]: 索引对应的数据条目列表</p>
+              </div>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+<p><span class="doc-section-title">Raises:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Type</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                  <code>IndexError</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>当任何索引超出有效范围时抛出</p>
+              </div>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+    </div>
+
+</div>
+
+
+
+  </div>
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-class">
+
+
+
+<h2 id="lmdb.pylmdb.ReaderSSDList" class="doc doc-heading">
+            <code>ReaderSSDList</code>
+
+
+</h2>
+
+
+    <div class="doc doc-contents ">
+
+
+        <p>组合多个SSD优化的LMDB数据库进行统一读取的类，提供序列协议的接口</p>
+<p>该类用于将多个SSD优化的LMDB数据库合并为一个逻辑数据集，支持通过索引访问和获取长度。
+内部维护数据库索引映射表和真实索引映射表，实现跨数据库的透明访问，同时保持SSD优化特性。</p>
+
+
+<p><span class="doc-section-title">Attributes:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Type</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td><code><span title="lmdb.pylmdb.ReaderSSDList.db_path_list">db_path_list</span></code></td>
+            <td>
+                  <code>List[str]</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>LMDB数据库文件路径列表</p>
+              </div>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td><code><span title="lmdb.pylmdb.ReaderSSDList.db_mapping">db_mapping</span></code></td>
+            <td>
+                  <code>List[int]</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>索引到数据库索引的映射表，每个元素表示对应索引数据所在的数据库下标</p>
+              </div>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td><code><span title="lmdb.pylmdb.ReaderSSDList.real_idx_mapping">real_idx_mapping</span></code></td>
+            <td>
+                  <code>List[int]</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>索引到数据库内真实索引的映射表，每个元素表示数据在对应数据库中的原始索引</p>
+              </div>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td><code><span title="lmdb.pylmdb.ReaderSSDList.multiprocessing">multiprocessing</span></code></td>
+            <td>
+                  <code>bool</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>是否启用多进程模式</p>
+              </div>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+
+
+  <div class="doc doc-children">
+
+
+
+
+
+
+
+
+
+<div class="doc doc-object doc-function">
+
+
+<h3 id="lmdb.pylmdb.ReaderSSDList.__getitem__" class="doc doc-heading">
+            <code class="highlight language-python"><span class="fm">__getitem__</span><span class="p">(</span><span class="n">idx</span><span class="p">)</span></code>
+
+</h3>
+
+
+    <div class="doc doc-contents ">
+
+        <p>通过索引获取数据条目</p>
+
+
+<p><span class="doc-section-title">Parameters:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Type</th>
+          <th>Description</th>
+          <th>Default</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td><code>idx</code></td>
+            <td>
+                  <code>int</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>数据条目在组合数据集中的逻辑索引</p>
+              </div>
+            </td>
+            <td>
+                <em>required</em>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+    <p><span class="doc-section-title">Returns:</span></p>
+    <table>
+      <thead>
+        <tr>
+<th>Name</th>          <th>Type</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+<td><code>object</code></td>            <td>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>对应位置的数据条目，具体类型取决于LMDB存储的数据格式</p>
+              </div>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+<p><span class="doc-section-title">Raises:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Type</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                  <code>IndexError</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>当索引超出组合数据集范围时抛出</p>
+              </div>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h3 id="lmdb.pylmdb.ReaderSSDList.__init__" class="doc doc-heading">
+            <code class="highlight language-python"><span class="fm">__init__</span><span class="p">(</span><span class="n">db_path_list</span><span class="p">,</span> <span class="n">multiprocessing</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span></code>
+
+</h3>
+
+
+    <div class="doc doc-contents ">
+
+        <p>初始化组合SSD优化数据库读取器</p>
+
+
+<p><span class="doc-section-title">Parameters:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Type</th>
+          <th>Description</th>
+          <th>Default</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td><code>db_path_list</code></td>
+            <td>
+                  <code>List[str]</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>LMDB数据库文件路径列表，按顺序加载每个数据库</p>
+              </div>
+            </td>
+            <td>
+                <em>required</em>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td><code>multiprocessing</code></td>
+            <td>
+                  <code>bool</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>是否启用多进程支持。默认为False。</p>
+              </div>
+            </td>
+            <td>
+                  <code>False</code>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h3 id="lmdb.pylmdb.ReaderSSDList.__len__" class="doc doc-heading">
+            <code class="highlight language-python"><span class="fm">__len__</span><span class="p">()</span></code>
+
+</h3>
+
+
+    <div class="doc doc-contents ">
+
+        <p>获取组合数据集的总条目数</p>
+
+
+    <p><span class="doc-section-title">Returns:</span></p>
+    <table>
+      <thead>
+        <tr>
+<th>Name</th>          <th>Type</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+<td><code>int</code></td>            <td>
+                  <code>int</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>所有LMDB数据库的条目数之和</p>
+              </div>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h3 id="lmdb.pylmdb.ReaderSSDList.get_batch" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">get_batch</span><span class="p">(</span><span class="n">indices</span><span class="p">)</span></code>
+
+</h3>
+
+
+    <div class="doc doc-contents ">
+
+        <p>批量获取多个数据条目</p>
+<p>对同一数据库中的索引进行分组，然后使用对应数据库的get_batch方法批量读取，
 减少频繁打开/关闭连接的开销。</p>
 
 
