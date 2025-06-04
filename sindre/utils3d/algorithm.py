@@ -29,13 +29,16 @@ import json
 import vedo
 import numpy as np
 from typing import *
-from sklearn.decomposition import PCA
-from scipy.spatial import KDTree
 import vtk
 import os
-from numba import njit, prange
 from sindre.general.logs import CustomLogger
 log = CustomLogger(logger_name="algorithm").get_logger()
+try:
+    from sklearn.decomposition import PCA
+    from scipy.spatial import KDTree
+    from numba import njit, prange
+except ImportError:
+    pass
 
 
 def labels2colors(labels:np.array):

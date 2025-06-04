@@ -158,6 +158,121 @@ class ReaderSSD:
         with Reader(self.db_path, multiprocessing=self.multiprocessing) as db:
             return [db[idx] for idx in indices]
 
+
+class ReaderSSDList:
+    """组合多个SSD优化的LMDB数据库进行统一读取的类，提供序列协议的接口
+    
+    该类用于将多个SSD优化的LMDB数据库合并为一个逻辑数据集，支持通过索引访问和获取长度。
+    内部维护数据库索引映射表和真实索引映射表，实现跨数据库的透明访问，同时保持SSD优化特性。
+    
+    Attributes:
+        db_path_list (List[str]): LMDB数据库文件路径列表
+        db_mapping (List[int]): 索引到数据库索引的映射表，每个元素表示对应索引数据所在的数据库下标
+        real_idx_mapping (List[int]): 索引到数据库内真实索引的映射表，每个元素表示数据在对应数据库中的原始索引
+        multiprocessing (bool): 是否启用多进程模式
+    """
+
+    def __init__(self, db_path_list: list, multiprocessing: bool = False):
+        """初始化组合SSD优化数据库读取器
+        
+        Args:
+            db_path_list (List[str]): LMDB数据库文件路径列表，按顺序加载每个数据库
+            multiprocessing (bool, optional): 是否启用多进程支持。默认为False。
+        """
+        self.db_path_list = db_path_list
+        self.db_mapping = []  # 数据库索引映射表
+        self.real_idx_mapping = []  # 真实索引映射表
+        self.multiprocessing = multiprocessing
+        
+        for db_idx, db_path in enumerate(db_path_list):
+            # 使用ReaderSSD获取数据库长度而不保持连接
+            db = ReaderSSD(db_path, multiprocessing)
+            db_length = len(db)
+            # 扩展映射表
+            self.db_mapping.extend([db_idx] * db_length)
+            self.real_idx_mapping.extend(range(db_length))
+            print(f"load: {db_path} --> len: {db_length}")
+
+    def __len__(self) -> int:
+        """获取组合数据集的总条目数
+        
+        Returns:
+            int: 所有LMDB数据库的条目数之和
+        """
+        return len(self.real_idx_mapping)
+
+    def __getitem__(self, idx: int):
+        """通过索引获取数据条目
+        
+        Args:
+            idx (int): 数据条目在组合数据集中的逻辑索引
+        
+        Returns:
+            object: 对应位置的数据条目，具体类型取决于LMDB存储的数据格式
+        
+        Raises:
+            IndexError: 当索引超出组合数据集范围时抛出
+        """
+        if idx < 0 or idx >= len(self):
+            raise IndexError(f"Index {idx} out of range")
+        db_idx = self.db_mapping[idx]
+        real_idx = self.real_idx_mapping[idx]
+        db_path = self.db_path_list[db_idx]
+        # 使用ReaderSSD动态打开数据库并获取条目
+        db = ReaderSSD(db_path, self.multiprocessing)
+        return db[real_idx]
+
+    def get_batch(self, indices: list):
+        """批量获取多个数据条目
+        
+        对同一数据库中的索引进行分组，然后使用对应数据库的get_batch方法批量读取，
+        减少频繁打开/关闭连接的开销。
+        
+        Args:
+            indices (list[int]): 数据条目索引列表
+        
+        Returns:
+            list[object]: 索引对应的数据条目列表
+        
+        Raises:
+            IndexError: 当任何索引超出有效范围时抛出
+        """
+        # 检查所有索引是否有效
+        for idx in indices:
+            if idx < 0 or idx >= len(self):
+                raise IndexError(f"Index {idx} out of range")
+        
+        # 按数据库分组索引
+        db_groups = {}
+        for idx in indices:
+            db_idx = self.db_mapping[idx]
+            real_idx = self.real_idx_mapping[idx]
+            if db_idx not in db_groups:
+                db_groups[db_idx] = []
+            db_groups[db_idx].append(real_idx)
+        
+        # 对每个数据库批量读取
+        results = [None] * len(indices)
+        for db_idx, real_indices in db_groups.items():
+            db_path = self.db_path_list[db_idx]
+            db = ReaderSSD(db_path, self.multiprocessing)
+            # 获取该数据库中所有索引对应的数据
+            batch_results = db.get_batch(real_indices)
+            # 将结果放入正确的位置
+            for i, real_idx in enumerate(real_indices):
+                # 找到原始索引在indices中的位置
+                original_idx_pos = indices.index(self._find_original_index(db_idx, real_idx))
+                results[original_idx_pos] = batch_results[i]
+        
+        return results
+    
+    def _find_original_index(self, db_idx, real_idx):
+        """根据数据库索引和真实索引找到原始索引"""
+        # 找到第一个属于该数据库的索引位置
+        first_db_idx = self.db_mapping.index(db_idx)
+        # 计算该数据库内的偏移量
+        return first_db_idx + real_idx    
+
     
 
         

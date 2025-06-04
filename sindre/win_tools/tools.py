@@ -26,9 +26,12 @@ import requests
 from setuptools import Extension, setup
 
 from collections import Counter
-
-from Cython.Build import cythonize
 from tqdm import tqdm
+
+try:
+    from Cython.Build import cythonize
+except ImportError:
+    pass
 
 
 

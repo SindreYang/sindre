@@ -1,5 +1,8 @@
 import numpy  as np
-import torch
+try:
+    import torch
+except ImportError:
+    pass 
 
 def set_seeds(seed: int = 1024,cudnn_enable: bool = False) -> None:
     """
@@ -20,14 +23,19 @@ def set_seeds(seed: int = 1024,cudnn_enable: bool = False) -> None:
     np.random.seed(seed)
     
     # 尝试设置PyTorch的随机数生成器
-    torch.manual_seed(seed)
-    if torch.cuda.is_available():
-        torch.cuda.manual_seed_all(seed)
-        if cudnn_enable:
-            # 控制CuDNN的确定性和性能之间的平衡
-            torch.backends.cudnn.deterministic = True
-            # 禁用CuDNN的自动寻找最优算法
-            torch.backends.cudnn.benchmark = False
+    try:
+        torch.manual_seed(seed)
+        if torch.cuda.is_available():
+            torch.cuda.manual_seed_all(seed)
+            if cudnn_enable:
+                # 控制CuDNN的确定性和性能之间的平衡
+                torch.backends.cudnn.deterministic = True
+                # 禁用CuDNN的自动寻找最优算法
+                torch.backends.cudnn.benchmark = False
+    except ImportError:
+        pass 
+
+   
 
     print(f"已将随机数种子设置为 {seed}")
  

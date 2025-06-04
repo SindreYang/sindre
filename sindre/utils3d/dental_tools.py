@@ -8,7 +8,10 @@ __author__ = 'sindre'
 import vedo
 import numpy as np
 from typing import *
-from sklearn.decomposition import PCA
+try:
+    from sklearn.decomposition import PCA
+except ImportError:
+    pass
 from sindre.utils3d.algorithm import apply_transform,cut_mesh_point_loop,  subdivide_loop_by_trimesh
 
 def convert_fdi2idx(labels):
