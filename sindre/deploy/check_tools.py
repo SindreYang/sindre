@@ -88,12 +88,13 @@ def check_gpu_info():
 
 
 
-class timeit_tool:
+class timeit:
     """测量函数执行时间的上下文管理器类，附加内存监控功能"""
-    def __init__(self, use_torch: bool = False) -> None:
+    def __init__(self,name:str="", use_torch: bool = False) -> None:
         import psutil
         self.use_torch = use_torch
         self.elapsed_time = None
+        self.name=name
         self.process = psutil.Process()
         
     def __enter__(self):
@@ -132,7 +133,7 @@ class timeit_tool:
 
         # 构建输出信息
         output = [
-            f"Cost time: {self.elapsed_time:.3f} ms",
+            f"{self.name}Cost time: {self.elapsed_time:.3f} ms",
             f"Memory Δ: {mem_usage:+.2f} MB"
         ]
 
@@ -143,29 +144,19 @@ class timeit_tool:
 
         print(" | ".join(output))
 
-def timeit(use_torch: bool = False):
-    """测量函数执行时间的装饰器"""
-    def decorator(func):
-        def wrapper(*args, **kwargs):
-            timer = timeit_tool(use_torch=use_torch)
-            with timer:
-                result = func(*args, **kwargs)
-            print(f"Function '{func.__name__}' executed in {timer.elapsed_time:.3f} ms")
-            return result
-        return wrapper
-    return decorator
+
             
             
 
 if __name__ == "__main__":
     check_gpu_info()   
     # CPU模式示例
-    with timeit_tool():
+    with timeit():
         _ = [i**2 for i in range(10**6)]
 
     # GPU模式示例
     import torch
     if torch.cuda.is_available():
-        with timeit_tool(use_torch=True):
+        with timeit(use_torch=True):
             tensor = torch.randn(10000, 10000).cuda()
             _ = tensor @ tensor.T 

@@ -76,7 +76,7 @@ class DGCNN(nn.Module):
 
         global_feat = point_feat.max(dim=2, keepdim=False)[0]       # global feat: batch x 512
 
-        return {"global_feat":global_feat,"point_feat":point_feat}
+        return {"cls_features":global_feat,"seg_features":point_feat}
     
     
 if __name__ == "__main__":
@@ -84,4 +84,4 @@ if __name__ == "__main__":
     model = DGCNN(in_channels=10).cuda()
     x = torch.randn(2, 10, 10000).cuda()  # 批次x点数x特征
     output = model(x)
-    print(f"输出形状: {output["global_feat"].shape,output["point_feat"].shape}")  
+    print(f"输出形状: {output["seg_features"].shape,output["cls_features"].shape}")  

@@ -138,7 +138,53 @@ class pointnet2_msg(nn.Module):
                 }
 
     
+
+
+
+# class pointnet2_ssg_wtih_R(nn.Module):
+#     def __init__(self):
+#         super().__init__()
+#         self.model = pointnet2_ssg(9) 
+#         self.mlp_R = nn.Sequential(
+#             nn.Conv1d(128, 256, 1),
+#             nn.BatchNorm1d(256),
+#             nn.ReLU(),
+#             nn.Conv1d(256, 128*128, 1)
+#         )
+
+#         self.mlp_seg= nn.Sequential(
+#             nn.Conv1d(128+9, 128, 1),
+#             nn.BatchNorm1d(128),
+#             nn.ReLU(),
+#             nn.Conv1d(128, 1, 1),# 16_tooth 0_gum
+#             nn.Sigmoid()
+#         )
+        
+#     def forward(self, pcd,num_class):
+#         # 处理输入
+#         B,N,C = pcd.shape
+#         device = pcd.device
+#         pcd = pcd[...,:9].transpose(-1, 1)
+#         multi_hot_labels = num_class.repeat(1,1,N)
+
+#         # 获取特征
+#         feat = self.model(pcd,multi_hot_labels)["seg_features"]
+#         feat_max = torch.max(feat,dim=-1)[0]
+#         feat_R = self.mlp_R(feat_max.unsqueeze(-1)).reshape(-1,128,128)+torch.eye(128, device=device)
     
+
+#         # 旋转特征
+#         feat = torch.matmul( feat.transpose(-1,1) ,feat_R.transpose(-1,1) ).transpose(-1,1) 
+
+#         # 汇总特征
+#         feat_seg = torch.cat([feat,pcd],dim=1)
+
+#         # 预测16个牙位的分割
+#         pre_labels = self.mlp_seg(feat_seg).transpose(-1, 1)
+        
+#         return {"pre_labels": pre_labels}
+
+
 if __name__ == '__main__':
 
     xyz = torch.randn(6, 9, 6666)

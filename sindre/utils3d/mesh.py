@@ -712,7 +712,28 @@ class SindreMesh:
     
     
     
+    def split_component(self):
+        """
+        
+        将网格按照连通分量分割,并返回最大和其余连通分量的顶点索引
     
+        Returns:
+            tuple: 包含三个数组的元组
+                - 第一个元素: 连通分量数量
+                - 第二个元素: 最大连通分量的节点索引
+                - 第三个元素: 剩余部分的节点索引（即非最大连通分量的所有节点）
+        """
+        # 计算连通分量
+        n_components, labels = self._count_connected_components()
+        # 提取最大连通标签
+        largest_component_label =np.argmax(np.bincount(labels))
+        # 提取最大连通分量的节点索引
+        largest_component_indices = np.where(labels == largest_component_label)[0]
+        # 通过取反而得到剩余部分的节点索引
+        remaining_indices = np.where(labels != largest_component_label)[0]
+        # 返回最大连通体索引和最小连通索引
+        return n_components,largest_component_indices ,remaining_indices
+
     
     def get_color_mapping(self,value):
         """将向量映射为颜色，遵从vcg映射标准"""

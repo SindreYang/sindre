@@ -138,8 +138,9 @@ setup(
         'vedo>=2025.5.3',
         'loguru',
         'tqdm',
+        'numba',
     ],
-    extras_require={"full": ["Cython", 'scikit-learn','numba','Cython','trimesh',"open3d"]},
+    extras_require={"full": ["Cython", 'scikit-learn','Cython','trimesh',"open3d"]},
     
     #data_files=find_files("sindre\Resources"),
     url='https://github.com/SindreYang/Sindre',
