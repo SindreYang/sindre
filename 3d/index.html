@@ -966,6 +966,15 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#utils3d.algorithm.farthest_point_sampling_by_pointops2" class="md-nav__link">
+    <span class="md-ellipsis">
+      farthest_point_sampling_by_pointops2
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#utils3d.algorithm.fill_hole_with_center" class="md-nav__link">
     <span class="md-ellipsis">
       fill_hole_with_center
@@ -2170,6 +2179,15 @@
   <a href="#utils3d.mesh.SindreMesh.show" class="md-nav__link">
     <span class="md-ellipsis">
       show
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#utils3d.mesh.SindreMesh.split_component" class="md-nav__link">
+    <span class="md-ellipsis">
+      split_component
     </span>
   </a>
   
@@ -2829,6 +2847,15 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#utils3d.algorithm.farthest_point_sampling_by_pointops2" class="md-nav__link">
+    <span class="md-ellipsis">
+      farthest_point_sampling_by_pointops2
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#utils3d.algorithm.fill_hole_with_center" class="md-nav__link">
     <span class="md-ellipsis">
       fill_hole_with_center
@@ -4033,6 +4060,15 @@
   <a href="#utils3d.mesh.SindreMesh.show" class="md-nav__link">
     <span class="md-ellipsis">
       show
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#utils3d.mesh.SindreMesh.split_component" class="md-nav__link">
+    <span class="md-ellipsis">
+      split_component
     </span>
   </a>
   
@@ -6888,7 +6924,24 @@ Returns:
 
     <div class="doc doc-contents ">
 
-        <p>输出采样后的点</p>
+        <p>基于open3d最远点采样，返回采样后的点</p>
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h2 id="utils3d.algorithm.farthest_point_sampling_by_pointops2" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">farthest_point_sampling_by_pointops2</span><span class="p">(</span><span class="n">vertices</span><span class="p">,</span> <span class="n">len_vertices</span><span class="p">,</span> <span class="n">n_sample</span><span class="o">=</span><span class="mi">2000</span><span class="p">,</span> <span class="n">device</span><span class="o">=</span><span class="s1">&#39;cuda&#39;</span><span class="p">)</span></code>
+
+</h2>
+
+
+    <div class="doc doc-contents ">
+
+        <p>基于pointops2最远点采样，返回采样后的索引，要求输入为torch.tensor</p>
 
     </div>
 
@@ -13217,6 +13270,48 @@ Args:
             <td>
               <div class="doc-md-description">
                 <p>该方法没有返回值，直接进行渲染展示。</p>
+              </div>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h3 id="utils3d.mesh.SindreMesh.split_component" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">split_component</span><span class="p">()</span></code>
+
+</h3>
+
+
+    <div class="doc doc-contents ">
+
+        <p>将网格按照连通分量分割,并返回最大和其余连通分量的顶点索引</p>
+
+
+    <p><span class="doc-section-title">Returns:</span></p>
+    <table>
+      <thead>
+        <tr>
+<th>Name</th>          <th>Type</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+<td><code>tuple</code></td>            <td>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>包含三个数组的元组
+- 第一个元素: 连通分量数量
+- 第二个元素: 最大连通分量的节点索引
+- 第三个元素: 剩余部分的节点索引（即非最大连通分量的所有节点）</p>
               </div>
             </td>
           </tr>
