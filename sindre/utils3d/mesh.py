@@ -154,7 +154,8 @@ class SindreMesh:
             self.face_normals = compute_face_normals(self.vertices, self.faces)
             
     def apply_transform_normals(self,mat):
-        """处理顶点法线的变换（支持非均匀缩放和反射变换）"""
+        """处理顶点法线的变换（支持非均匀缩放和反射变换）---废弃，在复杂非正定矩阵，重新计算法线比变换更快，更加准确"""
+        RuntimeError("apply_transform_normals ---废弃，在复杂非正定矩阵，重新计算法线比变换更快，更加准确 ")
         # 提取3x3线性变换部分
         linear_mat = mat[:3, :3] if mat.shape == (4, 4) else mat
         # 计算法线变换矩阵（逆转置矩阵）(正交的逆转置是本身)
@@ -185,7 +186,7 @@ class SindreMesh:
             self.vertices = np.dot(self.vertices,mat.T)
         
         # 计算法线  
-        self.apply_transform_normals(mat)
+        self.compute_normals(force=True)
         
     def apply_inv_transform(self,mat):
         """对顶点应用4x4/3x3变换矩阵进行逆变换(支持非正交矩阵)"""
