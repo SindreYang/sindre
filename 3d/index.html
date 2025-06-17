@@ -2041,6 +2041,15 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#utils3d.mesh.SindreMesh.get_boundary" class="md-nav__link">
+    <span class="md-ellipsis">
+      get_boundary
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#utils3d.mesh.SindreMesh.get_color_mapping" class="md-nav__link">
     <span class="md-ellipsis">
       get_color_mapping
@@ -3916,6 +3925,15 @@
   <a href="#utils3d.mesh.SindreMesh.decimate" class="md-nav__link">
     <span class="md-ellipsis">
       decimate
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#utils3d.mesh.SindreMesh.get_boundary" class="md-nav__link">
+    <span class="md-ellipsis">
+      get_boundary
     </span>
   </a>
   
@@ -12800,7 +12818,7 @@ show([(Mesh([new_vertices, new_face]).c(&quot;green&quot;), Line(pts, lw = 2, c 
 
     <div class="doc doc-contents ">
 
-        <p>处理顶点法线的变换（支持非均匀缩放和反射变换）</p>
+        <p>处理顶点法线的变换（支持非均匀缩放和反射变换）---废弃，在复杂非正定矩阵，重新计算法线比变换更快，更加准确</p>
 
     </div>
 
@@ -12869,6 +12887,72 @@ show([(Mesh([new_vertices, new_face]).c(&quot;green&quot;), Line(pts, lw = 2, c 
     <div class="doc doc-contents ">
 
         <p>将网格下采样到指定点数，采用面塌陷</p>
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h3 id="utils3d.mesh.SindreMesh.get_boundary" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">get_boundary</span><span class="p">(</span><span class="n">return_points</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">max_boundary</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span></code>
+
+</h3>
+
+
+    <div class="doc doc-contents ">
+
+        <p>获取非水密网格的边界环（可能有多个环）;</p>
+<p>Method:
+1. 获取所有的边（未去重），并统计每条边出现的次数。在三角网格中，内部边会被两个三角形共享，而边界边只被一个三角形使用。
+2. 筛选出只出现一次的边，这些边就是边界边。
+3. 将边界边连接成有序的环（或多个环）。通过构建边界边的图，然后进行深度优先搜索或广度优先搜索来连接相邻的边。</p>
+
+
+<p><span class="doc-section-title">Parameters:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Type</th>
+          <th>Description</th>
+          <th>Default</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td><code>return_points</code></td>
+            <td>
+                  <code>bool</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>True返回顶点坐标,False返回顶点索引</p>
+              </div>
+            </td>
+            <td>
+                  <code>True</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td><code>max_boundary</code></td>
+            <td>
+                  <code>bool</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>True时只返回最大的边界环(按顶点数量)</p>
+              </div>
+            </td>
+            <td>
+                  <code>False</code>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+        <p>Return:
+    list: 边界环列表，每个环是顶点索引的有序序列（闭合环，首尾顶点相同）,当max_boundary=True,单个边界环数组</p>
 
     </div>
 
