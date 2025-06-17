@@ -141,7 +141,7 @@ setup(
         'scipy',
         'numba',
     ],
-    extras_require={"full": ["Cython", 'scikit-learn','Cython','trimesh',"open3d","pymeshlab"]},
+    extras_require={"full": ["Cython", 'scikit-learn','Cython','trimesh',"open3d","pymeshlab","pyqt5","qdarkstyle"]},
     
     #data_files=find_files("sindre\Resources"),
     url='https://github.com/SindreYang/Sindre',
