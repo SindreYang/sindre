@@ -32,13 +32,10 @@ from typing import *
 import vtk
 import os
 from sindre.general.logs import CustomLogger
+from numba import njit, prange
+from scipy.spatial import KDTree
 log = CustomLogger(logger_name="algorithm").get_logger()
-try:
-    from sklearn.decomposition import PCA
-    from scipy.spatial import KDTree
-    from numba import njit, prange
-except ImportError:
-    pass
+
 
 
 def labels2colors(labels:np.array):
@@ -201,7 +198,7 @@ def get_pca_rotation(vertices: np.array) -> np.array:
     Returns:
         应用旋转矩阵后的顶点
     """
-
+    from sklearn.decomposition import PCA
     pca_axis = PCA(n_components=3).fit(vertices).components_
     rotation_mat = pca_axis
     vertices = (rotation_mat @ vertices[:, :3].T).T
@@ -229,6 +226,7 @@ def get_pca_transform(mesh: vedo.Mesh) -> np.array:
     :param mesh: 
     :return: 
     """
+    from sklearn.decomposition import PCA
     vedo_mesh = mesh.clone().decimate(n=5000).clean()
     vertices = vedo_mesh.vertices
 

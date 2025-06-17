@@ -15,7 +15,7 @@ except ImportError:
         "instructions."
     )
 
-__all__ = ["Reader","ReaderList","ReaderSSD", "Writer", "SplitLmdb", "MergeLmdb", "fix_lmdb_windows_size","parallel_write"]
+__all__ = ["Reader","ReaderList","ReaderSSDList","ReaderSSD", "Writer", "SplitLmdb", "MergeLmdb", "fix_lmdb_windows_size","parallel_write"]
 
 
 class ReaderList:

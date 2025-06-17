@@ -898,6 +898,79 @@ class SindreMesh:
         _,idx = self.vertex_kdtree.query(query_vertices,workers=-1)
         return idx
 
+
+    def get_boundary(self,return_points=True,max_boundary=False):
+        """获取非水密网格的边界环（可能有多个环）;
+        
+            Method:
+            1. 获取所有的边（未去重），并统计每条边出现的次数。在三角网格中，内部边会被两个三角形共享，而边界边只被一个三角形使用。
+            2. 筛选出只出现一次的边，这些边就是边界边。
+            3. 将边界边连接成有序的环（或多个环）。通过构建边界边的图，然后进行深度优先搜索或广度优先搜索来连接相邻的边。
+
+            Args:
+                return_points (bool): True返回顶点坐标,False返回顶点索引
+                max_boundary (bool): True时只返回最大的边界环(按顶点数量)
+            Return:
+                list: 边界环列表，每个环是顶点索引的有序序列（闭合环，首尾顶点相同）,当max_boundary=True,单个边界环数组
+        """
+        # 1. 获取所有边并统计出现次数
+        edges = self.get_edges  # 获取所有边（已排序去重）
+        unique_edges, counts = np.unique(edges, axis=0, return_counts=True)
+        boundary_edges = unique_edges[counts == 1]  # 筛选边界边
+
+        if len(boundary_edges) == 0:
+            return []  # 无水密边界
+
+        # 2. 构建邻接字典（高效版本）
+        adj = {}
+        for u, v in boundary_edges:
+            adj.setdefault(u, []).append(v)
+            adj.setdefault(v, []).append(u)
+
+        loops = []
+        # 3. 遍历连接边界点
+        while adj:
+            start = next(iter(adj))  # 取任意起点
+            loop = [start]
+            current = start
+            
+            while True:
+                # 获取下一顶点并移除已使用边
+                next_vertex = adj[current].pop()
+                adj[next_vertex].remove(current)  # 移除反向连接
+                
+                # 清理空节点
+                if not adj[current]:
+                    del adj[current]
+                if not adj.get(next_vertex, []):  # 检查存在性
+                    adj.pop(next_vertex, None)
+                
+                # 闭环检测
+                if next_vertex == start:
+                    loops.append(loop + [start])  # 闭合环
+                    break
+                    
+                # 继续遍历
+                loop.append(next_vertex)
+                current = next_vertex
+
+
+         # 4. 根据max_boundary参数筛选结果
+        if max_boundary:
+            # 找到顶点最多的边界环
+            longest_idx = np.argmax([len(loop) for loop in loops])
+            result = loops[longest_idx]
+        else:
+            result = loops
+    
+        # 5. 根据return_points参数转换为坐标
+        if return_points:
+            if max_boundary:
+                return self.vertices[result]
+            else:
+                return [self.vertices[loop] for loop in result]
+        else:
+            return result
             
         
         

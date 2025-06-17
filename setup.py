@@ -138,9 +138,10 @@ setup(
         'vedo>=2025.5.3',
         'loguru',
         'tqdm',
+        'scipy',
         'numba',
     ],
-    extras_require={"full": ["Cython", 'scikit-learn','Cython','trimesh',"open3d"]},
+    extras_require={"full": ["Cython", 'scikit-learn','Cython','trimesh',"open3d","pymeshlab"]},
     
     #data_files=find_files("sindre\Resources"),
     url='https://github.com/SindreYang/Sindre',
@@ -151,6 +152,12 @@ setup(
     long_description_content_type='text/markdown',
     python_requires=">=3.8",
     include_package_data = True, #如果有符合MANIFEST.in的文件，会被打包
+    # 工具脚本
+    entry_points={
+        'console_scripts': [
+            'LmdbViewer = sindre.lmdb.Viewer.App:main',
+        ],
+    }
     
     # 开放源码，不再针对平台，版本单独编译。
     # options={
