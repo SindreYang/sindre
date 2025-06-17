@@ -405,6 +405,7 @@ class LMDB_Viewer(QtWidgets.QWidget):
                     
                 fss.append(mesh)
                 self.vp.show(fss, axes=3)
+                self.current_mesh = mesh
             else:
                 points = np.array(data[self.data_config["vertex_key"]][...,:3])
                 pc = Points(points)
@@ -416,7 +417,8 @@ class LMDB_Viewer(QtWidgets.QWidget):
                     fss = self._labels_flag(pc,labels,is_points=True)
                 fss.append(pc)
                 self.vp.show(fss, axes=3)
-            self.current_mesh = mesh
+                self.current_mesh = pc
+            
         except KeyError as e:
             QMessageBox.critical(self, "键名错误", f"未找到配置的键名: {str(e)}")
         except Exception as e:
