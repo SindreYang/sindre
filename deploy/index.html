@@ -1,0 +1,1646 @@
+
+<!doctype html>
+<html lang="zh" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+      
+        <meta name="author" content="sindreyang">
+      
+      
+      
+      
+      
+      <link rel="icon" href="../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.6.14">
+    
+    
+      
+        <title>Deploy 部署模块 - sindre库</title>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/stylesheets/main.342714a4.min.css">
+      
+        
+        <link rel="stylesheet" href="../assets/stylesheets/palette.06af60db.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/_mkdocstrings.css">
+    
+    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="slate" data-md-color-primary="orange" data-md-color-accent="orange">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#deploy" class="md-skip">
+          跳转至
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+<header class="md-header" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="页眉">
+    <a href=".." title="sindre库" class="md-header__button md-logo" aria-label="sindre库" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            sindre库
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Deploy 部署模块
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="slate" data-md-color-primary="orange" data-md-color-accent="orange"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M17 6H7c-3.31 0-6 2.69-6 6s2.69 6 6 6h10c3.31 0 6-2.69 6-6s-2.69-6-6-6m0 10H7c-2.21 0-4-1.79-4-4s1.79-4 4-4h10c2.21 0 4 1.79 4 4s-1.79 4-4 4M7 9c-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3-1.34-3-3-3"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="default" data-md-color-primary="blue" data-md-color-accent="blue"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M17 7H7a5 5 0 0 0-5 5 5 5 0 0 0 5 5h10a5 5 0 0 0 5-5 5 5 0 0 0-5-5m0 8a3 3 0 0 1-3-3 3 3 0 0 1 3-3 3 3 0 0 1 3 3 3 3 0 0 1-3 3"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="搜索" placeholder="搜索" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="查找">
+        
+        <button type="reset" class="md-search__icon md-icon" title="清空当前内容" aria-label="清空当前内容" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            正在初始化搜索引擎
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/SindreYang/sindre" title="前往仓库" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 6.7.2 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2024 Fonticons, Inc.--><path d="M439.55 236.05 244 40.45a28.87 28.87 0 0 0-40.81 0l-40.66 40.63 51.52 51.52c27.06-9.14 52.68 16.77 43.39 43.68l49.66 49.66c34.23-11.8 61.18 31 35.47 56.69-26.49 26.49-70.21-2.87-56-37.34L240.22 199v121.85c25.3 12.54 22.26 41.85 9.08 55a34.34 34.34 0 0 1-48.55 0c-17.57-17.6-11.07-46.91 11.25-56v-123c-20.8-8.51-24.6-30.74-18.64-45L142.57 101 8.45 235.14a28.86 28.86 0 0 0 0 40.81l195.61 195.6a28.86 28.86 0 0 0 40.8 0l194.69-194.69a28.86 28.86 0 0 0 0-40.81"/></svg>
+  </div>
+  <div class="md-source__repository">
+    GitHub
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+            
+<nav class="md-tabs" aria-label="标签" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href=".." class="md-tabs__link">
+        
+  
+  
+    
+  
+  主页
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../lmdb/" class="md-tabs__link">
+          
+  
+  
+  用法
+
+        </a>
+      </li>
+    
+  
+
+      
+    </ul>
+  </div>
+</nav>
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="导航栏" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href=".." title="sindre库" class="md-nav__button md-logo" aria-label="sindre库" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    sindre库
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/SindreYang/sindre" title="前往仓库" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 6.7.2 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2024 Fonticons, Inc.--><path d="M439.55 236.05 244 40.45a28.87 28.87 0 0 0-40.81 0l-40.66 40.63 51.52 51.52c27.06-9.14 52.68 16.77 43.39 43.68l49.66 49.66c34.23-11.8 61.18 31 35.47 56.69-26.49 26.49-70.21-2.87-56-37.34L240.22 199v121.85c25.3 12.54 22.26 41.85 9.08 55a34.34 34.34 0 0 1-48.55 0c-17.57-17.6-11.07-46.91 11.25-56v-123c-20.8-8.51-24.6-30.74-18.64-45L142.57 101 8.45 235.14a28.86 28.86 0 0 0 0 40.81l195.61 195.6a28.86 28.86 0 0 0 40.8 0l194.69-194.69a28.86 28.86 0 0 0 0-40.81"/></svg>
+  </div>
+  <div class="md-source__repository">
+    GitHub
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href=".." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    主页
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    用法
+    
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            用法
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../lmdb/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    LMDB集成
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../win_tools/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Win工具
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../3d/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    三维算法
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../report/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    字典转报告
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="目录">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      目录
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      📋 目录
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#_2" class="md-nav__link">
+    <span class="md-ellipsis">
+      ✨ 功能特性
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#_3" class="md-nav__link">
+    <span class="md-ellipsis">
+      🚀 快速开始
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="🚀 快速开始">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#_4" class="md-nav__link">
+    <span class="md-ellipsis">
+      基本使用
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#_5" class="md-nav__link">
+    <span class="md-ellipsis">
+      共享内存部署
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#_6" class="md-nav__link">
+    <span class="md-ellipsis">
+      🔧 核心功能
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="🔧 核心功能">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#onnx-runtime" class="md-nav__link">
+    <span class="md-ellipsis">
+      ONNX Runtime 部署
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#tensorrt" class="md-nav__link">
+    <span class="md-ellipsis">
+      TensorRT 部署
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#_7" class="md-nav__link">
+    <span class="md-ellipsis">
+      共享内存部署
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#_8" class="md-nav__link">
+    <span class="md-ellipsis">
+      📖 使用指南
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="📖 使用指南">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#1-onnx-runtime" class="md-nav__link">
+    <span class="md-ellipsis">
+      1. ONNX Runtime 部署
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="1. ONNX Runtime 部署">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#_9" class="md-nav__link">
+    <span class="md-ellipsis">
+      基本推理
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#_10" class="md-nav__link">
+    <span class="md-ellipsis">
+      多输入推理
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#_11" class="md-nav__link">
+    <span class="md-ellipsis">
+      模型优化
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#2-tensorrt" class="md-nav__link">
+    <span class="md-ellipsis">
+      2. TensorRT 部署
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="2. TensorRT 部署">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#_12" class="md-nav__link">
+    <span class="md-ellipsis">
+      基本推理
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#_13" class="md-nav__link">
+    <span class="md-ellipsis">
+      构建引擎
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#3" class="md-nav__link">
+    <span class="md-ellipsis">
+      3. 共享内存部署
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="3. 共享内存部署">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#_14" class="md-nav__link">
+    <span class="md-ellipsis">
+      服务器端
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#_15" class="md-nav__link">
+    <span class="md-ellipsis">
+      客户端
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#4" class="md-nav__link">
+    <span class="md-ellipsis">
+      4. 系统检测工具
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#_16" class="md-nav__link">
+    <span class="md-ellipsis">
+      🚀 高级功能
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="🚀 高级功能">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#1" class="md-nav__link">
+    <span class="md-ellipsis">
+      1. 模型优化
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="1. 模型优化">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#onnx" class="md-nav__link">
+    <span class="md-ellipsis">
+      ONNX优化
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#tensorrt_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      TensorRT优化
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#2" class="md-nav__link">
+    <span class="md-ellipsis">
+      2. 动态形状支持
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#3_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      3. 性能监控
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#4_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      4. 错误处理
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#_17" class="md-nav__link">
+    <span class="md-ellipsis">
+      ⚡ 性能优化
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="⚡ 性能优化">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#1_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      1. 内存优化
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#2_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      2. 批处理优化
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#3_2" class="md-nav__link">
+    <span class="md-ellipsis">
+      3. 多线程优化
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#_18" class="md-nav__link">
+    <span class="md-ellipsis">
+      ❓ 常见问题
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="❓ 常见问题">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#q1-onnx" class="md-nav__link">
+    <span class="md-ellipsis">
+      Q1: ONNX模型加载失败？
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#q2-tensorrt" class="md-nav__link">
+    <span class="md-ellipsis">
+      Q2: TensorRT引擎构建失败？
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#q3" class="md-nav__link">
+    <span class="md-ellipsis">
+      Q3: 推理性能不理想？
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#q4" class="md-nav__link">
+    <span class="md-ellipsis">
+      Q4: 内存不足？
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#q5" class="md-nav__link">
+    <span class="md-ellipsis">
+      Q5: 共享内存连接失败？
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#q6" class="md-nav__link">
+    <span class="md-ellipsis">
+      Q6: 模型精度下降？
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#_19" class="md-nav__link">
+    <span class="md-ellipsis">
+      📊 性能基准
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#_20" class="md-nav__link">
+    <span class="md-ellipsis">
+      🔗 相关链接
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="deploy">Deploy 部署模块</h1>
+<blockquote>
+<p>模型部署和推理加速工具，支持ONNX、TensorRT、共享内存等多种部署方式</p>
+</blockquote>
+<h2 id="_1">📋 目录</h2>
+<ul>
+<li><a href="#功能特性">功能特性</a></li>
+<li><a href="#快速开始">快速开始</a></li>
+<li><a href="#核心功能">核心功能</a></li>
+<li><a href="#使用指南">使用指南</a></li>
+<li><a href="#高级功能">高级功能</a></li>
+<li><a href="#性能优化">性能优化</a></li>
+<li><a href="#常见问题">常见问题</a></li>
+</ul>
+<h2 id="_2">✨ 功能特性</h2>
+<ul>
+<li>🚀 <strong>多格式支持</strong>: ONNX、TensorRT、OpenVINO等推理引擎</li>
+<li>💾 <strong>共享内存</strong>: 高效的进程间数据传输</li>
+<li>🔧 <strong>模型优化</strong>: 自动模型量化和优化</li>
+<li>📊 <strong>性能监控</strong>: 实时推理性能统计</li>
+<li>🔄 <strong>热更新</strong>: 支持模型动态更新</li>
+<li>🛡️ <strong>错误处理</strong>: 完善的异常处理机制</li>
+<li>📈 <strong>可扩展</strong>: 支持自定义推理后端</li>
+</ul>
+<h2 id="_3">🚀 快速开始</h2>
+<h3 id="_4">基本使用</h3>
+<pre><code class="language-python">from sindre.deploy import onnxruntime_deploy, TenserRT_deploy
+
+# ONNX Runtime部署
+onnx_infer = onnxruntime_deploy.OnnxInfer(&quot;model.onnx&quot;)
+result = onnx_infer(input_data)
+
+# TensorRT部署
+trt_infer = TenserRT_deploy.TRTInfer()
+trt_infer.load_model(&quot;model.engine&quot;)
+result = trt_infer(input_data)
+</code></pre>
+<h3 id="_5">共享内存部署</h3>
+<pre><code class="language-python">from sindre.deploy import python_share_memory
+
+# 创建共享内存服务
+server = python_share_memory.SharedMemoryServer(&quot;model_server&quot;)
+server.start()
+
+# 客户端连接
+client = python_share_memory.SharedMemoryClient(&quot;model_server&quot;)
+result = client.infer(input_data)
+</code></pre>
+<h2 id="_6">🔧 核心功能</h2>
+<h3 id="onnx-runtime">ONNX Runtime 部署</h3>
+<pre><code class="language-python">class OnnxInfer:
+    &quot;&quot;&quot;ONNX模型推理类&quot;&quot;&quot;
+
+    def __init__(self, onnx_path: str, providers: List[Tuple[str, Dict[str, Any]]] = [('CPUExecutionProvider', {})], enable_log: bool = False):
+        &quot;&quot;&quot;
+        初始化ONNX推理
+
+        Args:
+            onnx_path: ONNX模型文件路径
+            providers: 推理提供者列表
+            enable_log: 是否启用日志
+        &quot;&quot;&quot;
+
+    def __call__(self, inputs: np.ndarray) -&gt; List[np.ndarray]:
+        &quot;&quot;&quot;
+        执行模型推理
+
+        Args:
+            inputs: 输入数据（numpy数组或字典）
+
+        Returns:
+            List[np.ndarray]: 推理结果
+        &quot;&quot;&quot;
+
+    def optimizer(self, save_onnx: str):
+        &quot;&quot;&quot;
+        优化并简化ONNX模型
+
+        Args:
+            save_onnx: 保存路径
+        &quot;&quot;&quot;
+
+    def convert_opset_version(self, save_path: str, target_version: int):
+        &quot;&quot;&quot;
+        转换ONNX模型的Opset版本
+
+        Args:
+            save_path: 保存路径
+            target_version: 目标Opset版本
+        &quot;&quot;&quot;
+
+    def fix_input_shape(self, save_path: str, input_shapes: list):
+        &quot;&quot;&quot;
+        固定ONNX模型的输入尺寸
+
+        Args:
+            save_path: 保存路径
+            input_shapes: 输入形状列表
+        &quot;&quot;&quot;
+
+    def dynamic_input_shape(self, save_path: str, dynamic_dims: list):
+        &quot;&quot;&quot;
+        设置ONNX模型的输入为动态尺寸
+
+        Args:
+            save_path: 保存路径
+            dynamic_dims: 动态维度列表
+        &quot;&quot;&quot;
+
+    def test_performance(self, loop: int = 10, warmup: int = 3):
+        &quot;&quot;&quot;
+        测试推理性能
+
+        Args:
+            loop: 正式测试循环次数
+            warmup: 预热次数
+        &quot;&quot;&quot;
+</code></pre>
+<h3 id="tensorrt">TensorRT 部署</h3>
+<pre><code class="language-python">class TRTInfer:
+    &quot;&quot;&quot;TensorRT推理类&quot;&quot;&quot;
+
+    def __init__(self):
+        &quot;&quot;&quot;初始化TensorRT推理&quot;&quot;&quot;
+
+    def load_model(self, engine_path: str):
+        &quot;&quot;&quot;
+        加载TensorRT引擎
+
+        Args:
+            engine_path: 引擎文件路径
+        &quot;&quot;&quot;
+
+    def build_engine(self, onnx_path: str, engine_path: str, max_workspace_size=4&lt;&lt;30, 
+                    fp16=False, dynamic_shape_profile=None, hardware_compatibility=&quot;&quot;, 
+                    optimization_level=3, version_compatible=False):
+        &quot;&quot;&quot;
+        从ONNX构建TensorRT引擎
+
+        Args:
+            onnx_path: ONNX模型路径
+            engine_path: 输出引擎路径
+            max_workspace_size: 最大工作空间大小
+            fp16: 是否使用FP16
+            dynamic_shape_profile: 动态形状配置
+            hardware_compatibility: 硬件兼容性
+            optimization_level: 优化级别
+            version_compatible: 版本兼容性
+        &quot;&quot;&quot;
+
+    def __call__(self, data):
+        &quot;&quot;&quot;
+        执行推理
+
+        Args:
+            data: 输入数据
+
+        Returns:
+            List[np.ndarray]: 推理结果
+        &quot;&quot;&quot;
+
+    def test_performance(self, loop: int = 10, warmup: int = 3) -&gt; float:
+        &quot;&quot;&quot;
+        测试推理性能
+
+        Args:
+            loop: 正式测试循环次数
+            warmup: 预热次数
+
+        Returns:
+            float: 平均推理时间
+        &quot;&quot;&quot;
+</code></pre>
+<h3 id="_7">共享内存部署</h3>
+<pre><code class="language-python">class SharedMemoryServer:
+    &quot;&quot;&quot;共享内存服务器&quot;&quot;&quot;
+
+    def __init__(self, name: str, model_path: str):
+        &quot;&quot;&quot;
+        初始化共享内存服务器
+
+        Args:
+            name: 服务器名称
+            model_path: 模型路径
+        &quot;&quot;&quot;
+
+    def start(self):
+        &quot;&quot;&quot;启动服务器&quot;&quot;&quot;
+
+    def stop(self):
+        &quot;&quot;&quot;停止服务器&quot;&quot;&quot;
+
+class SharedMemoryClient:
+    &quot;&quot;&quot;共享内存客户端&quot;&quot;&quot;
+
+    def __init__(self, server_name: str):
+        &quot;&quot;&quot;
+        初始化共享内存客户端
+
+        Args:
+            server_name: 服务器名称
+        &quot;&quot;&quot;
+
+    def infer(self, input_data: dict):
+        &quot;&quot;&quot;
+        通过共享内存执行推理
+
+        Args:
+            input_data: 输入数据字典
+
+        Returns:
+            dict: 推理结果
+        &quot;&quot;&quot;
+</code></pre>
+<h2 id="_8">📖 使用指南</h2>
+<h3 id="1-onnx-runtime">1. ONNX Runtime 部署</h3>
+<h4 id="_9">基本推理</h4>
+<pre><code class="language-python">from sindre.deploy import onnxruntime_deploy
+import numpy as np
+
+# 创建推理实例
+infer = onnxruntime_deploy.OnnxInfer(&quot;model.onnx&quot;)
+
+# 准备输入数据
+input_data = np.random.rand(1, 3, 224, 224).astype(np.float32)
+
+# 执行推理
+result = infer(input_data)
+print(f&quot;推理结果: {result}&quot;)
+
+# 获取推理时间
+infer.test_performance(loop=10, warmup=3)
+</code></pre>
+<h4 id="_10">多输入推理</h4>
+<pre><code class="language-python"># 多输入模型
+input_data = {
+    &quot;input1&quot;: np.random.rand(1, 3, 224, 224).astype(np.float32),
+    &quot;input2&quot;: np.random.rand(1, 10).astype(np.float32)
+}
+
+result = infer(input_data)
+print(f&quot;多输入推理结果: {result}&quot;)
+</code></pre>
+<h4 id="_11">模型优化</h4>
+<pre><code class="language-python"># 优化模型
+infer.optimizer(&quot;optimized_model.onnx&quot;)
+
+# 转换Opset版本
+infer.convert_opset_version(&quot;model_v16.onnx&quot;, 16)
+
+# 固定输入形状
+infer.fix_input_shape(&quot;fixed_model.onnx&quot;, [[1, 3, 224, 224]])
+
+# 设置动态输入
+infer.dynamic_input_shape(&quot;dynamic_model.onnx&quot;, [[None, 3, None, None]])
+</code></pre>
+<h3 id="2-tensorrt">2. TensorRT 部署</h3>
+<h4 id="_12">基本推理</h4>
+<pre><code class="language-python">from sindre.deploy import TenserRT_deploy
+import numpy as np
+
+# 创建推理实例
+trt_infer = TenserRT_deploy.TRTInfer()
+
+# 加载引擎
+trt_infer.load_model(&quot;model.engine&quot;)
+
+# 准备输入数据
+input_data = np.random.rand(1, 3, 224, 224).astype(np.float32)
+
+# 执行推理
+result = trt_infer(input_data)
+print(f&quot;TensorRT推理结果: {result}&quot;)
+
+# 性能测试
+avg_time = trt_infer.test_performance(loop=100, warmup=10)
+print(f&quot;平均推理时间: {avg_time:.3f}ms&quot;)
+</code></pre>
+<h4 id="_13">构建引擎</h4>
+<pre><code class="language-python"># 从ONNX构建引擎
+trt_infer.build_engine(
+    onnx_path=&quot;model.onnx&quot;,
+    engine_path=&quot;model.engine&quot;,
+    max_workspace_size=4&lt;&lt;30,  # 4GB
+    fp16=True,  # 使用FP16
+    optimization_level=3
+)
+
+# 动态形状引擎
+dynamic_profile = {
+    &quot;input&quot;: [(1, 3, 224, 224), (4, 3, 224, 224), (8, 3, 224, 224)]
+}
+
+trt_infer.build_engine(
+    onnx_path=&quot;model.onnx&quot;,
+    engine_path=&quot;dynamic_model.engine&quot;,
+    dynamic_shape_profile=dynamic_profile
+)
+</code></pre>
+<h3 id="3">3. 共享内存部署</h3>
+<h4 id="_14">服务器端</h4>
+<pre><code class="language-python">from sindre.deploy import python_share_memory
+
+# 创建服务器
+server = python_share_memory.SharedMemoryServer(&quot;model_server&quot;, &quot;model.onnx&quot;)
+
+# 启动服务器
+server.start()
+
+# 保持运行
+try:
+    while True:
+        time.sleep(1)
+except KeyboardInterrupt:
+    server.stop()
+</code></pre>
+<h4 id="_15">客户端</h4>
+<pre><code class="language-python">from sindre.deploy import python_share_memory
+
+# 创建客户端
+client = python_share_memory.SharedMemoryClient(&quot;model_server&quot;)
+
+# 准备数据
+input_data = {
+    &quot;input&quot;: np.random.rand(1, 3, 224, 224).astype(np.float32)
+}
+
+# 执行推理
+result = client.infer(input_data)
+print(f&quot;共享内存推理结果: {result}&quot;)
+</code></pre>
+<h3 id="4">4. 系统检测工具</h3>
+<pre><code class="language-python">from sindre.deploy import check_tools
+
+# 检测GPU和系统信息
+check_tools.check_gpu_info()
+
+# 性能测量工具 - CPU模式
+with check_tools.timeit(&quot;CPU计算&quot;):
+    result = [i**2 for i in range(10**6)]
+
+# 性能测量工具 - GPU模式
+import torch
+if torch.cuda.is_available():
+    with check_tools.timeit(&quot;GPU计算&quot;, use_torch=True):
+        tensor = torch.randn(10000, 10000).cuda()
+        result = tensor @ tensor.T
+</code></pre>
+<p><strong>check_gpu_info() 功能</strong>:
+- 检测操作系统信息
+- 显示CPU核心数、频率、使用率
+- 显示内存总量和使用情况
+- 检测GPU设备数量和详细信息
+- 显示CUDA和cuDNN版本
+- 检查硬件支持的数据类型（FP16、BF16、INT8等）</p>
+<p><strong>timeit 上下文管理器</strong>:
+- 测量函数执行时间
+- 监控内存使用变化
+- 支持CPU和GPU模式
+- 显示显存使用情况（GPU模式）</p>
+<h2 id="_16">🚀 高级功能</h2>
+<h3 id="1">1. 模型优化</h3>
+<h4 id="onnx">ONNX优化</h4>
+<pre><code class="language-python"># 自动优化
+infer.optimizer(&quot;optimized.onnx&quot;)
+
+# 手动优化选项
+optimization_passes = [
+    'eliminate_deadend',
+    'eliminate_identity',
+    'fuse_bn_into_conv',
+    'fuse_consecutive_concats'
+]
+</code></pre>
+<h4 id="tensorrt_1">TensorRT优化</h4>
+<pre><code class="language-python"># FP16优化
+trt_infer.build_engine(
+    onnx_path=&quot;model.onnx&quot;,
+    engine_path=&quot;fp16_model.engine&quot;,
+    fp16=True
+)
+
+# INT8量化
+trt_infer.build_engine(
+    onnx_path=&quot;model.onnx&quot;,
+    engine_path=&quot;int8_model.engine&quot;,
+    int8=True
+)
+</code></pre>
+<h3 id="2">2. 动态形状支持</h3>
+<pre><code class="language-python"># ONNX动态形状
+infer.dynamic_input_shape(&quot;dynamic.onnx&quot;, [[None, 3, None, None]])
+
+# TensorRT动态形状
+dynamic_profile = {
+    &quot;input&quot;: [(1, 3, 224, 224), (4, 3, 224, 224), (8, 3, 224, 224)]
+}
+trt_infer.build_engine(
+    onnx_path=&quot;model.onnx&quot;,
+    engine_path=&quot;dynamic.engine&quot;,
+    dynamic_shape_profile=dynamic_profile
+)
+</code></pre>
+<h3 id="3_1">3. 性能监控</h3>
+<pre><code class="language-python"># ONNX性能测试
+infer.test_performance(loop=100, warmup=10)
+
+# TensorRT性能测试
+avg_time = trt_infer.test_performance(loop=100, warmup=10)
+print(f&quot;平均推理时间: {avg_time:.3f}ms&quot;)
+
+# 内存使用监控
+import psutil
+process = psutil.Process()
+memory_usage = process.memory_info().rss / 1024 / 1024  # MB
+print(f&quot;内存使用: {memory_usage:.2f} MB&quot;)
+</code></pre>
+<h3 id="4_1">4. 错误处理</h3>
+<pre><code class="language-python">try:
+    result = infer(input_data)
+except RuntimeError as e:
+    print(f&quot;推理错误: {e}&quot;)
+    # 检查模型文件
+    if not os.path.exists(&quot;model.onnx&quot;):
+        print(&quot;模型文件不存在&quot;)
+    # 检查输入数据
+    if input_data.shape != expected_shape:
+        print(f&quot;输入形状不匹配: {input_data.shape} vs {expected_shape}&quot;)
+except Exception as e:
+    print(f&quot;未知错误: {e}&quot;)
+</code></pre>
+<h2 id="_17">⚡ 性能优化</h2>
+<h3 id="1_1">1. 内存优化</h3>
+<pre><code class="language-python"># 使用内存池
+import numpy as np
+from contextlib import contextmanager
+
+@contextmanager
+def memory_pool():
+    &quot;&quot;&quot;内存池上下文管理器&quot;&quot;&quot;
+    pool = {}
+    try:
+        yield pool
+    finally:
+        pool.clear()
+
+# 使用内存池
+with memory_pool() as pool:
+    if &quot;input_buffer&quot; not in pool:
+        pool[&quot;input_buffer&quot;] = np.zeros((1, 3, 224, 224), dtype=np.float32)
+    input_data = pool[&quot;input_buffer&quot;]
+    result = infer(input_data)
+</code></pre>
+<h3 id="2_1">2. 批处理优化</h3>
+<pre><code class="language-python"># 批量推理
+def batch_inference(infer, data_list, batch_size=4):
+    &quot;&quot;&quot;批量推理&quot;&quot;&quot;
+    results = []
+    for i in range(0, len(data_list), batch_size):
+        batch = data_list[i:i+batch_size]
+        batch_result = infer(batch)
+        results.extend(batch_result)
+    return results
+
+# 使用批量推理
+data_list = [np.random.rand(1, 3, 224, 224) for _ in range(100)]
+results = batch_inference(infer, data_list, batch_size=8)
+</code></pre>
+<h3 id="3_2">3. 多线程优化</h3>
+<pre><code class="language-python">import threading
+from queue import Queue
+
+class ThreadedInfer:
+    &quot;&quot;&quot;多线程推理&quot;&quot;&quot;
+    def __init__(self, model_path, num_threads=4):
+        self.infer = onnxruntime_deploy.OnnxInfer(model_path)
+        self.queue = Queue()
+        self.threads = []
+
+        for _ in range(num_threads):
+            thread = threading.Thread(target=self._worker)
+            thread.start()
+            self.threads.append(thread)
+
+    def _worker(self):
+        while True:
+            try:
+                data, callback = self.queue.get(timeout=1)
+                result = self.infer(data)
+                callback(result)
+            except:
+                break
+
+    def infer_async(self, data, callback):
+        &quot;&quot;&quot;异步推理&quot;&quot;&quot;
+        self.queue.put((data, callback))
+
+# 使用多线程推理
+threaded_infer = ThreadedInfer(&quot;model.onnx&quot;, num_threads=4)
+
+def on_result(result):
+    print(f&quot;异步推理结果: {result}&quot;)
+
+threaded_infer.infer_async(input_data, on_result)
+</code></pre>
+<h2 id="_18">❓ 常见问题</h2>
+<h3 id="q1-onnx">Q1: ONNX模型加载失败？</h3>
+<p><strong>A</strong>: 检查以下几点：</p>
+<pre><code class="language-python"># 1. 检查模型文件
+if not os.path.exists(&quot;model.onnx&quot;):
+    print(&quot;模型文件不存在&quot;)
+
+# 2. 检查模型格式
+import onnx
+try:
+    model = onnx.load(&quot;model.onnx&quot;)
+    onnx.checker.check_model(model)
+except Exception as e:
+    print(f&quot;模型格式错误: {e}&quot;)
+
+# 3. 检查推理提供者
+available_providers = onnxruntime.get_available_providers()
+print(f&quot;可用提供者: {available_providers}&quot;)
+</code></pre>
+<h3 id="q2-tensorrt">Q2: TensorRT引擎构建失败？</h3>
+<p><strong>A</strong>: 常见解决方案：</p>
+<pre><code class="language-python"># 1. 检查TensorRT版本
+import tensorrt as trt
+print(f&quot;TensorRT版本: {trt.__version__}&quot;)
+
+# 2. 检查CUDA版本
+import torch
+print(f&quot;CUDA版本: {torch.version.cuda}&quot;)
+
+# 3. 减少工作空间大小
+trt_infer.build_engine(
+    onnx_path=&quot;model.onnx&quot;,
+    engine_path=&quot;model.engine&quot;,
+    max_workspace_size=1&lt;&lt;30  # 1GB
+)
+</code></pre>
+<h3 id="q3">Q3: 推理性能不理想？</h3>
+<p><strong>A</strong>: 性能优化建议：</p>
+<pre><code class="language-python"># 1. 使用GPU推理
+infer = onnxruntime_deploy.OnnxInfer(
+    &quot;model.onnx&quot;,
+    providers=[('CUDAExecutionProvider', {})]
+)
+
+# 2. 启用模型优化
+infer.optimizer(&quot;optimized.onnx&quot;)
+
+# 3. 使用FP16
+trt_infer.build_engine(
+    onnx_path=&quot;model.onnx&quot;,
+    engine_path=&quot;fp16.engine&quot;,
+    fp16=True
+)
+</code></pre>
+<h3 id="q4">Q4: 内存不足？</h3>
+<p><strong>A</strong>: 内存优化方法：</p>
+<pre><code class="language-python"># 1. 减少批处理大小
+batch_size = 1  # 从4减少到1
+
+# 2. 使用动态形状
+infer.dynamic_input_shape(&quot;dynamic.onnx&quot;, [[None, 3, None, None]])
+
+# 3. 及时释放内存
+import gc
+gc.collect()
+</code></pre>
+<h3 id="q5">Q5: 共享内存连接失败？</h3>
+<p><strong>A</strong>: 检查连接设置：</p>
+<pre><code class="language-python"># 1. 检查服务器状态
+if not server.is_running():
+    print(&quot;服务器未运行&quot;)
+
+# 2. 检查端口占用
+import socket
+sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+result = sock.connect_ex(('localhost', 8080))
+if result == 0:
+    print(&quot;端口被占用&quot;)
+
+# 3. 检查权限
+import os
+if not os.access(&quot;/dev/shm&quot;, os.W_OK):
+    print(&quot;共享内存权限不足&quot;)
+</code></pre>
+<h3 id="q6">Q6: 模型精度下降？</h3>
+<p><strong>A</strong>: 精度优化方法：</p>
+<pre><code class="language-python"># 1. 使用FP32而不是FP16
+trt_infer.build_engine(
+    onnx_path=&quot;model.onnx&quot;,
+    engine_path=&quot;fp32.engine&quot;,
+    fp16=False
+)
+
+# 2. 检查量化设置
+# 避免过度量化
+
+# 3. 验证推理结果
+expected_result = reference_inference(input_data)
+actual_result = optimized_inference(input_data)
+diff = np.abs(expected_result - actual_result).max()
+print(f&quot;最大误差: {diff}&quot;)
+</code></pre>
+<h2 id="_19">📊 性能基准</h2>
+<table>
+<thead>
+<tr>
+<th>推理引擎</th>
+<th>模型大小</th>
+<th>推理时间</th>
+<th>内存使用</th>
+<th>适用场景</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>ONNX Runtime (CPU)</td>
+<td>50MB</td>
+<td>~50ms</td>
+<td>~200MB</td>
+<td>开发测试</td>
+</tr>
+<tr>
+<td>ONNX Runtime (GPU)</td>
+<td>50MB</td>
+<td>~10ms</td>
+<td>~500MB</td>
+<td>生产环境</td>
+</tr>
+<tr>
+<td>TensorRT</td>
+<td>50MB</td>
+<td>~5ms</td>
+<td>~800MB</td>
+<td>高性能需求</td>
+</tr>
+<tr>
+<td>共享内存</td>
+<td>50MB</td>
+<td>~2ms</td>
+<td>~100MB</td>
+<td>低延迟需求</td>
+</tr>
+</tbody>
+</table>
+<h2 id="_20">🔗 相关链接</h2>
+<ul>
+<li><a href="https://onnxruntime.ai/">ONNX Runtime文档</a></li>
+<li><a href="https://docs.nvidia.com/deeplearning/tensorrt/">TensorRT文档</a></li>
+<li><a href="https://docs.openvino.ai/">OpenVINO文档</a></li>
+<li><a href="https://docs.python.org/3/library/multiprocessing.html#shared-memory">共享内存文档</a></li>
+</ul>
+<hr />
+<div align="center">
+
+**如有问题，请查看 [常见问题](#常见问题) 或提交 [Issue](https://github.com/SindreYang/sindre/issues)**
+
+</div>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      <script id="__config" type="application/json">{"base": "..", "features": ["navigation.tabs", "search.highlight"], "search": "../assets/javascripts/workers/search.d50fe291.min.js", "tags": null, "translations": {"clipboard.copied": "\u5df2\u590d\u5236", "clipboard.copy": "\u590d\u5236", "search.result.more.one": "\u5728\u8be5\u9875\u4e0a\u8fd8\u6709 1 \u4e2a\u7b26\u5408\u6761\u4ef6\u7684\u7ed3\u679c", "search.result.more.other": "\u5728\u8be5\u9875\u4e0a\u8fd8\u6709 # \u4e2a\u7b26\u5408\u6761\u4ef6\u7684\u7ed3\u679c", "search.result.none": "\u6ca1\u6709\u627e\u5230\u7b26\u5408\u6761\u4ef6\u7684\u7ed3\u679c", "search.result.one": "\u627e\u5230 1 \u4e2a\u7b26\u5408\u6761\u4ef6\u7684\u7ed3\u679c", "search.result.other": "# \u4e2a\u7b26\u5408\u6761\u4ef6\u7684\u7ed3\u679c", "search.result.placeholder": "\u952e\u5165\u4ee5\u5f00\u59cb\u641c\u7d22", "search.result.term.missing": "\u7f3a\u5c11", "select.version": "\u9009\u62e9\u5f53\u524d\u7248\u672c"}, "version": null}</script>
+    
+    
+      <script src="../assets/javascripts/bundle.13a4f30d.min.js"></script>
+      
+    
+  </body>
+</html>

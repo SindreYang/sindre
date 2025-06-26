@@ -1,0 +1,1508 @@
+
+<!doctype html>
+<html lang="zh" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+      
+        <meta name="author" content="sindreyang">
+      
+      
+      
+      
+      
+      <link rel="icon" href="../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.6.14">
+    
+    
+      
+        <title>General 通用工具模块 - sindre库</title>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/stylesheets/main.342714a4.min.css">
+      
+        
+        <link rel="stylesheet" href="../assets/stylesheets/palette.06af60db.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/_mkdocstrings.css">
+    
+    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="slate" data-md-color-primary="orange" data-md-color-accent="orange">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#general" class="md-skip">
+          跳转至
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+<header class="md-header" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="页眉">
+    <a href=".." title="sindre库" class="md-header__button md-logo" aria-label="sindre库" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            sindre库
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              General 通用工具模块
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="slate" data-md-color-primary="orange" data-md-color-accent="orange"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M17 6H7c-3.31 0-6 2.69-6 6s2.69 6 6 6h10c3.31 0 6-2.69 6-6s-2.69-6-6-6m0 10H7c-2.21 0-4-1.79-4-4s1.79-4 4-4h10c2.21 0 4 1.79 4 4s-1.79 4-4 4M7 9c-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3-1.34-3-3-3"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="default" data-md-color-primary="blue" data-md-color-accent="blue"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M17 7H7a5 5 0 0 0-5 5 5 5 0 0 0 5 5h10a5 5 0 0 0 5-5 5 5 0 0 0-5-5m0 8a3 3 0 0 1-3-3 3 3 0 0 1 3-3 3 3 0 0 1 3 3 3 3 0 0 1-3 3"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="搜索" placeholder="搜索" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="查找">
+        
+        <button type="reset" class="md-search__icon md-icon" title="清空当前内容" aria-label="清空当前内容" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            正在初始化搜索引擎
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/SindreYang/sindre" title="前往仓库" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 6.7.2 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2024 Fonticons, Inc.--><path d="M439.55 236.05 244 40.45a28.87 28.87 0 0 0-40.81 0l-40.66 40.63 51.52 51.52c27.06-9.14 52.68 16.77 43.39 43.68l49.66 49.66c34.23-11.8 61.18 31 35.47 56.69-26.49 26.49-70.21-2.87-56-37.34L240.22 199v121.85c25.3 12.54 22.26 41.85 9.08 55a34.34 34.34 0 0 1-48.55 0c-17.57-17.6-11.07-46.91 11.25-56v-123c-20.8-8.51-24.6-30.74-18.64-45L142.57 101 8.45 235.14a28.86 28.86 0 0 0 0 40.81l195.61 195.6a28.86 28.86 0 0 0 40.8 0l194.69-194.69a28.86 28.86 0 0 0 0-40.81"/></svg>
+  </div>
+  <div class="md-source__repository">
+    GitHub
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+            
+<nav class="md-tabs" aria-label="标签" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href=".." class="md-tabs__link">
+        
+  
+  
+    
+  
+  主页
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../lmdb/" class="md-tabs__link">
+          
+  
+  
+  用法
+
+        </a>
+      </li>
+    
+  
+
+      
+    </ul>
+  </div>
+</nav>
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="导航栏" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href=".." title="sindre库" class="md-nav__button md-logo" aria-label="sindre库" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    sindre库
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/SindreYang/sindre" title="前往仓库" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 6.7.2 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2024 Fonticons, Inc.--><path d="M439.55 236.05 244 40.45a28.87 28.87 0 0 0-40.81 0l-40.66 40.63 51.52 51.52c27.06-9.14 52.68 16.77 43.39 43.68l49.66 49.66c34.23-11.8 61.18 31 35.47 56.69-26.49 26.49-70.21-2.87-56-37.34L240.22 199v121.85c25.3 12.54 22.26 41.85 9.08 55a34.34 34.34 0 0 1-48.55 0c-17.57-17.6-11.07-46.91 11.25-56v-123c-20.8-8.51-24.6-30.74-18.64-45L142.57 101 8.45 235.14a28.86 28.86 0 0 0 0 40.81l195.61 195.6a28.86 28.86 0 0 0 40.8 0l194.69-194.69a28.86 28.86 0 0 0 0-40.81"/></svg>
+  </div>
+  <div class="md-source__repository">
+    GitHub
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href=".." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    主页
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    用法
+    
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            用法
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../lmdb/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    LMDB集成
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../win_tools/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Win工具
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../3d/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    三维算法
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../report/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    字典转报告
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="目录">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      目录
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      📋 目录
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#_2" class="md-nav__link">
+    <span class="md-ellipsis">
+      ✨ 功能特性
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#_3" class="md-nav__link">
+    <span class="md-ellipsis">
+      🚀 快速开始
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="🚀 快速开始">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#_4" class="md-nav__link">
+    <span class="md-ellipsis">
+      基本使用
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#_5" class="md-nav__link">
+    <span class="md-ellipsis">
+      高级配置
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#_6" class="md-nav__link">
+    <span class="md-ellipsis">
+      🔧 核心功能
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="🔧 核心功能">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#customlogger" class="md-nav__link">
+    <span class="md-ellipsis">
+      CustomLogger 类
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#_7" class="md-nav__link">
+    <span class="md-ellipsis">
+      📖 使用指南
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="📖 使用指南">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#1" class="md-nav__link">
+    <span class="md-ellipsis">
+      1. 基本日志记录
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="1. 基本日志记录">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#_8" class="md-nav__link">
+    <span class="md-ellipsis">
+      简单日志记录
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#_9" class="md-nav__link">
+    <span class="md-ellipsis">
+      文件日志记录
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#2-print" class="md-nav__link">
+    <span class="md-ellipsis">
+      2. Print重定向
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="2. Print重定向">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#print" class="md-nav__link">
+    <span class="md-ellipsis">
+      捕获Print输出
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#_10" class="md-nav__link">
+    <span class="md-ellipsis">
+      混合使用
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#3" class="md-nav__link">
+    <span class="md-ellipsis">
+      3. 异常捕获
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="3. 异常捕获">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#_11" class="md-nav__link">
+    <span class="md-ellipsis">
+      自动异常捕获
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#4" class="md-nav__link">
+    <span class="md-ellipsis">
+      4. 日志过滤
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="4. 日志过滤">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#_12" class="md-nav__link">
+    <span class="md-ellipsis">
+      自定义过滤器
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#_13" class="md-nav__link">
+    <span class="md-ellipsis">
+      🚀 高级功能
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="🚀 高级功能">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#1_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      1. 多进程日志
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#2" class="md-nav__link">
+    <span class="md-ellipsis">
+      2. 日志轮转
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#3_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      3. 性能监控
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#4_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      4. 结构化日志
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#_14" class="md-nav__link">
+    <span class="md-ellipsis">
+      ⚙️ 配置选项
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="⚙️ 配置选项">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#_15" class="md-nav__link">
+    <span class="md-ellipsis">
+      日志级别
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#_16" class="md-nav__link">
+    <span class="md-ellipsis">
+      日志格式
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#_17" class="md-nav__link">
+    <span class="md-ellipsis">
+      文件配置
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#_18" class="md-nav__link">
+    <span class="md-ellipsis">
+      ❓ 常见问题
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="❓ 常见问题">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#q1" class="md-nav__link">
+    <span class="md-ellipsis">
+      Q1: 如何禁用特定模块的日志？
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#q2" class="md-nav__link">
+    <span class="md-ellipsis">
+      Q2: 如何自定义日志格式？
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#q3" class="md-nav__link">
+    <span class="md-ellipsis">
+      Q3: 如何处理大量日志？
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#q4" class="md-nav__link">
+    <span class="md-ellipsis">
+      Q4: 如何在不同进程间共享日志？
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#q5" class="md-nav__link">
+    <span class="md-ellipsis">
+      Q5: 如何捕获第三方库的日志？
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#q6" class="md-nav__link">
+    <span class="md-ellipsis">
+      Q6: 如何调试日志配置问题？
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#q7" class="md-nav__link">
+    <span class="md-ellipsis">
+      Q7: 如何优化日志性能？
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#q8" class="md-nav__link">
+    <span class="md-ellipsis">
+      Q8: 如何处理日志文件权限问题？
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#_19" class="md-nav__link">
+    <span class="md-ellipsis">
+      📊 性能基准
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#_20" class="md-nav__link">
+    <span class="md-ellipsis">
+      🔗 相关链接
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="general">General 通用工具模块</h1>
+<blockquote>
+<p>提供通用工具和功能，包括高级日志记录、多进程支持、print重定向等</p>
+</blockquote>
+<h2 id="_1">📋 目录</h2>
+<ul>
+<li><a href="#功能特性">功能特性</a></li>
+<li><a href="#快速开始">快速开始</a></li>
+<li><a href="#核心功能">核心功能</a></li>
+<li><a href="#使用指南">使用指南</a></li>
+<li><a href="#高级功能">高级功能</a></li>
+<li><a href="#配置选项">配置选项</a></li>
+<li><a href="#常见问题">常见问题</a></li>
+</ul>
+<h2 id="_2">✨ 功能特性</h2>
+<ul>
+<li>📝 <strong>高级日志</strong>: 基于loguru的强大日志记录功能</li>
+<li>🔄 <strong>多进程支持</strong>: 线程安全的日志记录</li>
+<li>🖨️ <strong>Print重定向</strong>: 自动捕获print输出到日志</li>
+<li>📊 <strong>日志分级</strong>: 支持多种日志级别和过滤</li>
+<li>📁 <strong>文件管理</strong>: 自动日志文件轮转和管理</li>
+<li>🎨 <strong>彩色输出</strong>: 美观的控制台彩色日志</li>
+<li>🛡️ <strong>异常捕获</strong>: 自动异常记录和堆栈跟踪</li>
+</ul>
+<h2 id="_3">🚀 快速开始</h2>
+<h3 id="_4">基本使用</h3>
+<pre><code class="language-python">from sindre.general.logs import CustomLogger
+
+# 创建基本日志记录器
+logger = CustomLogger(
+    logger_name=&quot;MyApp&quot;,
+    level=&quot;INFO&quot;,
+    console_output=True,
+    file_output=True
+).get_logger()
+
+# 记录日志
+logger.info(&quot;应用程序启动&quot;)
+logger.warning(&quot;发现潜在问题&quot;)
+logger.error(&quot;发生错误&quot;)
+</code></pre>
+<h3 id="_5">高级配置</h3>
+<pre><code class="language-python">from sindre.general.logs import CustomLogger
+
+# 创建高级日志记录器
+logger = CustomLogger(
+    logger_name=&quot;AdvancedApp&quot;,
+    level=&quot;DEBUG&quot;,
+    log_dir=&quot;logs&quot;,
+    console_output=True,
+    file_output=True,
+    capture_print=True
+).get_logger()
+
+# 记录不同级别的日志
+logger.debug(&quot;调试信息&quot;)
+logger.info(&quot;普通信息&quot;)
+logger.success(&quot;成功信息&quot;)
+logger.warning(&quot;警告信息&quot;)
+logger.error(&quot;错误信息&quot;)
+logger.critical(&quot;严重错误&quot;)
+</code></pre>
+<h2 id="_6">🔧 核心功能</h2>
+<h3 id="customlogger">CustomLogger 类</h3>
+<pre><code class="language-python">class CustomLogger:
+    &quot;&quot;&quot;自定义日志记录器类&quot;&quot;&quot;
+
+    def __init__(
+        self,
+        logger_name=None,
+        level=&quot;DEBUG&quot;,
+        log_dir=&quot;logs&quot;,
+        console_output=True,
+        file_output=False,
+        capture_print=False,
+        filter_log=None
+    ):
+        &quot;&quot;&quot;
+        初始化日志记录器
+
+        Args:
+            logger_name: 日志记录器名称
+            level: 日志级别 (TRACE, DEBUG, INFO, SUCCESS, WARNING, ERROR, CRITICAL)
+            log_dir: 日志文件存储目录
+            console_output: 是否启用控制台输出
+            file_output: 是否启用文件输出
+            capture_print: 是否捕获print输出
+            filter_log: 自定义日志过滤函数
+        &quot;&quot;&quot;
+
+    def get_logger(self):
+        &quot;&quot;&quot;获取配置好的日志记录器实例&quot;&quot;&quot;
+        return self.logger
+</code></pre>
+<h2 id="_7">📖 使用指南</h2>
+<h3 id="1">1. 基本日志记录</h3>
+<h4 id="_8">简单日志记录</h4>
+<pre><code class="language-python">from sindre.general.logs import CustomLogger
+
+# 创建基本日志记录器
+logger = CustomLogger(
+    logger_name=&quot;SimpleApp&quot;,
+    level=&quot;INFO&quot;,
+    console_output=True
+).get_logger()
+
+# 记录不同级别的日志
+logger.debug(&quot;这是调试信息&quot;)
+logger.info(&quot;这是普通信息&quot;)
+logger.warning(&quot;这是警告信息&quot;)
+logger.error(&quot;这是错误信息&quot;)
+logger.critical(&quot;这是严重错误&quot;)
+
+# 格式化日志
+name = &quot;张三&quot;
+age = 25
+logger.info(f&quot;用户 {name} 年龄 {age} 岁&quot;)
+logger.info(&quot;用户 {} 年龄 {} 岁&quot;, name, age)  # loguru风格
+</code></pre>
+<h4 id="_9">文件日志记录</h4>
+<pre><code class="language-python">from sindre.general.logs import CustomLogger
+
+# 创建文件日志记录器
+logger = CustomLogger(
+    logger_name=&quot;FileApp&quot;,
+    level=&quot;DEBUG&quot;,
+    log_dir=&quot;logs&quot;,
+    console_output=True,
+    file_output=True
+).get_logger()
+
+# 日志会自动保存到文件
+logger.info(&quot;这条信息会同时显示在控制台和保存到文件&quot;)
+logger.error(&quot;错误信息也会被记录&quot;)
+
+# 查看生成的日志文件
+# - logs/run_YYYY-MM-DD.log (运行日志，每天轮转)
+# - logs/error.log (错误日志，10MB轮转)
+</code></pre>
+<h3 id="2-print">2. Print重定向</h3>
+<h4 id="print">捕获Print输出</h4>
+<pre><code class="language-python">from sindre.general.logs import CustomLogger
+
+# 创建支持print重定向的日志记录器
+logger = CustomLogger(
+    logger_name=&quot;PrintCapture&quot;,
+    level=&quot;INFO&quot;,
+    console_output=True,
+    capture_print=True
+).get_logger()
+
+# 普通的print语句会被自动捕获
+print(&quot;这条print语句会被捕获并记录到日志中&quot;)
+print(&quot;包含行号信息的print输出&quot;)
+
+# 日志输出示例：
+# 2024-01-01 12:00:00 | INFO     | PrintCapture | main.py:main:15 - Print(line 15): 这条print语句会被捕获并记录到日志中
+</code></pre>
+<h4 id="_10">混合使用</h4>
+<pre><code class="language-python">from sindre.general.logs import CustomLogger
+
+logger = CustomLogger(
+    logger_name=&quot;MixedApp&quot;,
+    level=&quot;INFO&quot;,
+    console_output=True,
+    capture_print=True
+).get_logger()
+
+# 使用logger记录
+logger.info(&quot;使用logger记录的信息&quot;)
+
+# 使用print（会被自动捕获）
+print(&quot;使用print输出的信息&quot;)
+
+# 两者都会显示在日志中，但格式略有不同
+</code></pre>
+<h3 id="3">3. 异常捕获</h3>
+<h4 id="_11">自动异常捕获</h4>
+<pre><code class="language-python">from sindre.general.logs import CustomLogger
+
+logger = CustomLogger(
+    logger_name=&quot;ExceptionApp&quot;,
+    level=&quot;INFO&quot;,
+    console_output=True
+).get_logger()
+
+# 使用装饰器自动捕获异常
+@logger.catch
+def risky_function():
+    &quot;&quot;&quot;可能出错的函数&quot;&quot;&quot;
+    result = 10 / 0
+    return result
+
+# 调用函数，异常会被自动记录
+try:
+    risky_function()
+except Exception:
+    pass
+
+# 手动捕获异常
+try:
+    raise ValueError(&quot;这是一个测试异常&quot;)
+except Exception:
+    logger.exception(&quot;捕获到异常&quot;)
+</code></pre>
+<h3 id="4">4. 日志过滤</h3>
+<h4 id="_12">自定义过滤器</h4>
+<pre><code class="language-python">from sindre.general.logs import CustomLogger
+
+# 定义过滤函数
+def info_only_filter(record):
+    &quot;&quot;&quot;只显示INFO级别的日志&quot;&quot;&quot;
+    return record[&quot;level&quot;].name == &quot;INFO&quot;
+
+def exclude_sensitive_filter(record):
+    &quot;&quot;&quot;排除包含敏感信息的日志&quot;&quot;&quot;
+    sensitive_words = [&quot;password&quot;, &quot;token&quot;, &quot;secret&quot;]
+    message = record[&quot;message&quot;].lower()
+    return not any(word in message for word in sensitive_words)
+
+# 创建带过滤器的日志记录器
+logger = CustomLogger(
+    logger_name=&quot;FilteredApp&quot;,
+    level=&quot;DEBUG&quot;,
+    console_output=True,
+    filter_log=info_only_filter
+).get_logger()
+
+# 只有INFO级别的日志会被显示
+logger.debug(&quot;这条调试信息不会显示&quot;)
+logger.info(&quot;这条信息会显示&quot;)
+logger.warning(&quot;这条警告不会显示&quot;)
+</code></pre>
+<h2 id="_13">🚀 高级功能</h2>
+<h3 id="1_1">1. 多进程日志</h3>
+<pre><code class="language-python">from sindre.general.logs import CustomLogger
+import multiprocessing as mp
+
+def worker_process(logger_name, process_id):
+    &quot;&quot;&quot;工作进程函数&quot;&quot;&quot;
+    logger = CustomLogger(
+        logger_name=logger_name,
+        level=&quot;INFO&quot;,
+        log_dir=&quot;logs&quot;,
+        console_output=False,
+        file_output=True
+    ).get_logger()
+
+    logger.info(f&quot;进程 {process_id} 开始工作&quot;)
+    # 执行一些工作...
+    logger.info(f&quot;进程 {process_id} 完成工作&quot;)
+
+# 主进程
+if __name__ == &quot;__main__&quot;:
+    main_logger = CustomLogger(
+        logger_name=&quot;MainApp&quot;,
+        level=&quot;INFO&quot;,
+        console_output=True,
+        file_output=True
+    ).get_logger()
+
+    main_logger.info(&quot;启动多进程任务&quot;)
+
+    # 创建多个进程
+    processes = []
+    for i in range(4):
+        p = mp.Process(target=worker_process, args=(&quot;WorkerApp&quot;, i))
+        processes.append(p)
+        p.start()
+
+    # 等待所有进程完成
+    for p in processes:
+        p.join()
+
+    main_logger.info(&quot;所有进程完成&quot;)
+</code></pre>
+<h3 id="2">2. 日志轮转</h3>
+<pre><code class="language-python">from sindre.general.logs import CustomLogger
+
+# 日志会自动轮转
+logger = CustomLogger(
+    logger_name=&quot;RotationApp&quot;,
+    level=&quot;INFO&quot;,
+    log_dir=&quot;logs&quot;,
+    file_output=True
+).get_logger()
+
+# 运行日志：每天00:00轮转
+# 错误日志：达到10MB时轮转
+for i in range(1000):
+    logger.info(f&quot;这是第 {i} 条日志信息&quot;)
+    if i % 100 == 0:
+        logger.error(f&quot;这是第 {i} 条错误信息&quot;)
+</code></pre>
+<h3 id="3_1">3. 性能监控</h3>
+<pre><code class="language-python">from sindre.general.logs import CustomLogger
+import time
+
+logger = CustomLogger(
+    logger_name=&quot;PerformanceApp&quot;,
+    level=&quot;INFO&quot;,
+    console_output=True
+).get_logger()
+
+# 使用上下文管理器记录执行时间
+@logger.catch
+def performance_test():
+    start_time = time.time()
+
+    # 模拟耗时操作
+    time.sleep(2)
+
+    end_time = time.time()
+    execution_time = end_time - start_time
+
+    logger.info(f&quot;操作完成，耗时: {execution_time:.2f}秒&quot;)
+
+    # 模拟异常
+    if execution_time &gt; 1.5:
+        raise TimeoutError(&quot;操作超时&quot;)
+
+# 执行性能测试
+performance_test()
+</code></pre>
+<h3 id="4_1">4. 结构化日志</h3>
+<pre><code class="language-python">from sindre.general.logs import CustomLogger
+import json
+
+logger = CustomLogger(
+    logger_name=&quot;StructuredApp&quot;,
+    level=&quot;INFO&quot;,
+    console_output=True
+).get_logger()
+
+# 记录结构化数据
+user_data = {
+    &quot;user_id&quot;: 12345,
+    &quot;username&quot;: &quot;张三&quot;,
+    &quot;action&quot;: &quot;login&quot;,
+    &quot;timestamp&quot;: &quot;2024-01-01T12:00:00Z&quot;
+}
+
+logger.info(&quot;用户操作: {}&quot;, json.dumps(user_data, ensure_ascii=False))
+
+# 记录业务事件
+def log_business_event(event_type, data):
+    &quot;&quot;&quot;记录业务事件&quot;&quot;&quot;
+    event = {
+        &quot;event_type&quot;: event_type,
+        &quot;data&quot;: data,
+        &quot;timestamp&quot;: time.time()
+    }
+    logger.info(&quot;业务事件: {}&quot;, json.dumps(event, ensure_ascii=False))
+
+# 使用示例
+log_business_event(&quot;user_login&quot;, {&quot;user_id&quot;: 12345, &quot;ip&quot;: &quot;192.168.1.1&quot;})
+log_business_event(&quot;order_created&quot;, {&quot;order_id&quot;: &quot;ORD001&quot;, &quot;amount&quot;: 99.99})
+</code></pre>
+<h2 id="_14">⚙️ 配置选项</h2>
+<h3 id="_15">日志级别</h3>
+<pre><code class="language-python"># 支持的日志级别（从低到高）
+levels = [
+    &quot;TRACE&quot;,      # 最详细的调试信息
+    &quot;DEBUG&quot;,      # 调试信息
+    &quot;INFO&quot;,       # 一般信息
+    &quot;SUCCESS&quot;,    # 成功信息
+    &quot;WARNING&quot;,    # 警告信息
+    &quot;ERROR&quot;,      # 错误信息
+    &quot;CRITICAL&quot;    # 严重错误
+]
+
+# 设置日志级别
+logger = CustomLogger(
+    logger_name=&quot;LevelApp&quot;,
+    level=&quot;WARNING&quot;,  # 只显示WARNING及以上级别的日志
+    console_output=True
+).get_logger()
+</code></pre>
+<h3 id="_16">日志格式</h3>
+<pre><code class="language-python"># 默认日志格式
+log_format = (
+    &quot;&lt;green&gt;{time:YYYY-MM-DD HH:mm:ss}&lt;/green&gt; | &quot;
+    &quot;&lt;level&gt;{level: &lt;8}&lt;/level&gt; | &quot;
+    &quot;&lt;blue&gt;{extra[name]: &lt;8}&lt;/blue&gt; | &quot;
+    &quot;&lt;cyan&gt;{file}&lt;/cyan&gt;:&lt;cyan&gt;{name}&lt;/cyan&gt;:&lt;cyan&gt;{function}&lt;/cyan&gt;:&lt;cyan&gt;{line}&lt;/cyan&gt; - &quot;
+    &quot;&lt;level&gt;{message}&lt;/level&gt;&quot;
+)
+
+# 输出示例：
+# 2024-01-01 12:00:00 | INFO     | MyApp     | main.py:main:15 - 应用程序启动
+</code></pre>
+<h3 id="_17">文件配置</h3>
+<pre><code class="language-python"># 日志文件配置
+logger = CustomLogger(
+    logger_name=&quot;FileConfigApp&quot;,
+    level=&quot;INFO&quot;,
+    log_dir=&quot;custom_logs&quot;,  # 自定义日志目录
+    console_output=True,
+    file_output=True
+).get_logger()
+
+# 生成的文件：
+# - custom_logs/run_2024-01-01.log (运行日志)
+# - custom_logs/error.log (错误日志)
+</code></pre>
+<h2 id="_18">❓ 常见问题</h2>
+<h3 id="q1">Q1: 如何禁用特定模块的日志？</h3>
+<p><strong>A</strong>: 使用enable/disable方法：</p>
+<pre><code class="language-python">from sindre.general.logs import CustomLogger
+
+logger = CustomLogger(&quot;MyApp&quot;).get_logger()
+
+# 禁用当前模块的日志
+logger.disable(__name__)
+logger.info(&quot;这条日志不会显示&quot;)
+
+# 重新启用
+logger.enable(__name__)
+logger.info(&quot;这条日志会显示&quot;)
+</code></pre>
+<h3 id="q2">Q2: 如何自定义日志格式？</h3>
+<p><strong>A</strong>: 修改CustomLogger类的_configure_logger方法：</p>
+<pre><code class="language-python"># 在CustomLogger类中修改log_format
+log_format = (
+    &quot;{time:YYYY-MM-DD HH:mm:ss} | &quot;
+    &quot;{level} | &quot;
+    &quot;{name} | &quot;
+    &quot;{message}&quot;
+)
+</code></pre>
+<h3 id="q3">Q3: 如何处理大量日志？</h3>
+<p><strong>A</strong>: 使用日志轮转和过滤：</p>
+<pre><code class="language-python">logger = CustomLogger(
+    logger_name=&quot;HighVolumeApp&quot;,
+    level=&quot;WARNING&quot;,  # 只记录重要日志
+    log_dir=&quot;logs&quot;,
+    file_output=True
+).get_logger()
+
+# 日志会自动轮转，避免文件过大
+</code></pre>
+<h3 id="q4">Q4: 如何在不同进程间共享日志？</h3>
+<p><strong>A</strong>: 使用文件输出和进程安全的配置：</p>
+<pre><code class="language-python">logger = CustomLogger(
+    logger_name=&quot;MultiProcessApp&quot;,
+    level=&quot;INFO&quot;,
+    log_dir=&quot;logs&quot;,
+    console_output=False,  # 避免控制台冲突
+    file_output=True       # 使用文件输出
+).get_logger()
+</code></pre>
+<h3 id="q5">Q5: 如何捕获第三方库的日志？</h3>
+<p><strong>A</strong>: 使用print重定向和异常捕获：</p>
+<pre><code class="language-python">logger = CustomLogger(
+    logger_name=&quot;ThirdPartyApp&quot;,
+    level=&quot;INFO&quot;,
+    console_output=True,
+    capture_print=True  # 捕获print输出
+).get_logger()
+
+# 第三方库的print输出会被捕获
+import some_third_party_library
+some_third_party_library.some_function()
+</code></pre>
+<h3 id="q6">Q6: 如何调试日志配置问题？</h3>
+<p><strong>A</strong>: 使用简单的配置进行测试：</p>
+<pre><code class="language-python"># 最简单的配置
+logger = CustomLogger(
+    logger_name=&quot;DebugApp&quot;,
+    level=&quot;DEBUG&quot;,
+    console_output=True,
+    file_output=False
+).get_logger()
+
+# 逐步添加功能
+logger.info(&quot;测试基本功能&quot;)
+logger.debug(&quot;测试调试级别&quot;)
+</code></pre>
+<h3 id="q7">Q7: 如何优化日志性能？</h3>
+<p><strong>A</strong>: 使用适当的配置：</p>
+<pre><code class="language-python">logger = CustomLogger(
+    logger_name=&quot;PerformanceApp&quot;,
+    level=&quot;INFO&quot;,  # 避免过多DEBUG日志
+    console_output=True,
+    file_output=False,  # 如果不需要文件输出
+    capture_print=False  # 如果不需要捕获print
+).get_logger()
+</code></pre>
+<h3 id="q8">Q8: 如何处理日志文件权限问题？</h3>
+<p><strong>A</strong>: 确保目录权限正确：</p>
+<pre><code class="language-python">import os
+
+# 确保日志目录存在且有写权限
+log_dir = &quot;logs&quot;
+os.makedirs(log_dir, exist_ok=True)
+
+logger = CustomLogger(
+    logger_name=&quot;PermissionApp&quot;,
+    log_dir=log_dir,
+    file_output=True
+).get_logger()
+</code></pre>
+<h2 id="_19">📊 性能基准</h2>
+<table>
+<thead>
+<tr>
+<th>操作</th>
+<th>日志数量</th>
+<th>时间</th>
+<th>内存使用</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>控制台输出</td>
+<td>10,000条</td>
+<td>~2s</td>
+<td>~10MB</td>
+</tr>
+<tr>
+<td>文件输出</td>
+<td>10,000条</td>
+<td>~5s</td>
+<td>~20MB</td>
+</tr>
+<tr>
+<td>Print重定向</td>
+<td>10,000条</td>
+<td>~3s</td>
+<td>~15MB</td>
+</tr>
+<tr>
+<td>异常捕获</td>
+<td>1,000次</td>
+<td>~1s</td>
+<td>~5MB</td>
+</tr>
+</tbody>
+</table>
+<h2 id="_20">🔗 相关链接</h2>
+<ul>
+<li><a href="https://loguru.readthedocs.io/">Loguru文档</a></li>
+<li><a href="https://docs.python.org/3/howto/logging.html">Python日志最佳实践</a></li>
+<li><a href="https://docs.python.org/3/library/multiprocessing.html">多进程日志处理</a></li>
+</ul>
+<hr />
+<div align="center">
+
+**如有问题，请查看 [常见问题](#常见问题) 或提交 [Issue](https://github.com/SindreYang/sindre/issues)**
+
+</div>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      <script id="__config" type="application/json">{"base": "..", "features": ["navigation.tabs", "search.highlight"], "search": "../assets/javascripts/workers/search.d50fe291.min.js", "tags": null, "translations": {"clipboard.copied": "\u5df2\u590d\u5236", "clipboard.copy": "\u590d\u5236", "search.result.more.one": "\u5728\u8be5\u9875\u4e0a\u8fd8\u6709 1 \u4e2a\u7b26\u5408\u6761\u4ef6\u7684\u7ed3\u679c", "search.result.more.other": "\u5728\u8be5\u9875\u4e0a\u8fd8\u6709 # \u4e2a\u7b26\u5408\u6761\u4ef6\u7684\u7ed3\u679c", "search.result.none": "\u6ca1\u6709\u627e\u5230\u7b26\u5408\u6761\u4ef6\u7684\u7ed3\u679c", "search.result.one": "\u627e\u5230 1 \u4e2a\u7b26\u5408\u6761\u4ef6\u7684\u7ed3\u679c", "search.result.other": "# \u4e2a\u7b26\u5408\u6761\u4ef6\u7684\u7ed3\u679c", "search.result.placeholder": "\u952e\u5165\u4ee5\u5f00\u59cb\u641c\u7d22", "search.result.term.missing": "\u7f3a\u5c11", "select.version": "\u9009\u62e9\u5f53\u524d\u7248\u672c"}, "version": null}</script>
+    
+    
+      <script src="../assets/javascripts/bundle.13a4f30d.min.js"></script>
+      
+    
+  </body>
+</html>
