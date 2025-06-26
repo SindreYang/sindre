@@ -7,7 +7,8 @@ __pycache__/
 *.onnx
 *.engine
 *.engine.cache
-
+*.db
+*.db-lock
 
 
 # C extensions
@@ -32,6 +33,7 @@ share/python-wheels/
 .installed.cfg
 *.egg
 MANIFEST
+
 
 # PyInstaller
 #  Usually these files are written by a python script from a template

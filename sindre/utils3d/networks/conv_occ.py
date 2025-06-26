@@ -1,7 +1,6 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from torch.nn import init
 try:
     from torch_scatter import scatter_mean, scatter_max
 except ImportError:

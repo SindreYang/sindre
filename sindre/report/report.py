@@ -42,7 +42,7 @@ class Report:
         self.data["testAll"] = len(self.data["testResult"])
         totalTime = 0
         for i in self.data["testResult"]:
-            totalTime += i["spendTime"]
+            totalTime += float(str(i["spendTime"]).split()[0])
             if i["status"] == "成功":
                 self.data["testPass"] += 1
             if i["status"] == "失败":

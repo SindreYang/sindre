@@ -1,3 +1,7 @@
+__all__ = ['check_gpu_info', 'timeit']
+
+
+
 def check_gpu_info():
     """检测系统信息"""
     import torch

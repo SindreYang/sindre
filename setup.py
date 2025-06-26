@@ -145,7 +145,7 @@ setup(
     
     #data_files=find_files("sindre\Resources"),
     url='https://github.com/SindreYang/Sindre',
-    license='GNU General Public License v3.0',
+    license="LGPL-3.0-or-later",
     author='SindreYang',
     description='自用脚本库',
     long_description=open('README.md', "r", encoding="utf-8").read(),
