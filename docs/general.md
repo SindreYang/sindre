@@ -599,8 +599,5 @@ logger = CustomLogger(
 
 ---
 
-<div align="center">
 
-**如有问题，请查看 [常见问题](#常见问题) 或提交 [Issue](https://github.com/SindreYang/sindre/issues)**
-
-</div> 
+如有问题，请查看 [常见问题](#常见问题) 或提交 [Issue](https://github.com/SindreYang/sindre/issues)

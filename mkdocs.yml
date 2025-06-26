@@ -9,9 +9,13 @@ nav:
   - 主页: index.md
   - 用法:
     - LMDB集成: lmdb.md
-    - Win工具: win_tools.md
     - 三维算法: 3d.md
-    - 字典转报告: report.md
+    - 模型部署: deploy.md
+    - 通用工具: general.md
+    - 测试报告: report.md
+    - Windows系统工具: win_tools.md
+  - API文档: api.md
+
 
 # 主题
 theme:

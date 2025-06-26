@@ -3,7 +3,6 @@
 > 一个功能丰富的Python工具库，提供LMDB数据库操作、3D处理、报告生成、Windows工具等功能
 
 [![Python](https://img.shields.io/badge/Python-3.8+-blue.svg)](https://www.python.org/)
-[![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 [![Documentation](https://img.shields.io/badge/Docs-MkDocs-blue.svg)](https://sindreyang.github.io/sindre/)
 
 ## 📋 目录
