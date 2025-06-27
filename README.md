@@ -346,6 +346,9 @@ tools.create_installer(
 ### 文档生成
 
 ```bash
+# 安装依赖
+pip install -r requirements.txt
+
 # 启动文档服务器
 mkdocs serve
 
