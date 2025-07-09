@@ -898,6 +898,204 @@ class SindreMesh:
         _,idx = self.vertex_kdtree.query(query_vertices,workers=-1)
         return idx
 
+        
+    def get_boundary_by_normal_angle(self, angle_threshold=30,max_boundary=True):
+        """
+        通过相邻三角面法线夹角识别特征边界环
+        
+        Note:
+            1. 计算所有三角面的归一化法向量
+            2. 遍历网格所有边，筛选出相邻两面法线夹角大于阈值的边（特征边）
+            3. 将特征边连接成有序封闭环
+        
+        Args:
+            self: 必须为水密网格;
+            angle_threshold: 法线夹角阈值(度),默认30度;
+            max_boundary: 是否仅返回最长边界环,默认True;
+        
+        Returns:
+            边界环顶点索引列表(若max_boundary=True则返回单个环)
+        """
+        """
+        # 确保网格是水密的
+        if not self._is_watertight():
+            raise ValueError("Mesh is not watertight")
+
+        # 计算面法线（已归一化）
+        face_normals = self.face_normals.copy()
+        from collections import defaultdict
+        
+        
+        # 获取所有边及其相邻面
+        edges = self.get_edges
+        edge_faces = defaultdict(list)
+        for i, face in enumerate(self.faces):
+            for edge in ([face[0], face[1]], [face[1], face[2]], [face[2], face[0]]):
+                edge_faces[tuple(sorted(edge))].append(i)
+        
+        # 找出特征边（法线夹角大于阈值）
+        feature_edges = []
+        for edge, faces in edge_faces.items():
+            if len(faces) == 2:
+                n1 = face_normals[faces[0]]
+                n2 = face_normals[faces[1]]
+                angle = np.degrees(np.arccos(np.clip(np.dot(n1, n2), -1.0, 1.0)))
+                if angle > angle_threshold:
+                    feature_edges.append((edge[0], edge[1]))
+        
+        # 构建边连接图
+        edge_graph = defaultdict(list)
+        for u, v in feature_edges:
+            edge_graph[u].append(v)
+            edge_graph[v].append(u)
+
+        
+        # 连接特征边形成有序环
+        boundaries = []
+        visited_edges = set()
+        
+        for edge in feature_edges:
+            if tuple(sorted(edge)) in visited_edges:
+                continue
+                
+            # 开始新环
+            loop = []
+            start = edge[0]
+            current = edge[1]
+            prev = start
+            
+            # 追踪边界环
+            while True:
+                loop.append(prev)
+                visited_edges.add(tuple(sorted((prev, current))))
+                
+                # 查找下一个顶点
+                neighbors = [n for n in edge_graph[current] if n != prev]
+                if not neighbors:
+                    break
+                    
+                next_v = neighbors[0]
+                prev, current = current, next_v
+                
+                # 回到起点形成闭环
+                if current == start:
+                    loop.append(prev)
+                    break
+            # 排除异常环
+            if len(loop)>len(feature_edges)*0.1:
+                boundaries.append(np.array(loop))
+        if max_boundary:
+            return sorted(boundaries, key=lambda b: len(b), reverse=True)[0]
+        return boundaries
+        """
+        """"
+        DFS迭代替代递归：
+
+            1. 使用显式栈 (stack) 替代递归调用
+
+            2. 每个栈元素保存 (prev, current, path) 三元组
+
+            3. 避免递归深度过大导致内存溢出
+        """
+
+        if not self._is_watertight():
+            raise ValueError("Mesh is not watertight")
+
+        # 计算面法线（已归一化）
+        face_normals = self.face_normals.copy()
+        from collections import defaultdict
+        
+        # 获取所有边及其相邻面
+        edges = self.get_edges
+        edge_faces = defaultdict(list)
+        for i, face in enumerate(self.faces):
+            for edge in ([face[0], face[1]], [face[1], face[2]], [face[2], face[0]]):
+                edge_faces[tuple(sorted(edge))].append(i)
+        
+        # 找出特征边（法线夹角大于阈值）
+        feature_edges = []
+        for edge, faces in edge_faces.items():
+            if len(faces) == 2:
+                n1 = face_normals[faces[0]]
+                n2 = face_normals[faces[1]]
+                angle = np.degrees(np.arccos(np.clip(np.dot(n1, n2), -1.0, 1.0)))
+                if angle > angle_threshold:
+                    feature_edges.append((edge[0], edge[1]))
+        
+        # 构建边连接图（增加边计数）
+        edge_graph = defaultdict(list)
+        edge_counter = defaultdict(int)
+        for u, v in feature_edges:
+            edge_graph[u].append(v)
+            edge_graph[v].append(u)
+            edge_counter[u] += 1
+            edge_counter[v] += 1
+
+        # 连接特征边形成有序环（DFS迭代版）
+        boundaries = []
+        visited_edges = set()
+        stack = []
+        
+        # 创建边访问标记（使用冻结集合）
+        for edge in feature_edges:
+            frozen_edge = frozenset(edge)
+            if frozen_edge in visited_edges:
+                continue
+                
+            stack.append((edge[0], edge[1], [edge[0]]))  # (prev, current, path)
+            visited_edges.add(frozen_edge)
+            current_loop = None
+            
+            while stack:
+                prev, current, path = stack.pop()
+                path.append(current)
+                
+                # 成功闭合环路
+                if current == path[0] and len(path) > 1:
+                    current_loop = path.copy()
+                    break
+                    
+                # 获取未访问的邻居边
+                neighbors = []
+                for neighbor in edge_graph[current]:
+                    frozen = frozenset({current, neighbor})
+                    if frozen not in visited_edges:
+                        neighbors.append(neighbor)
+                
+                # 死胡同处理
+                if not neighbors:
+                    continue
+                    
+                # 优先选择度数为2的顶点（减少分支）
+                neighbors.sort(key=lambda x: edge_counter[x])
+                
+                # 处理第一个邻居
+                next_hop = neighbors[0]
+                new_edge = frozenset({current, next_hop})
+                visited_edges.add(new_edge)
+                stack.append((current, next_hop, path.copy()))
+                
+                # 处理其他邻居（新分支）
+                for neighbor in neighbors[1:]:
+                    new_edge = frozenset({current, neighbor})
+                    visited_edges.add(new_edge)
+                    stack.append((current, neighbor, path[:-1].copy()))
+            
+            # 保存有效环路
+            if current_loop is not None and len(current_loop) > 3:
+                # 闭合环检查（首尾重复）
+                if current_loop[0] == current_loop[-1]:
+                    boundaries.append(np.array(current_loop))
+                # 清理栈状态
+                stack = []
+        
+        # 返回结果
+        if not boundaries:
+            return np.array([], dtype=int) if max_boundary else []
+        
+        if max_boundary:
+            return sorted(boundaries, key=len, reverse=True)[0]
+        return boundaries
 
     def get_boundary(self,return_points=True,max_boundary=False):
         """获取非水密网格的边界环（可能有多个环）;
@@ -985,8 +1183,8 @@ class SindreMesh:
         fix_invalid_by_meshlab(ms)
         # 更新信息
         self.any_mesh=ms
-        self.update_geometry( np.asarray(mmesh.vertex_matrix(), dtype=np.float64),
-                             np.asarray(mmesh.face_matrix(), dtype=np.int32))
+        self.update_geometry( np.asarray(ms.vertex_matrix(), dtype=np.float64),
+                             np.asarray(ms.face_matrix(), dtype=np.int32))
 
     
     @lru_cache(maxsize=None)

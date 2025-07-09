@@ -201,7 +201,40 @@ def cut_mesh_point_loop_crow(mesh,pts,error_show=True,invert=True):
     return cut_mesh
 
 
+def cut_with_ribbon(mesh:vedo.Mesh, pts):
+    """
+    使用点序列切割网格
+    
+    参数:
+    pts: 切割点序列 (k, 3)
+   
+    返回:
+    new_v: 切割后顶点
+    new_f: 切割后面
+    """
 
+    vn = np.array(mesh.vertex_normals)
+    pns = []
+    ksp = vedo.KSpline(pts, closed=True)
+    ptsk=ksp.vertices-mesh.center_of_mass()
+    v = np.zeros_like(ptsk)
+    tol = 2
+    for i in range(len(pts)):
+        iclos = mesh.closest_point(pts[i], return_point_id=True)
+        pns.append(vn[iclos])
+    for i in range(len(ptsk)-1):
+        vi = vedo.cross(ptsk[i],  ptsk[i+1])
+        v[i] = vi/vedo.mag(vi)
+    vmean = np.mean(v, axis=0)
+
+
+    
+    rib1 = vedo.Ribbon(pts - 0.1*vedo.vector(pns), pts +0.1*vedo.vector(pns))
+    rib2 = vedo.Ribbon(ksp.vertices-tol*vmean,ksp.vertices+tol*vmean)
+    mesh.cut_with_mesh(rib1)
+    mesh.cut_with_mesh(rib2)
+    #show(mesh, line,rib1.bc('green').alpha(0.5),rib2.bc('bule').alpha(1), axes=1).close()
+    return mesh
 
 
 def subdivide_with_pts(v, f, line_pts, r=0.15, iterations=3, method="mid"):

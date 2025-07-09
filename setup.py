@@ -141,7 +141,8 @@ setup(
         'scipy',
         'numba',
     ],
-    extras_require={"full": ["Cython", 'scikit-learn','Cython','trimesh',"open3d","pymeshlab","pyqt5","qdarkstyle"]},
+    extras_require={"full": ["Cython",'nvitop', 'scikit-learn','Cython','trimesh',"open3d","pymeshlab","pyqt5","qdarkstyle"],
+                    "2d":["opencv-contrib-python","opencv-python","scikit-image"]},
     
     #data_files=find_files("sindre\Resources"),
     url='https://github.com/SindreYang/Sindre',
@@ -156,6 +157,7 @@ setup(
     entry_points={
         'console_scripts': [
             'LmdbViewer = sindre.lmdb.Viewer.App:main',
+            'GpuViewer = nvitop.cli:main',
         ],
     }
     

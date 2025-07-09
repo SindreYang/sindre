@@ -11,6 +11,9 @@ __pycache__/
 *.db-lock
 
 
+
+
+py312/
 # C extensions
 *.so
 
