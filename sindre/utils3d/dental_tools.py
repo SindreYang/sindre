@@ -218,7 +218,7 @@ def cut_with_ribbon(mesh:vedo.Mesh, pts):
     ksp = vedo.KSpline(pts, closed=True)
     ptsk=ksp.vertices-mesh.center_of_mass()
     v = np.zeros_like(ptsk)
-    tol = 2
+    tol = mesh.diagonal_size()/2
     for i in range(len(pts)):
         iclos = mesh.closest_point(pts[i], return_point_id=True)
         pns.append(vn[iclos])
@@ -233,7 +233,8 @@ def cut_with_ribbon(mesh:vedo.Mesh, pts):
     rib2 = vedo.Ribbon(ksp.vertices-tol*vmean,ksp.vertices+tol*vmean)
     mesh.cut_with_mesh(rib1)
     mesh.cut_with_mesh(rib2)
-    #show(mesh, line,rib1.bc('green').alpha(0.5),rib2.bc('bule').alpha(1), axes=1).close()
+    # DEBUG
+    # show(mesh, line,rib1.bc('green').alpha(0.5),rib2.bc('bule').alpha(1), axes=1).close()
     return mesh
 
 
