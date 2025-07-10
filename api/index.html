@@ -16,7 +16,7 @@
       
       
       <link rel="icon" href="../assets/images/favicon.png">
-      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.6.14">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.6.15">
     
     
       
@@ -1263,6 +1263,15 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#utils3d.algorithm.FlyByGenerator.cleanup" class="md-nav__link">
+    <span class="md-ellipsis">
+      cleanup
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#utils3d.algorithm.FlyByGenerator.get_mesh_labels" class="md-nav__link">
     <span class="md-ellipsis">
       get_mesh_labels
@@ -1793,9 +1802,9 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#utils3d.algorithm.load_all" class="md-nav__link">
+  <a href="#utils3d.algorithm.load" class="md-nav__link">
     <span class="md-ellipsis">
-      load_all
+      load
     </span>
   </a>
   
@@ -2444,6 +2453,15 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#utils3d.dental_tools.cut_with_ribbon" class="md-nav__link">
+    <span class="md-ellipsis">
+      cut_with_ribbon
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#utils3d.dental_tools.subdivide_with_pts" class="md-nav__link">
     <span class="md-ellipsis">
       subdivide_with_pts
@@ -2709,6 +2727,15 @@
   <a href="#utils3d.mesh.SindreMesh.get_boundary" class="md-nav__link">
     <span class="md-ellipsis">
       get_boundary
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#utils3d.mesh.SindreMesh.get_boundary_by_normal_angle" class="md-nav__link">
+    <span class="md-ellipsis">
+      get_boundary_by_normal_angle
     </span>
   </a>
   
@@ -4774,6 +4801,15 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#utils3d.algorithm.FlyByGenerator.cleanup" class="md-nav__link">
+    <span class="md-ellipsis">
+      cleanup
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#utils3d.algorithm.FlyByGenerator.get_mesh_labels" class="md-nav__link">
     <span class="md-ellipsis">
       get_mesh_labels
@@ -5304,9 +5340,9 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#utils3d.algorithm.load_all" class="md-nav__link">
+  <a href="#utils3d.algorithm.load" class="md-nav__link">
     <span class="md-ellipsis">
-      load_all
+      load
     </span>
   </a>
   
@@ -5955,6 +5991,15 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#utils3d.dental_tools.cut_with_ribbon" class="md-nav__link">
+    <span class="md-ellipsis">
+      cut_with_ribbon
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#utils3d.dental_tools.subdivide_with_pts" class="md-nav__link">
     <span class="md-ellipsis">
       subdivide_with_pts
@@ -6220,6 +6265,15 @@
   <a href="#utils3d.mesh.SindreMesh.get_boundary" class="md-nav__link">
     <span class="md-ellipsis">
       get_boundary
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#utils3d.mesh.SindreMesh.get_boundary_by_normal_angle" class="md-nav__link">
+    <span class="md-ellipsis">
+      get_boundary_by_normal_angle
     </span>
   </a>
   
@@ -11084,7 +11138,7 @@ path: 列表，表示从起点到终点的顶点索引路径，若不可达返�
 
 
 <h3 id="utils3d.algorithm.FlyByGenerator.__init__" class="doc doc-heading">
-            <code class="highlight language-python"><span class="fm">__init__</span><span class="p">(</span><span class="n">mesh</span><span class="p">,</span> <span class="n">resolution</span><span class="o">=</span><span class="mi">224</span><span class="p">,</span> <span class="n">use_z</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">split_z</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">rescale_features</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span></code>
+            <code class="highlight language-python"><span class="fm">__init__</span><span class="p">(</span><span class="n">vertices</span><span class="p">,</span> <span class="n">faces</span><span class="p">,</span> <span class="n">resolution</span><span class="o">=</span><span class="mi">224</span><span class="p">,</span> <span class="n">use_z</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">split_z</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">rescale_features</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span></code>
 
 </h3>
 
@@ -11107,14 +11161,30 @@ path: 列表，表示从起点到终点的顶点索引路径，若不可达返�
       <tbody>
           <tr class="doc-section-item">
             <td>
-                <code>mesh</code>
+                <code>vertices</code>
             </td>
             <td>
-                  <code><span title="vedo.Mesh">Mesh</span></code>
+                  <code><span title="numpy.ndarray">ndarray</span></code>
             </td>
             <td>
               <div class="doc-md-description">
-                <p>vedo.Mesh对象，输入的3D网格模型</p>
+                <p>网格顶点数组，形状为 (N, 3)</p>
+              </div>
+            </td>
+            <td>
+                <em>required</em>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>faces</code>
+            </td>
+            <td>
+                  <code><span title="numpy.ndarray">ndarray</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>网格面数组，形状为 (M, 3) 或 (M, 4)，表示三角形或四边形面</p>
               </div>
             </td>
             <td>
@@ -11196,6 +11266,24 @@ path: 列表，表示从起点到终点的顶点索引路径，若不可达返�
 <div class="doc doc-object doc-function">
 
 
+<h3 id="utils3d.algorithm.FlyByGenerator.cleanup" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">cleanup</span><span class="p">()</span></code>
+
+</h3>
+
+
+    <div class="doc doc-contents ">
+
+        <p>清理资源</p>
+
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
 <h3 id="utils3d.algorithm.FlyByGenerator.get_mesh_labels" class="doc doc-heading">
             <code class="highlight language-python"><span class="n">get_mesh_labels</span><span class="p">(</span><span class="n">view_labels</span><span class="p">,</span> <span class="n">pixel_mappings</span><span class="p">)</span></code>
 
@@ -11204,7 +11292,7 @@ path: 列表，表示从起点到终点的顶点索引路径，若不可达返�
 
     <div class="doc doc-contents ">
 
-        <p>从多个视图的标签生成网格顶点的标签</p>
+        <p>从多个视角的标签图像生成网格顶点标签</p>
 
 
 <p><span class="doc-section-title">Parameters:</span></p>
@@ -11227,7 +11315,7 @@ path: 列表，表示从起点到终点的顶点索引路径，若不可达返�
             </td>
             <td>
               <div class="doc-md-description">
-                <p>每个视图的标签图像列表</p>
+                <p>每个视角的标签图像列表</p>
               </div>
             </td>
             <td>
@@ -11243,7 +11331,7 @@ path: 列表，表示从起点到终点的顶点索引路径，若不可达返�
             </td>
             <td>
               <div class="doc-md-description">
-                <p>每个视图的像素到顶点映射字典列表</p>
+                <p>每个视角的像素到顶点映射列表</p>
               </div>
             </td>
             <td>
@@ -11269,7 +11357,7 @@ path: 列表，表示从起点到终点的顶点索引路径，若不可达返�
             </td>
             <td>
               <div class="doc-md-description">
-                <p>网格顶点的标签数组，形状为(num_vertices,)</p>
+                <p>网格顶点标签数组</p>
               </div>
             </td>
           </tr>
@@ -11292,7 +11380,7 @@ path: 列表，表示从起点到终点的顶点索引路径，若不可达返�
 
     <div class="doc doc-contents ">
 
-        <p>获取指定视图的像素到顶点的映射</p>
+        <p>获取指定视角的像素到顶点映射（简化版本）</p>
 
 
 <p><span class="doc-section-title">Parameters:</span></p>
@@ -11315,7 +11403,7 @@ path: 列表，表示从起点到终点的顶点索引路径，若不可达返�
             </td>
             <td>
               <div class="doc-md-description">
-                <p>视图索引</p>
+                <p>视角索引</p>
               </div>
             </td>
             <td>
@@ -11341,7 +11429,7 @@ path: 列表，表示从起点到终点的顶点索引路径，若不可达返�
             </td>
             <td>
               <div class="doc-md-description">
-                <p>像素到顶点的映射字典，键为(x,y)坐标，值为顶点ID</p>
+                <p>像素坐标到顶点索引的映射字典</p>
               </div>
             </td>
           </tr>
@@ -11382,7 +11470,7 @@ path: 列表，表示从起点到终点的顶点索引路径，若不可达返�
             </td>
             <td>
               <div class="doc-md-description">
-                <p>渲染结果数组，形状为[num_views, height, width, channels]</p>
+                <p>渲染图像数组，形状为(num_views, height, width, channels)</p>
               </div>
             </td>
           </tr>
@@ -15225,15 +15313,58 @@ old_labels (np.ndarray): 原始顶点标签数组，形状为 (N,) </p>
 <div class="doc doc-object doc-function">
 
 
-<h2 id="utils3d.algorithm.load_all" class="doc doc-heading">
-            <code class="highlight language-python"><span class="n">load_all</span><span class="p">(</span><span class="n">path</span><span class="p">)</span></code>
+<h2 id="utils3d.algorithm.load" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">load</span><span class="p">(</span><span class="n">path</span><span class="p">)</span></code>
 
 </h2>
 
 
     <div class="doc doc-contents ">
 
-        <p>读取各种格式的文件</p>
+        <p>基于文件扩展名自动解析不同格式的文件并加载数据。</p>
+<p>支持的文件类型包括但不限于：
+- JSON: 解析为字典或列表
+- TOML: 解析为字典
+- INI: 解析为ConfigParser对象
+- Numpy: .npy/.npz格式的数值数组
+- Pickle: Python对象序列化格式
+- TXT: 纯文本文件
+- LMDB: 轻量级键值数据库
+- PyTorch: .pt/.pth模型文件
+- PTS: pts的3D点云数据文件
+- constructionInfo: XML格式的牙齿模型数据</p>
+<p>对于未知格式，尝试使用vedo库加载，支持多种3D模型格式。</p>
+
+
+<p><span class="doc-section-title">Parameters:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Type</th>
+          <th>Description</th>
+          <th>Default</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                <code>path</code>
+            </td>
+            <td>
+                  <code><span title="str">str</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>文件路径或目录路径(LMDB格式)</p>
+              </div>
+            </td>
+            <td>
+                <em>required</em>
+            </td>
+          </tr>
+      </tbody>
+    </table>
 
 
     <p><span class="doc-section-title">Returns:</span></p>
@@ -15246,17 +15377,59 @@ old_labels (np.ndarray): 原始顶点标签数组，形状为 (N,) </p>
       </thead>
       <tbody>
           <tr class="doc-section-item">
-<td><code>data</code></td>            <td>
+<td><code>Any</code></td>            <td>
             </td>
             <td>
               <div class="doc-md-description">
-                <p>读取的数据,失败返回None;</p>
+                <p>根据文件类型返回对应的数据结构，加载失败时返回None。
+ - JSON/TOML: dict或list
+ - INI: ConfigParser对象
+ - Numpy: ndarray或NpzFile
+ - Pickle: 任意Python对象
+ - TXT: 字符串
+ - LMDB: sindre.lmdb.Reader对象(使用后需调用close())
+ - PyTorch: 模型权重或张量
+ - PTS: 包含牙齿ID和边缘点的字典
+ - constructionInfo: 包含项目信息和多颗牙齿数据的字典
+ - vedo支持的格式: vedo.Mesh或vedo.Volume等对象</p>
               </div>
             </td>
           </tr>
       </tbody>
     </table>
 
+
+<p><span class="doc-section-title">Raises:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Type</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                  <code><span title="Exception">Exception</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>记录加载过程中的错误，但函数会捕获并返回None</p>
+              </div>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+<details class="notes" open>
+  <summary>Notes</summary>
+  <ul>
+<li>LMDB数据需要手动关闭: 使用完成后调用data.close()</li>
+<li>3D模型加载依赖vedo库，确保环境已安装</li>
+<li>PyTorch模型默认加载到CPU，避免CUDA设备不可用时的错误</li>
+</ul>
+</details>
 
     </div>
 
@@ -19180,6 +19353,29 @@ lower_dict = [0, 48, 47, 46, 45, 44, 43, 42, 41, 31, 32, 33, 34, 35, 36, 37, 38]
 <div class="doc doc-object doc-function">
 
 
+<h2 id="utils3d.dental_tools.cut_with_ribbon" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">cut_with_ribbon</span><span class="p">(</span><span class="n">mesh</span><span class="p">,</span> <span class="n">pts</span><span class="p">)</span></code>
+
+</h2>
+
+
+    <div class="doc doc-contents ">
+
+        <p>使用点序列切割网格</p>
+<p>参数:
+pts: 切割点序列 (k, 3)</p>
+<p>返回:
+new_v: 切割后顶点
+new_f: 切割后面</p>
+
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
 <h2 id="utils3d.dental_tools.subdivide_with_pts" class="doc doc-heading">
             <code class="highlight language-python"><span class="n">subdivide_with_pts</span><span class="p">(</span><span class="n">v</span><span class="p">,</span> <span class="n">f</span><span class="p">,</span> <span class="n">line_pts</span><span class="p">,</span> <span class="n">r</span><span class="o">=</span><span class="mf">0.15</span><span class="p">,</span> <span class="n">iterations</span><span class="o">=</span><span class="mi">3</span><span class="p">,</span> <span class="n">method</span><span class="o">=</span><span class="s1">&#39;mid&#39;</span><span class="p">)</span></code>
 
@@ -20129,6 +20325,115 @@ show([(Mesh([new_vertices, new_face]).c(&quot;green&quot;), Line(pts, lw = 2, c 
     </table>
         <p>Return:
     list: 边界环列表，每个环是顶点索引的有序序列（闭合环，首尾顶点相同）,当max_boundary=True,单个边界环数组</p>
+
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h3 id="utils3d.mesh.SindreMesh.get_boundary_by_normal_angle" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">get_boundary_by_normal_angle</span><span class="p">(</span><span class="n">angle_threshold</span><span class="o">=</span><span class="mi">30</span><span class="p">,</span> <span class="n">max_boundary</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span></code>
+
+</h3>
+
+
+    <div class="doc doc-contents ">
+
+        <p>通过相邻三角面法线夹角识别特征边界环</p>
+
+
+<details class="note" open>
+  <summary>Note</summary>
+  <ol>
+<li>计算所有三角面的归一化法向量</li>
+<li>遍历网格所有边，筛选出相邻两面法线夹角大于阈值的边（特征边）</li>
+<li>将特征边连接成有序封闭环</li>
+</ol>
+</details>
+
+<p><span class="doc-section-title">Parameters:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Type</th>
+          <th>Description</th>
+          <th>Default</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                <code>self</code>
+            </td>
+            <td>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>必须为水密网格;</p>
+              </div>
+            </td>
+            <td>
+                <em>required</em>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>angle_threshold</code>
+            </td>
+            <td>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>法线夹角阈值(度),默认30度;</p>
+              </div>
+            </td>
+            <td>
+                  <code>30</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>max_boundary</code>
+            </td>
+            <td>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>是否仅返回最长边界环,默认True;</p>
+              </div>
+            </td>
+            <td>
+                  <code>True</code>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+    <p><span class="doc-section-title">Returns:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Type</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>边界环顶点索引列表(若max_boundary=True则返回单个环)</p>
+              </div>
+            </td>
+          </tr>
+      </tbody>
+    </table>
 
 
     </div>
@@ -26427,7 +26732,7 @@ warmup: 预热次数</p>
       <script id="__config" type="application/json">{"base": "..", "features": ["navigation.tabs", "search.highlight"], "search": "../assets/javascripts/workers/search.d50fe291.min.js", "tags": null, "translations": {"clipboard.copied": "\u5df2\u590d\u5236", "clipboard.copy": "\u590d\u5236", "search.result.more.one": "\u5728\u8be5\u9875\u4e0a\u8fd8\u6709 1 \u4e2a\u7b26\u5408\u6761\u4ef6\u7684\u7ed3\u679c", "search.result.more.other": "\u5728\u8be5\u9875\u4e0a\u8fd8\u6709 # \u4e2a\u7b26\u5408\u6761\u4ef6\u7684\u7ed3\u679c", "search.result.none": "\u6ca1\u6709\u627e\u5230\u7b26\u5408\u6761\u4ef6\u7684\u7ed3\u679c", "search.result.one": "\u627e\u5230 1 \u4e2a\u7b26\u5408\u6761\u4ef6\u7684\u7ed3\u679c", "search.result.other": "# \u4e2a\u7b26\u5408\u6761\u4ef6\u7684\u7ed3\u679c", "search.result.placeholder": "\u952e\u5165\u4ee5\u5f00\u59cb\u641c\u7d22", "search.result.term.missing": "\u7f3a\u5c11", "select.version": "\u9009\u62e9\u5f53\u524d\u7248\u672c"}, "version": null}</script>
     
     
-      <script src="../assets/javascripts/bundle.13a4f30d.min.js"></script>
+      <script src="../assets/javascripts/bundle.56ea9cef.min.js"></script>
       
     
   </body>
