@@ -9,7 +9,7 @@ import os
 # 只测试sindre.utils3d及其子模块的导入和典型API
 try:
     import sindre.utils3d
-    import sindre.utils3d.mesh
+    import sindre.utils3d.sindremesh
     import sindre.utils3d.algorithm
     import sindre.utils3d.pointcloud_augment
     import sindre.utils3d.dental_tools
@@ -26,7 +26,7 @@ def test_utils3d_import():
     assert hasattr(sindre.utils3d, "algorithm")
 
 def test_mesh_api():
-    from sindre.utils3d.mesh import SindreMesh
+    from sindre.utils3d.sindremesh import SindreMesh
     mesh = SindreMesh()
     assert hasattr(mesh, "compute_normals")
     assert hasattr(mesh, "show")
@@ -55,7 +55,7 @@ def test_networks_import():
 def test_A_star():
     from vedo import Plotter, Mesh, Point, Line,Sphere
     from sindre.utils3d.algorithm import A_Star
-    from sindre.utils3d.mesh import SindreMesh
+    from sindre.utils3d.sindremesh import SindreMesh
     def on_mouse_click(event):
         global selected_points, path_actors
         
