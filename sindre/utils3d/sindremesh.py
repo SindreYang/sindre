@@ -872,24 +872,25 @@ class SindreMesh:
         vd_ms = self.to_vedo.compute_curvature(method=1)
         self.vertex_curvature =vd_ms.pointdata["Mean_Curvature"]
         self.vertex_colors =self.get_color_mapping(self.vertex_curvature)
-        
-    def get_curvature_advanced(self):
+
+    def get_curvature_igl(self):
+        self.vertex_curvature =compute_curvature_by_igl(self.vertices,self.faces)
+        self.vertex_colors =self.get_color_mapping(self.vertex_curvature)
+
+
+
+    def get_curvature_meshlab(self):
         """获取更加精确曲率,但要求网格质量"""
-        try:
-            # 限制太多，舍弃
-            assert self.npoints<100000,"顶点必须小于10W"
-            assert len(self.get_non_manifold_edges)==0,"存在非流形"
-            assert self._count_connected_components()[0]==1,"连通体数量应为1"
-            ms = self.to_meshlab
-            ms.compute_curvature_principal_directions_per_vertex(autoclean=False)
-            mmesh = ms.current_mesh()
-            self.vertex_colors =(mmesh.vertex_color_matrix()*255)[...,:3]
-            self.vertex_curvature =mmesh.vertex_scalar_array()
-        except Exception as e:
-            self.log.warning(f"无法使用使用meshlab计算主曲率,{e}")
-            self.vertex_curvature =compute_curvature_by_igl(self.vertices,self.faces,False)
-            self.vertex_colors =self.get_color_mapping(self.vertex_curvature)
-    
+        # 限制太多，舍弃
+        assert self.npoints<100000,"顶点必须小于10W"
+        assert len(self.get_non_manifold_edges)==0,"存在非流形"
+        assert self._count_connected_components()[0]==1,"连通体数量应为1"
+        ms = self.to_meshlab
+        ms.compute_curvature_principal_directions_per_vertex(autoclean=False)
+        mmesh = ms.current_mesh()
+        self.vertex_colors =(mmesh.vertex_color_matrix()*255)[...,:3]
+        self.vertex_curvature =mmesh.vertex_scalar_array()
+      
             
     def get_near_idx(self,query_vertices):
         """获取最近索引"""

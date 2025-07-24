@@ -1,7 +1,4 @@
 
-
-
-
 import numpy as np
 
 
@@ -34,7 +31,7 @@ class SindreImage:
         image_labels2text (dict): 标签ID到文本描述的映射
     """
     
-    def __init__(self, any_obj: Optional[Union[str, bytes, np.ndarray, 'Image.Image']] = None) -> None:
+    def __init__(self, any_obj = None) -> None:
         self.image_array = None
         self.image_labels = None
         self.image_mode = None
@@ -43,7 +40,7 @@ class SindreImage:
         if any_obj is not None:
             self._update(any_obj)
     
-    def _update(self, any_obj: Union[str, bytes, np.ndarray, 'Image.Image']) -> None:
+    def _update(self, any_obj) -> None:
         """转换输入对象为统一格式
         
         Args:
@@ -98,7 +95,7 @@ class SindreImage:
         pil_img = Image.open(file_path)
         self._from_pil(pil_img)
     
-    def _from_pil(self, pil_img: 'Image.Image') -> None:
+    def _from_pil(self, pil_img) -> None:
         """从PIL图像初始化
         
         Args:
@@ -122,7 +119,7 @@ class SindreImage:
         if len(self.image_array.shape) == 2:
             self.image_array = np.stack([self.image_array]*3, axis=-1)
     
-    def _from_numpy(self, arr: np.ndarray) -> None:
+    def _from_numpy(self, arr) -> None:
         """从numpy数组初始化
         
         Args:
@@ -147,7 +144,7 @@ class SindreImage:
             self.image_array = arr.copy()
             self.image_mode = self._get_mode(self.image_array)
     
-    def _from_bytes(self, image_bytes: bytes) -> None:
+    def _from_bytes(self, image_bytes) -> None:
         """从原始图像字节初始化
         
         Args:
@@ -158,7 +155,7 @@ class SindreImage:
         pil_img = Image.open(BytesIO(image_bytes))
         self._from_pil(pil_img)
     
-    def _from_base64(self, base64_data: Union[str, bytes]) -> None:
+    def _from_base64(self, base64_data) -> None:
         """从base64数据初始化
         
         Args:
@@ -181,7 +178,7 @@ class SindreImage:
         self._from_bytes(image_bytes)
     
     @staticmethod
-    def _get_mode(arr: np.ndarray) -> str:
+    def _get_mode(arr) -> str:
         """根据数组形状确定图像模式
         
         Args:
@@ -296,7 +293,7 @@ class SindreImage:
         """
         return self.image_mode
     
-    def split(self) -> List[np.ndarray]:
+    def split(self):
         """分离图像通道为numpy数组
         
         Returns:
@@ -304,7 +301,7 @@ class SindreImage:
         """
         return [self.image_array[:, :, i].copy() for i in range(self.image_array.shape[2])]
     
-    def merge(self, channels: List[np.ndarray]) -> 'SindreImage':
+    def merge(self, channels) :
         """合并通道生成新图像
         
         Args:
@@ -386,7 +383,7 @@ class SindreImage:
         pil_self.paste(img.to_pil, box)
         self.image_array = np.array(pil_self)
     
-    def segmentation(self) -> Dict[int, np.ndarray]:
+    def segmentation(self) :
         """根据标签分割图像为numpy数组
         
         Returns:
@@ -401,7 +398,7 @@ class SindreImage:
             segments[label_id] = mask
         return segments
     
-    def get_mask(self, labels: Union[list, int] = None) -> Dict[Union[int, str], np.ndarray]:
+    def get_mask(self, labels = None):
         """生成指定标签的掩码(numpy数组)
         
         Args:
@@ -424,7 +421,7 @@ class SindreImage:
        
         return masks
     
-    def get_boundary(self, label: int, simplify_tolerance: float = 1) -> List[np.ndarray]:
+    def get_boundary(self, label: int, simplify_tolerance: float = 1):
         """获取标签边界的有序点集
         
         Args:
@@ -472,7 +469,7 @@ class SindreImage:
         """
         self.image_labels2text[label] = name
     
-    def set_labels_by_boundary(self, boundary_points: List, label: int) -> None:
+    def set_labels_by_boundary(self, boundary_points, label: int) -> None:
         """通过边界有序点设置标签
         
         Args:
@@ -505,7 +502,7 @@ class SindreImage:
         # 更新标签
         self.image_labels[mask > 0] = label
     
-    def set_labels_by_mask(self, mask: np.ndarray, label: int) -> None:
+    def set_labels_by_mask(self, mask, label: int) -> None:
         """通过掩码设置标签
         
         Args:
@@ -566,7 +563,7 @@ class SindreImage:
         
         plt.axis('off')
 
-    def show(self, others: list = None) -> None:
+    def show(self, others = None) -> None:
         """使用matplotlib显示图像
         
         Args:
@@ -682,7 +679,7 @@ class SindreImage:
         # 更新标签
         self.image_labels[boundary_mask > 0] = label
 
-    def refine_labels_with_random_walker(self, mask: np.ndarray) -> np.ndarray:
+    def refine_labels_with_random_walker(self, mask) :
         """使用随机游走算法优化标签
         
         Args:
@@ -697,4 +694,5 @@ class SindreImage:
         gray_img = rgb2gray(self.image_array)
         optimized_labels = random_walker(gray_img, mask + 1, mode='bf')
         return optimized_labels
+
 

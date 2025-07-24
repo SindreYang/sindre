@@ -2024,20 +2024,23 @@ def compute_curvature_by_meshlab(ms):
     return vertex_colors,vertex_curvature,new_vertex
 
 
-def compute_curvature_by_igl(v,f,max_curvature=False):
+def compute_curvature_by_igl(v,f,method="Mean"):
     """
     用igl计算平均曲率并归一化
 
     Args:
         v: 顶点;
         f: 面片:
-        max_curvature:返回最大曲率
+        method:返回曲率类型
 
     Returns:
         - vertex_curvature (numpy.ndarray): 顶点曲率数组，形状为 (n,)，其中 n 是顶点的数量。
             每个元素表示对应顶点的曲率。
             
     Notes:
+    
+        输出: PD1 (主方向1), PD2 (主方向2), PV1 (主曲率1), PV2 (主曲率2)
+        
         pd1 : #v by 3 maximal curvature direction for each vertex
         pd2 : #v by 3 minimal curvature direction for each vertex
         pv1 : #v by 1 maximal curvature value for each vertex
@@ -2048,10 +2051,17 @@ def compute_curvature_by_igl(v,f,max_curvature=False):
     try:
         import igl
     except ImportError:
-        log.info("请安装igl, pip install libigl")
-    _, _, K_max, K = igl.principal_curvature(v, f)
-    if max_curvature:
-        K=K_max
+        log.info("请安装igl, pip install libigl>=2.6.1")
+    PD1, PD2, PV1, PV2,_  = igl.principal_curvature(v, f)
+
+    if "Gaussian" in method:
+        # 计算高斯曲率（Gaussian Curvature）
+        K = PV1 * PV2
+    elif "Mean" in method:
+        # 计算平均曲率（Mean Curvature）
+        K = 0.5 * (PV1 + PV2)
+    else:
+        K=[PD1, PD2, PV1, PV2]
     return K
 
 
@@ -2129,7 +2139,7 @@ def harmonic_by_igl(v,f,map_vertices_to_circle=True):
         import igl
     except ImportError:
         log.info("请安装igl, pip install libigl")
-
+    v=np.array(v,dtype=np.float32)
     # 正方形边界映射）
     def map_to_square(bnd):
         n = len(bnd)

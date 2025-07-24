@@ -212,7 +212,7 @@ def cut_with_ribbon(mesh:vedo.Mesh, pts):
     new_v: 切割后顶点
     new_f: 切割后面
     """
-
+    mesh.compute_normals()
     vn = np.array(mesh.vertex_normals)
     pns = []
     ksp = vedo.KSpline(pts, closed=True)

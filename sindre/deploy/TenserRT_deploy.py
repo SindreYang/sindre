@@ -103,10 +103,10 @@ class TRTInfer:
                 if self.engine.get_tensor_mode(binding) == trt.TensorIOMode.INPUT:
                     inputs.append(bindingMemory)
                 
-                    self.log.info(f"输入: {bindingMemory["name"]}, 形状: {bindingMemory["shape"]}, 类型: {bindingMemory["trt_type"]}")
+                    self.log.info(f"输入: {bindingMemory['name']}, 形状: {bindingMemory['shape']}, 类型: {bindingMemory['trt_type']}")
                 else:
                     outputs.append(bindingMemory)
-                    self.log.info(f"输出: {bindingMemory["name"]}, 形状: {bindingMemory["shape"]}, 类型: {bindingMemory["trt_type"]}")
+                    self.log.info(f"输出: {bindingMemory['name']}, 形状: {bindingMemory['shape']}, 类型: {bindingMemory['trt_type']}")
 
             self.inputs = inputs
             self.outputs =  outputs
