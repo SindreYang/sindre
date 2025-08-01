@@ -99,12 +99,12 @@ def sindre_py2pyd() -> list:
     #py2pyd(dist_path,True)
     
 
-sindre_py2pyd()
-#复制资源
-shutil.copy("README.md","dist/README.md")
-shutil.copy("MANIFEST.in","dist/MANIFEST.in")
-#切换目录
-os.chdir("dist")
+# sindre_py2pyd()
+# #复制资源
+# shutil.copy("README.md","dist/README.md")
+# shutil.copy("MANIFEST.in","dist/MANIFEST.in")
+# #切换目录
+# os.chdir("dist")
 
 
 
@@ -141,7 +141,7 @@ setup(
         'scipy',
         'numba',
     ],
-    extras_require={"full": ["Cython",'nvitop', 'scikit-learn','Cython','trimesh',"open3d","pymeshlab","pyqt5","qdarkstyle"],
+    extras_require={"full": ["libigl>=2.6.1","Cython",'nvitop', 'scikit-learn','Cython','trimesh',"open3d","pymeshlab","pyqt5","qdarkstyle"],
                     "2d":["opencv-contrib-python","opencv-python","scikit-image"]},
     
     #data_files=find_files("sindre\Resources"),

@@ -865,6 +865,16 @@ class SindreMesh:
     
     
     
+    def get_unused_vertices(self):
+        """获取未使用顶点的索引"""
+        # 获取所有在faces中出现过的顶点索引
+        used_indices = np.unique(self.faces)
+        # 生成所有顶点索引
+        all_indices = np.arange(len(self.vertices))
+        # 找出未使用的顶点索引
+        unused_indices = np.setdiff1d(all_indices, used_indices)
+        # 返回索引列表
+        return unused_indices.tolist()
 
 
     def get_curvature(self):
@@ -879,17 +889,43 @@ class SindreMesh:
 
 
 
+    
     def get_curvature_meshlab(self):
-        """获取更加精确曲率,但要求网格质量"""
+        """使用MeshLab获取更加精确曲率，自动处理非流形几何"""
         # 限制太多，舍弃
-        assert self.npoints<100000,"顶点必须小于10W"
-        assert len(self.get_non_manifold_edges)==0,"存在非流形"
-        assert self._count_connected_components()[0]==1,"连通体数量应为1"
+        # assert self.npoints<100000,"顶点必须小于10W"
+        # assert len(self.get_non_manifold_edges)==0,"存在非流形"
+        # assert self._count_connected_components()[0]==1,"连通体数量应为1"
         ms = self.to_meshlab
+        # 检查非流形边并修复
+        if len(self.get_non_manifold_edges) > 0:  # 修复：添加括号调用函数，并修正判断条件
+            log.warning("网格存在非流形，开始进行删除非流形面片处理")
+            ms.meshing_repair_non_manifold_edges(method='Remove Faces')
+            ms.meshing_remove_unreferenced_vertices()
+        
+        # 计算主曲率方向
         ms.compute_curvature_principal_directions_per_vertex(autoclean=False)
         mmesh = ms.current_mesh()
-        self.vertex_colors =(mmesh.vertex_color_matrix()*255)[...,:3]
-        self.vertex_curvature =mmesh.vertex_scalar_array()
+        # 检查顶点数量是否变化
+        if len(mmesh.vertex_matrix()) != len(self.vertices):  # 修复：使用vertex_matrix获取顶点数
+            log.warning("检测到修复后顶点被删除，执行曲率/颜色映射...")
+            # 获取修复后的网格数据
+            repaired_verts = np.array(mmesh.vertex_matrix())
+            repaired_curvature = mmesh.vertex_scalar_array()
+            repaired_colors = (mmesh.vertex_color_matrix() * 255)[..., :3]
+            
+            # 为原始网格每个顶点找到最近的点
+            from scipy.spatial import cKDTree  # 高效最近邻搜索
+            kdtree = cKDTree(repaired_verts)
+            _, indices = kdtree.query(self.vertices, k=1)
+            
+            # 映射曲率和颜色
+            self.vertex_curvature = repaired_curvature[indices]
+            self.vertex_colors = repaired_colors[indices]
+        else:
+            # 直接使用计算结果
+            self.vertex_colors = (mmesh.vertex_color_matrix() * 255)[..., :3]
+            self.vertex_curvature = mmesh.vertex_scalar_array()
       
             
     def get_near_idx(self,query_vertices):
@@ -898,6 +934,39 @@ class SindreMesh:
             self.vertex_kdtree= KDTree( self.vertices)
         _,idx = self.vertex_kdtree.query(query_vertices,workers=-1)
         return idx
+
+    def get_boundary_by_ref_normal_angle(self,ref_normal=[0, 0, -1],angle=30):
+        """
+
+        通过参考法线和角度阈值获取网格边界顶点
+
+
+        Note:
+            将输入的参考法线转换为 numpy 数组
+            计算网格所有面的法线与参考法线的余弦相似度
+            筛选出与参考法线夹角小于阈值角度的面（余弦值大于阈值角度的余弦值）
+            对筛选出的面进行处理，提取并返回其边界顶点
+
+        Args:
+
+            self: 网格对象，需包含面法线 (face_normals)、顶点 (vertices) 和面 (faces) 属性；
+
+            ref_normal: 参考法线向量，默认值为 [0, 0, -1] 朝向-z方向;
+
+            angle: 角度阈值 (度)，默认 30 度，用于筛选与参考法线夹角小于该值的面；
+
+        Returns:
+
+            边界顶点坐标；
+
+        """
+        ref_normal = np.array(ref_normal)  # 参考法线
+        cos_angle = np.dot(self.face_normals, ref_normal) / (np.linalg.norm(self.face_normals, axis=1) * np.linalg.norm(ref_normal))
+        faces_mask= cos_angle>np.cos(np.radians(angle))
+        new_faces = self.faces[faces_mask]
+        from vedo import Mesh
+        boundary = Mesh([self.vertices,new_faces]).split()[0].clean().boundaries().join(reset=True).vertices
+        return boundary
 
         
     def get_boundary_by_normal_angle(self, angle_threshold=30,max_boundary=True):

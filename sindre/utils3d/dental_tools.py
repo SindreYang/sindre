@@ -301,6 +301,157 @@ def subdivide_with_pts(v, f, line_pts, r=0.15, iterations=3, method="mid"):
     new_vertices = current_mesh.vertex_matrix()
     new_faces = current_mesh.face_matrix()
     return new_vertices,new_faces
+
+
+
+
+def deform_and_merge_mesh(
+        mesh_path: str,
+        base_mesh_path: str,
+        ref_direction: np.ndarray = np.array([0, 0, -1]),
+        angle_threshold: float = 30,
+        boundary_samples: int = 200,
+        non_boundary_samples: int = 500,
+        boundary_radius: float = 1.0,
+        seed: int = 1024,
+):
+    """
+    将网格变形并与基础网格合并,用于将AI生成闭合冠裁剪并拟合到基座上；
+
+    该函数：
+        1. 基于参考方向的角度阈值处理输入网格
+        2. 识别边界区域
+        3. 生成变形控制点
+        4. 将边界区域变形以匹配基础网格
+        5. 将变形后的网格与基础网格合并
+
+
+    Notes:
+
+    '''
+        # 自定义参考方向向量
+        sm = SindreMesh(r"J10177170088_UpperJaw_gen.ply")
+        custom_direction = np.array(sm.vertices[42734] - sm.vertices[48221])
+
+
+        result_mesh = deform_and_merge_mesh(
+            mesh_path=r"J10177170088_UpperJaw_gen.ply",
+            base_mesh_path=r"17.ply",
+            ref_direction=custom_direction,
+            angle_threshold=30,
+            boundary_samples=200,
+            non_boundary_samples=500
+        )
+
+        result_mesh.write("merged_result.ply")
+        show(result_mesh, axes=1).close()
+    '''
+
+    Args:
+        mesh_path: 主网格PLY文件路径
+        base_mesh_path: 基础网格PLY文件路径
+        ref_direction: 参考方向向量 (默认 [0,0,1])
+        angle_threshold: 用于面片过滤的角度阈值 (度)
+        boundary_samples: 边界点采样数量
+        non_boundary_samples: 非边界点采样数量
+        boundary_radius: 边界区域识别半径
+        seed: 随机种子 (确保结果可重现)
+
+    Returns:
+
+        vedo.Mesh: 合并并清理后的网格
+    """
+    from vedo import Mesh,  merge
+    from scipy.spatial import KDTree
+    import numpy as np
+    import random
+    # 加载网格
+    sm = Mesh(mesh_path)
+    sm_base = Mesh(base_mesh_path)
+
+    # 设置随机种子确保结果可重现
+    random.seed(seed)
+    np.random.seed(seed)
+
+    # 1. 基于法线角度阈值过滤面片
+    # 归一化参考方向
+    ref_normal = ref_direction / (np.linalg.norm(ref_direction) + 1e-8)
+
+    # 获取面法线并归一化
+    sm.compute_normals()
+    face_normals = sm.celldata["Normals"]
+    face_normals = face_normals / np.linalg.norm(face_normals, axis=1)[:, None]
+
+    # 计算面法线与参考方向的夹角余弦值
+    cos_angles = np.dot(face_normals, ref_normal)
+    angle_rad = np.radians(angle_threshold)
+
+    # 创建面片掩码：角度小于阈值的面片保留
+    faces_mask = cos_angles > np.cos(angle_rad)
+
+    # 提取并清理新网格
+    new_sm = Mesh([sm.vertices, np.array(sm.cells)[~faces_mask]])
+    new_sm = new_sm.extract_largest_region().clean()
+
+    # 2. 提取边界点
+    new_sm_boundary = new_sm.boundaries().join(reset=True).vertices
+    sm_base_boundary = sm_base.boundaries().join(reset=True).vertices
+
+    # 3. 创建变形控制点
+    sources, targets = [], []
+
+    # 为基准网格边界创建KDTree加速搜索
+    base_kdtree = KDTree(sm_base_boundary)
+
+    # 采样边界点
+    if len(new_sm_boundary) > boundary_samples:
+        sampled_indices = random.sample(range(len(new_sm_boundary)), boundary_samples)
+    else:
+        sampled_indices = range(len(new_sm_boundary))
+
+    for idx in sampled_indices:
+        p = new_sm_boundary[idx]
+        sources.append(p)
+        # 在基础网格边界中找到最近点
+        targets.append(sm_base_boundary[base_kdtree.query(p)[1]])
+
+    # 4. 识别边界区域
+    cell_centers = new_sm.cell_centers(True).vertices
+    kdtree = KDTree(cell_centers)
+
+    # 找到所有边界点半径内的单元
+    boundary_cell_ids = set()
+    for p in new_sm_boundary:
+        cell_ids = kdtree.query_ball_point(p, boundary_radius)
+        boundary_cell_ids.update(cell_ids)
+
+    boundary_cell_ids = np.array(list(boundary_cell_ids))
+    non_boundary_cell_ids = np.setdiff1d(np.arange(new_sm.ncells), boundary_cell_ids)
+
+    # 提取非边界区域顶点
+    non_boundary_region = new_sm.extract_cells(non_boundary_cell_ids)
+    non_boundary_vertices = non_boundary_region.vertices
+
+    # 添加非边界固定点 (保持形状)
+    if len(non_boundary_vertices) > non_boundary_samples:
+        sampled_vertices = non_boundary_vertices[
+            np.random.choice(len(non_boundary_vertices), non_boundary_samples, replace=False)
+        ]
+    else:
+        sampled_vertices = non_boundary_vertices
+
+    sources.extend(sampled_vertices.tolist())
+    targets.extend(sampled_vertices.tolist())
+
+    # 5. 使用控制点变形整个网格
+    warped_mesh = new_sm.clone().warp(sources, targets)
+
+    # 6. 与基础网格合并并清理
+    merged = merge(warped_mesh, sm_base)
+    merged.smooth(niter=10,boundary=True)  # 平滑融合边界
+    merged.clean()  # 清理无效元素
+
+    return merged
     
     
     

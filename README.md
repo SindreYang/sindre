@@ -8,11 +8,14 @@
 [![Documentation](https://img.shields.io/badge/Documentation-mkdocs-blue.svg)](https://sindreyang.github.io/sindre/)
 [![PyPI](https://img.shields.io/badge/PyPI-sindre-red.svg)](https://pypi.org/project/sindre/)
 
-**一个集成了LMDB数据库、3D处理、报告生成、部署工具等多种功能的Python工具库,(2025年8月后版本只维护python3.12)**
+**一个集成了LMDB数据库、3D处理、报告生成、部署工具等多种功能的Python工具库**
 
 <p align="center">
     <br />
     <a href="https://sindreyang.github.io/sindre/"><strong>📖 完整API文档</strong></a>
+    <br />
+    <br />
+    <a>2025年8月后版本只维护python3.12</a>
     <br />
     <br />
     <a href="https://github.com/SindreYang/sindre/releases">📦 下载Releases</a>
