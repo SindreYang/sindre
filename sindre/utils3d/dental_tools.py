@@ -452,6 +452,113 @@ def deform_and_merge_mesh(
     merged.clean()  # 清理无效元素
 
     return merged
-    
-    
-    
+
+
+
+
+
+def cut_crown_with_meshlib(mesh: vedo.Mesh, margin_points: np.ndarray) -> Tuple[vedo.Mesh, vedo.Mesh]:
+    """使用边缘点分割牙冠网格模型，返回保留部分和移除部分。
+
+    该函数通过以下步骤实现牙冠分割：
+    1. 在输入网格中定位距离边缘线最近的连通区域
+    2. 使用边缘线切割该区域
+    3. 根据边界距离验证切割结果
+    4. 合并剩余网格组件
+
+    参数：
+        mesh: vedo.Mesh对象，表示待分割的牙冠网格模型
+        margin_points: np.ndarray数组，形状为(N,3)的边缘点集
+
+    返回：
+        Tuple[vedo.Mesh, vedo.Mesh]:
+            第一个Mesh为保留部分（牙冠主体）
+            第二个Mesh为移除部分（牙龈区域）
+
+    异常：
+        当边缘点与网格的最小距离超过1mm时触发断言错误
+    """
+    from scipy.spatial import KDTree
+    from vedo import Mesh, merge
+    import numpy as np
+    from sindre.utils3d.algorithm import cut_mesh_with_meshlib
+
+    # 建立边缘点的KDTree用于空间搜索
+    margin_tree = KDTree(margin_points)
+    dist_min = float("inf")  # 初始化最小距离为无穷大
+    mesh_min = None  # 存储距离边缘最近的网格组件
+    mesh_idx = None  # 存储目标组件的索引
+    get_bigger_part = False  # 标记是否需要保留较大区域
+
+    # 分割网格为连通组件
+    split_mesh = mesh.split()
+
+    # 遍历所有连通组件寻找目标切割区域
+    for i, mesh_i in enumerate(split_mesh):
+        npts = mesh_i.npoints
+        # 仅处理足够大的组件（避免小碎片）
+        if npts > 1000:
+            # 计算组件顶点到边缘点的最小距离
+            distances, _ = margin_tree.query(mesh_i.vertices)
+            min_component_dist = np.min(distances)
+
+            # 更新最近组件信息
+            if min_component_dist < dist_min:
+                dist_min = min_component_dist
+                mesh_min = mesh_i
+                mesh_idx = i
+                # 如果组件小于原始网格一半，标记为拼合网格
+                if npts < mesh.npoints * 0.5:
+                    get_bigger_part = True
+
+    # 验证边缘点与网格的贴合程度
+    assert dist_min < 1, f"边缘线与网格距离过大({dist_min:.2f}mm)，请检查输入数据"
+
+    # 使用meshlib进行网格切割（假设已实现）
+    kept_mesh_v, kept_mesh_f, removed_mesh_v, removed_mesh_f = cut_mesh_with_meshlib(
+        mesh_min.vertices,
+        np.array(mesh_min.cells),
+        margin_points,
+        get_bigger_part=get_bigger_part
+    )
+
+    # 构建切割后的网格对象
+    keep_mesh = Mesh([kept_mesh_v, kept_mesh_f])
+    remove_mesh = Mesh([removed_mesh_v, removed_mesh_f])
+
+
+    # 验证切割结果方向正确性
+
+    # 法线是否一致
+    mesh.compute_normals()
+    keep_mesh.compute_normals()
+    remove_mesh.compute_normals()
+    main_normal = np.mean(mesh.vertex_normals, axis=0)
+    # 计算平均法线与主流方向的点积（范围[-1,1]，1为同向，-1为反向）
+    keep_mesh_normal_product =sum( np.dot(keep_mesh.vertex_normals, main_normal))
+    remove_mesh_normal_product = sum(np.dot(remove_mesh.vertex_normals, main_normal))
+    print(keep_mesh_normal_product,remove_mesh_normal_product)
+    if keep_mesh_normal_product>0 and remove_mesh_normal_product>0:
+        # 已分模检测，计算边界到边缘点的最大距离
+        keep_mesh_boundary = keep_mesh.boundaries().extract_largest_region()
+        keep_boundary_dists, _ = margin_tree.query(keep_mesh_boundary.vertices)
+        max_keep_dist = np.max(keep_boundary_dists)
+        remove_mesh_mesh_boundary = remove_mesh.boundaries().extract_largest_region()
+        remove_dists, _ = margin_tree.query(remove_mesh_mesh_boundary.vertices)
+        max_remove_dist = np.max(remove_dists)
+        print(max_remove_dist,max_keep_dist)
+        if max_remove_dist < max_keep_dist:
+            keep_mesh, remove_mesh = Mesh([removed_mesh_v, removed_mesh_f]), Mesh([kept_mesh_v, kept_mesh_f])
+
+    elif remove_mesh_normal_product>0 and keep_mesh_normal_product<0:
+        keep_mesh, remove_mesh = Mesh([removed_mesh_v, removed_mesh_f]), Mesh([kept_mesh_v, kept_mesh_f])
+    elif remove_mesh_normal_product<0 and keep_mesh_normal_product>0:
+        pass
+    else:
+        print(f"无法判断裁剪区域:{remove_mesh_normal_product},{keep_mesh_normal_product}")
+
+    # 合并其他组件与移除部分
+    other_components = [split_mesh[i] for i in range(len(split_mesh)) if i != mesh_idx]
+    other_mesh = merge(other_components + [remove_mesh])
+
+    return keep_mesh, other_mesh
