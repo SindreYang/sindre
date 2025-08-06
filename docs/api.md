@@ -24,7 +24,7 @@
 ::: utils3d.algorithm
 ::: utils3d.pointcloud_augment
 ::: utils3d.dental_tools
-::: utils3d.mesh
+::: utils3d.sindremesh
 ::: utils3d.vedo_tools
 
 ---

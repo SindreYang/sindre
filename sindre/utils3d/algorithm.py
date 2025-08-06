@@ -3505,3 +3505,109 @@ class FlyByGenerator:
         
         return depth_color
 
+
+
+
+def cut_mesh_with_meshlib(v: np.ndarray, f: np.ndarray, loop_points,
+                          get_bigger_part: bool = False, smooth_boundary: bool = False) -> tuple:
+    """沿指定的点环切割网格并返回选定的部分
+
+    给定的点环投影到网格表面，创建闭合轮廓，沿此轮廓切割网格，
+    并返回网格的较大或较小部分。可选择对切割边界进行平滑处理。
+
+    Args:
+        v: 输入网格的顶点坐标，形状为 (N, 3)
+        f: 输入网格的面索引，形状为 (M, 3)
+        loop_points: 定义切割环的3D点列表，每个点为 [x, y, z],，形状为 (B, 3)
+        get_bigger_part: 如果为True，返回切割后较大的部分；否则返回较小的部分
+        smooth_boundary: 如果为True，对切割边界进行平滑处理
+
+    Returns:
+        tuple: 包含:
+            kept_mesh_v: 切割后网格的顶点坐标，形状为 (P, 3)
+            kept_mesh_f: 切割后网格的面索引，形状为 (Q, 3)
+            removed_mesh_v: 其他网格的顶点坐标，形状为 (P, 3)
+            removed_mesh_f: 其他网格的面索引，形状为 (Q, 3)
+
+    Raises:
+        RuntimeError: 如果切割操作失败或产生无效结果
+
+    Example:
+         kept_mesh_v,kept_mesh_f,removed_mesh_v,removed_mesh_f = cut_mesh(vertices, faces, margin_points, get_bigger_part=True, smooth_boundary=True)
+    """
+
+    import meshlib.mrmeshnumpy as mrmeshnumpy
+    from meshlib.mrmeshpy import (smoothRegionBoundary, edgeCurvMetric,
+                                  fillContourLeftByGraphCut, Mesh, Vector3f,
+                                  findProjection, convertMeshTriPointsToClosedContour,
+                                  cutMesh)
+    # 验证输入数组格式
+    if v.ndim != 2 or v.shape[1] != 3:
+        raise ValueError("顶点数组必须是 (N, 3) 的形状")
+    if f.ndim != 2 or f.shape[1] != 3:
+        raise ValueError("面索引数组必须是 (M, 3) 的形状")
+    if len(loop_points) < 3:
+        raise ValueError("切割环必须包含至少3个点")
+
+    # 从输入的顶点和面创建网格
+    mesh_clone = mrmeshnumpy.meshFromFacesVerts(f, v)
+
+    # 将环上的点投影到网格表面
+    tri_points = []
+    for p in loop_points:
+        v3 = Vector3f(p[0], p[1], p[2])
+        projection = findProjection(v3, mesh_clone)
+        tri_points.append(projection.mtp)
+
+    # 从投影点创建闭合轮廓
+    contour = convertMeshTriPointsToClosedContour(mesh_clone, tri_points)
+
+
+    # 沿轮廓切割网格
+    cut_result = cutMesh(mesh_clone, [contour])
+
+    # 使用图割方法选择网格部分
+    edge_path = cut_result.resultCut[0]
+    one_part = fillContourLeftByGraphCut(
+        mesh_clone.topology,
+        edge_path,
+        edgeCurvMetric(mesh_clone)
+    )
+
+    # 如果需要，平滑边界
+    if smooth_boundary:
+        smoothRegionBoundary(mesh_clone, one_part)
+
+    # 确定要保留的部分
+    other_part = mesh_clone.topology.getValidFaces() - one_part
+    # 计算两个部分的面积
+    area_one = mesh_clone.area(one_part)
+    area_other = mesh_clone.area(other_part)
+
+    # 根据面积选择保留部分
+    if get_bigger_part:
+        kept_part = one_part if area_one > area_other else other_part
+        removed_part = other_part if kept_part == one_part else one_part
+    else:
+        kept_part = one_part if area_one < area_other else other_part
+        removed_part = other_part if kept_part == one_part else one_part
+
+    # 创建输出网格
+    kept_mesh = Mesh()
+    kept_mesh.addPartByMask(mesh_clone, kept_part)
+    # 清理未使用的顶点，优化网格
+    kept_mesh.pack()
+
+    # 其他网格
+    removed_mesh = Mesh()
+    removed_mesh.addPartByMask(mesh_clone, removed_part)
+    removed_mesh.pack()
+
+    # 提取numpy数组
+    kept_mesh_v = mrmeshnumpy.getNumpyVerts(kept_mesh)
+    kept_mesh_f = mrmeshnumpy.getNumpyFaces(kept_mesh.topology)
+    removed_mesh_v = mrmeshnumpy.getNumpyVerts(removed_mesh)
+    removed_mesh_f = mrmeshnumpy.getNumpyFaces(removed_mesh.topology)
+
+    return kept_mesh_v,kept_mesh_f,removed_mesh_v,removed_mesh_f
+
