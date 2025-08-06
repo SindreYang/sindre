@@ -99,12 +99,12 @@ def sindre_py2pyd() -> list:
     #py2pyd(dist_path,True)
     
 
-# sindre_py2pyd()
-# #复制资源
-# shutil.copy("README.md","dist/README.md")
-# shutil.copy("MANIFEST.in","dist/MANIFEST.in")
-# #切换目录
-# os.chdir("dist")
+sindre_py2pyd()
+#复制资源
+shutil.copy("README.md","dist/README.md")
+shutil.copy("MANIFEST.in","dist/MANIFEST.in")
+#切换目录
+os.chdir("dist")
 
 
 
