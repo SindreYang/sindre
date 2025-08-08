@@ -2853,7 +2853,7 @@ def detect_boundary_points(points, labels, config=None):
     near_points_indices = tree.query(points, k=config["knn_k"], return_distance=False)
     
     # 获取邻居标签
-    neighbor_labels = labels[near_points_indices]  # 形状: (N, knn_k)
+    neighbor_labels = np.asarray(labels[near_points_indices], dtype=np.float32)  # 形状: (N, knn_k)
     
     # 统计每个点的邻居中主要标签的出现次数
     # def count_dominant_label(row):
@@ -3610,4 +3610,69 @@ def cut_mesh_with_meshlib(v: np.ndarray, f: np.ndarray, loop_points,
     removed_mesh_f = mrmeshnumpy.getNumpyFaces(removed_mesh.topology)
 
     return kept_mesh_v,kept_mesh_f,removed_mesh_v,removed_mesh_f
+
+
+def line_project_mesh(v: np.ndarray, f: np.ndarray, loop_points,gen_new_edge=False):
+    """
+    将输入的3D点环投影到网格表面，根据参数决定是生成新的切割边还是仅提取投影轮廓。
+
+    Args:
+        v (np.ndarray): 网格顶点数组，形状为(N, 3)的浮点数组。
+        f (np.ndarray): 网格面索引数组，形状为(M, 3)的整数数组。
+        loop_points (iterable): 3D点列表/数组，定义要投影到网格上的环状路径。
+        gen_new_edge (bool, optional): 是否生成新切割边。默认为True。
+            True: 在网格上生成新边并分割网格
+            False: 仅提取投影轮廓
+
+    Returns:
+        tuple: 包含四个元素的元组:
+            - res_pts (list): 投影轮廓的3D点列表，每个点为[x, y, z]
+            - res_pts_idx (list): 新生成边的顶点索引列表(仅当gen_new_edge=True时有效)
+            - res_v (np.ndarray): 处理后网格顶点数组(仅当gen_new_edge=True时返回新网格)
+            - res_f (np.ndarray): 处理后网格面索引数组(仅当gen_new_edge=True时返回新网格)
+    """
+
+    import meshlib.mrmeshnumpy as mrmeshnumpy
+    from meshlib.mrmeshpy import ( Vector3f, findProjection, convertMeshTriPointsToClosedContour, extractMeshContours,cutMesh,func_float_from_Id_EdgeTag)
+    # 验证输入数组格式
+    if v.ndim != 2 or v.shape[1] != 3:
+        raise ValueError("顶点数组必须是 (N, 3) 的形状")
+    if f.ndim != 2 or f.shape[1] != 3:
+        raise ValueError("面索引数组必须是 (M, 3) 的形状")
+    if len(loop_points) < 3:
+        raise ValueError("切割环必须包含至少3个点")
+
+    # 从输入的顶点和面创建网格
+    mesh_clone = mrmeshnumpy.meshFromFacesVerts(f, v)
+
+    # 将环上的点投影到网格表面
+    tri_points = []
+    for p in loop_points:
+        v3 = Vector3f(p[0], p[1], p[2])
+        projection = findProjection(v3, mesh_clone)
+        tri_points.append(projection.mtp)
+
+
+
+    # 从投影点创建闭合轮廓
+    contour = convertMeshTriPointsToClosedContour(mesh_clone, tri_points)
+
+    res_v = v
+    res_f = f
+    res_pts_idx = []
+    res_pts = []
+
+    if gen_new_edge:
+        # 基于投影生成新边
+        cut_result = cutMesh(mesh_clone, [contour])
+        res_v ,res_f =  mrmeshnumpy.getNumpyVerts(mesh_clone), mrmeshnumpy.getNumpyFaces(mesh_clone.topology)
+        for i in cut_result.resultCut[0]:
+            res_pts_idx.append(int(i))
+    else:
+        for pts in extractMeshContours([contour])[0]:
+            res_pts.append([pts.x,pts.y,pts.z])
+
+
+    return res_pts,res_pts_idx,res_v ,res_f
+
 
