@@ -537,7 +537,7 @@ def cut_crown_with_meshlib(mesh: vedo.Mesh, margin_points: np.ndarray) -> Tuple[
     # 计算平均法线与主流方向的点积（范围[-1,1]，1为同向，-1为反向）
     keep_mesh_normal_product =sum( np.dot(keep_mesh.vertex_normals, main_normal))
     remove_mesh_normal_product = sum(np.dot(remove_mesh.vertex_normals, main_normal))
-    print(keep_mesh_normal_product,remove_mesh_normal_product)
+    #print(keep_mesh_normal_product,remove_mesh_normal_product)
     if keep_mesh_normal_product>0 and remove_mesh_normal_product>0:
         # 已分模检测，计算边界到边缘点的最大距离
         keep_mesh_boundary = keep_mesh.boundaries().extract_largest_region()
@@ -546,7 +546,7 @@ def cut_crown_with_meshlib(mesh: vedo.Mesh, margin_points: np.ndarray) -> Tuple[
         remove_mesh_mesh_boundary = remove_mesh.boundaries().extract_largest_region()
         remove_dists, _ = margin_tree.query(remove_mesh_mesh_boundary.vertices)
         max_remove_dist = np.max(remove_dists)
-        print(max_remove_dist,max_keep_dist)
+        #print(max_remove_dist,max_keep_dist)
         if max_remove_dist < max_keep_dist:
             keep_mesh, remove_mesh = Mesh([removed_mesh_v, removed_mesh_f]), Mesh([kept_mesh_v, kept_mesh_f])
 

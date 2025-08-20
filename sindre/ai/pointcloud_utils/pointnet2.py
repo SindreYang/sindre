@@ -1,4 +1,4 @@
-from sindre.utils3d.networks.network_utils import PointNetFeaturePropagation, PointNetSetAbstraction, PointNetSetAbstractionMsg
+from sindre.ai.layers import PointNetFeaturePropagation, PointNetSetAbstraction, PointNetSetAbstractionMsg
 import torch.nn as nn
 import torch
 

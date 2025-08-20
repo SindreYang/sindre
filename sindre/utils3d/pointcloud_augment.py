@@ -84,7 +84,7 @@ class Flip_np:
             flip_factors[1] = np.random.choice([-1, 1], p=[0.5, 0.5])
         if self.axis_z:
             flip_factors[2] = np.random.choice([-1, 1], p=[0.5, 0.5])
-
+        self.flip_factors=flip_factors
         # 仅影响指定轴方向
         normals = points.shape[1] > 3
         points[:, 0:3] *= flip_factors
@@ -92,6 +92,8 @@ class Flip_np:
             points[:, 3:6] *= flip_factors
 
         return points
+    def get_F(self):
+        return self.flip_factors
     
           
  
@@ -109,9 +111,12 @@ class Scale_np:
         self.lo, self.hi = lo, hi
 
     def __call__(self, points):
-        scaler = np.random.uniform(self.lo, self.hi)
-        points[:, 0:3] *= scaler
+        self.scaler = np.random.uniform(self.lo, self.hi)
+
+        points[:, 0:3] *= self.scaler
         return points
+    def get_S(self):
+        return self.scaler
 
 
 class RotateAxis_np:
@@ -194,9 +199,11 @@ class Jitter_np(object):
 
     def __call__(self, points):
         jittered_data = np.random.normal(loc=0.0, scale=self.std, size=(points.shape[0], 3))
-        jittered_data = np.clip(jittered_data, -self.clip, self.clip)
-        points[:, 0:3] += jittered_data
+        self.jittered_data = np.clip(jittered_data, -self.clip, self.clip)
+        points[:, 0:3] +=  self.jittered_data
         return points
+    def get_J(self):
+        return self.jittered_data
 
 
 class Translate_np(object):
@@ -210,9 +217,11 @@ class Translate_np(object):
         self.translate_range = translate_range
 
     def __call__(self, points):
-        translation = np.random.uniform(-self.translate_range, self.translate_range)
-        points[:, 0:3] += translation
+        self.translation = np.random.uniform(-self.translate_range, self.translate_range)
+        points[:, 0:3] += self.translation
         return points
+    def get_T(self):
+        return  self.translation
 
 
 

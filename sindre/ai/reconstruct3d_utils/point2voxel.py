@@ -38,7 +38,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from sindre.utils3d.networks.network_utils import sdf2mesh_by_diso
+from sindre.ai.utils import sdf2mesh_by_diso
 
 class PointCloudVoxelizer(nn.Module):
     def __init__(self, grid_size=64):

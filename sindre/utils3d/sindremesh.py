@@ -861,8 +861,20 @@ class SindreMesh:
             not np.isnan(self.vertex_normals).any() if self.vertex_normals is not None else False
         ]
         return all(checks)
-    
-    
+
+    def remove_degenerate_faces(self):
+        """检测并删除退化面片"""
+        # 计算每个面片的面积（使用面法向量的模长/2）
+        areas = np.linalg.norm(self.face_normals, axis=1) / 2
+        # 创建非退化面片的掩码（面积 >= 1e-8）
+        non_degenerate_mask = areas >= 1e-8
+        # 统计退化面片数量
+        num_degenerate = np.sum(~non_degenerate_mask)
+        if num_degenerate > 0:
+            # 删除退化面片
+            self.faces = self.faces[non_degenerate_mask]
+            self.face_normals = self.face_normals[non_degenerate_mask]
+        return num_degenerate
     
     
     def get_unused_vertices(self):
@@ -884,6 +896,10 @@ class SindreMesh:
         self.vertex_colors =self.get_color_mapping(self.vertex_curvature)
 
     def get_curvature_igl(self):
+        def get_curvature_igl(self):
+            if self._count_degenerate_faces()>0:
+                log.warning("网格存在退化面片，执行删除面片")
+                self.remove_degenerate_faces()
         self.vertex_curvature =compute_curvature_by_igl(self.vertices,self.faces)
         self.vertex_colors =self.get_color_mapping(self.vertex_curvature)
 

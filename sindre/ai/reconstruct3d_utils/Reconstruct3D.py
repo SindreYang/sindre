@@ -28,7 +28,7 @@ import torch
 import torch.nn as nn
 from tqdm import tqdm
 from einops import  repeat
-from sindre.utils3d.networks.embed_attention import *
+from sindre.ai.layers import *
 
 
 class ShapeVAE(nn.Module):

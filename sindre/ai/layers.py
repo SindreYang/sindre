@@ -9,7 +9,7 @@ class FourierEmbedder(nn.Module):
     ```
     傅里叶变换(正弦/余弦位置)嵌入模块。给定形状为 [n_batch, ..., c_dim] 的输入张量 `x`，
     它将 `x[..., i]` 的每个特征维度转换为如下形式：
-    
+
         [
             sin(x[..., i]),
             sin(f_1*x[..., i]),
@@ -24,8 +24,8 @@ class FourierEmbedder(nn.Module):
             x[..., i]     # 仅当 include_input 为 True 时保留
         ]
     其中 f_i 表示频率。
-    
-    
+
+
 
     频率空间默认为 [0/num_freqs, 1/num_freqs, ..., (num_freqs-1)/num_freqs]。
     若 `logspace` 为 True，则频率按对数空间排列：f_i = [2^(0/num_freqs), 2^(1/num_freqs), ..., 2^((num_freqs-1)/num_freqs)]；
@@ -33,9 +33,9 @@ class FourierEmbedder(nn.Module):
     ```
     Args:
         num_freqs (int): 频率数量,默认为6;
-        
+
         logspace (bool): 是否使用对数空间频率。若为True，频率为 2^(i/num_freqs)；否则线性间隔，默认为True；
-        
+
         input_dim (int): 输入维度，默认为3；
         include_input (bool): 是否在输出中包含原始输入，默认为True；
         include_pi (bool): 是否将频率乘以π，默认为True。
@@ -86,10 +86,10 @@ class FourierEmbedder(nn.Module):
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """前向传播
-        
+
         Args:
             x: 输入张量，形状为 [..., dim]
-            
+
         Returns:
             embedding: 嵌入后的张量，形状为 [..., dim * (num_freqs*2 + temp)]，
                 其中 temp 为1（若包含输入）或0。
@@ -105,24 +105,24 @@ class FourierEmbedder(nn.Module):
         else:
             # 无频率时直接返回原输入
             return x
-        
-        
-        
+
+
+
 
 class DropPath(nn.Module):
     """随机深度（Stochastic Depth）模块，用于在残差块的主路径上随机丢弃样本路径。
-    
-    该模块通过以概率 `drop_prob` 将输入张量置零（跳过当前残差块），同时根据 `scale_by_keep` 
+
+    该模块通过以概率 `drop_prob` 将输入张量置零（跳过当前残差块），同时根据 `scale_by_keep`
     决定是否缩放输出值以保持期望不变。常用于正则化深层网络（如ResNet、Vision Transformer）。
-    
+
     Notes:
-    
+
         它与作者为 EfficientNet 等网络创建的 DropConnect 实现类似，但原来的名称具有误导性，
         因为 “Drop Connect” 在另一篇论文中是一种不同形式的丢弃技术。
         作者选择将层和参数名称更改为 “drop path”，
         而不是将 DropConnect 作为层名并使用 “survival rate（生存概率）” 作为参数。
         [https://github.com/tensorflow/tpu/issues/494#issuecomment-532968956]
-        
+
 
     Args:
         drop_prob (float): 路径丢弃概率，取值范围 [0, 1)，默认为 0（不丢弃）。
@@ -215,7 +215,7 @@ class MLP(nn.Module):
 
 class QKVMultiheadCrossAttention(nn.Module):
     """基于查询（Query）、键值对（Key-Value）的多头交叉注意力计算模块。
-    
+
     通过将输入的 `q` 和 `kv` 分割为多头，应用缩放点积注意力（Scaled Dot-Product Attention），
     并可选对 Q/K 进行归一化处理。
 
@@ -285,7 +285,7 @@ class MultiheadCrossAttention(nn.Module):
         - 输出: (bs, n_ctx, width)
     """
 
-    def __init__(self, *, width: int, heads: int, qkv_bias: bool = True, n_data: Optional[int] = None, 
+    def __init__(self, *, width: int, heads: int, qkv_bias: bool = True, n_data: Optional[int] = None,
                  data_width: Optional[int] = None, norm_layer=nn.LayerNorm, qk_norm: bool = False):
         super().__init__()
         self.n_data = n_data
@@ -413,7 +413,7 @@ class MultiheadAttention(nn.Module):
         - 输出: (bs, n_ctx, width)
     """
 
-    def __init__(self, *, n_ctx: int, width: int, heads: int, qkv_bias: bool, 
+    def __init__(self, *, n_ctx: int, width: int, heads: int, qkv_bias: bool,
                  norm_layer=nn.LayerNorm, qk_norm: bool = False, drop_path_rate: float = 0.0):
         super().__init__()
         self.n_ctx = n_ctx
@@ -539,16 +539,16 @@ class CrossAttentionDecoder(nn.Module):
     """
 
     def __init__(
-        self,
-        *,
-        num_latents: int,
-        out_channels: int,
-        fourier_embedder: FourierEmbedder,
-        width: int,
-        heads: int,
-        qkv_bias: bool = True,
-        qk_norm: bool = False,
-        label_type: str = "binary"
+            self,
+            *,
+            num_latents: int,
+            out_channels: int,
+            fourier_embedder: FourierEmbedder,
+            width: int,
+            heads: int,
+            qkv_bias: bool = True,
+            qk_norm: bool = False,
+            label_type: str = "binary"
     ):
         super().__init__()
         self.fourier_embedder = fourier_embedder
@@ -582,12 +582,177 @@ class CrossAttentionDecoder(nn.Module):
         """
         # 傅里叶嵌入 + 投影（保持与潜在变量相同的数据类型）
         queries = self.query_proj(self.fourier_embedder(queries).to(latents.dtype))
-        
+
         # 残差交叉注意力交互
         x = self.cross_attn_decoder(queries, latents)
-        
+
         # 后处理与输出
         x = self.ln_post(x)
         occ = self.output_proj(x)  # 输出如占据概率、分类logits等
-        
+
         return occ
+
+
+
+
+
+
+class PointNetSetAbstraction(nn.Module):
+    def __init__(self, npoint, radius, nsample, in_channel, mlp, group_all):
+        super(PointNetSetAbstraction, self).__init__()
+        self.npoint = npoint
+        self.radius = radius
+        self.nsample = nsample
+        self.mlp_convs = nn.ModuleList()
+        self.mlp_bns = nn.ModuleList()
+        last_channel = in_channel
+        for out_channel in mlp:
+            self.mlp_convs.append(nn.Conv2d(last_channel, out_channel, 1))
+            self.mlp_bns.append(nn.BatchNorm2d(out_channel))
+            last_channel = out_channel
+        self.group_all = group_all
+
+    def forward(self, xyz, points):
+        """
+        Input:
+            xyz: input points position data, [B, C, N]
+            points: input points data, [B, D, N]
+        Return:
+            new_xyz: sampled points position data, [B, C, S]
+            new_points_concat: sample points feature data, [B, D', S]
+        """
+        xyz = xyz.permute(0, 2, 1)
+        if points is not None:
+            points = points.permute(0, 2, 1)
+
+        if self.group_all:
+            new_xyz, new_points = sample_and_group_all(xyz, points)
+        else:
+            new_xyz, new_points = sample_and_group(self.npoint, self.radius, self.nsample, xyz, points)
+        # new_xyz: sampled points position data, [B, npoint, C]
+        # new_points: sampled points data, [B, npoint, nsample, C+D]
+        new_points = new_points.permute(0, 3, 2, 1) # [B, C+D, nsample,npoint]
+        for i, conv in enumerate(self.mlp_convs):
+            bn = self.mlp_bns[i]
+            new_points =  F.relu(bn(conv(new_points)))
+
+        new_points = torch.max(new_points, 2)[0]
+        new_xyz = new_xyz.permute(0, 2, 1)
+        return new_xyz, new_points
+
+
+class PointNetSetAbstractionMsg(nn.Module):
+    def __init__(self, npoint, radius_list, nsample_list, in_channel, mlp_list):
+        super(PointNetSetAbstractionMsg, self).__init__()
+        self.npoint = npoint
+        self.radius_list = radius_list
+        self.nsample_list = nsample_list
+        self.conv_blocks = nn.ModuleList()
+        self.bn_blocks = nn.ModuleList()
+        for i in range(len(mlp_list)):
+            convs = nn.ModuleList()
+            bns = nn.ModuleList()
+            last_channel = in_channel + 3
+            for out_channel in mlp_list[i]:
+                convs.append(nn.Conv2d(last_channel, out_channel, 1))
+                bns.append(nn.BatchNorm2d(out_channel))
+                last_channel = out_channel
+            self.conv_blocks.append(convs)
+            self.bn_blocks.append(bns)
+
+    def forward(self, xyz, points):
+        """
+        Input:
+            xyz: input points position data, [B, C, N]
+            points: input points data, [B, D, N]
+        Return:
+            new_xyz: sampled points position data, [B, C, S]
+            new_points_concat: sample points feature data, [B, D', S]
+        """
+        xyz = xyz.permute(0, 2, 1)
+        if points is not None:
+            points = points.permute(0, 2, 1)
+
+        B, N, C = xyz.shape
+        S = self.npoint
+        new_xyz = index_points(xyz, farthest_point_sample(xyz, S))
+        new_points_list = []
+        for i, radius in enumerate(self.radius_list):
+            K = self.nsample_list[i]
+            group_idx = query_ball_point(radius, K, xyz, new_xyz)
+            grouped_xyz = index_points(xyz, group_idx)
+            grouped_xyz -= new_xyz.view(B, S, 1, C)
+            if points is not None:
+                grouped_points = index_points(points, group_idx)
+                grouped_points = torch.cat([grouped_points, grouped_xyz], dim=-1)
+            else:
+                grouped_points = grouped_xyz
+
+            grouped_points = grouped_points.permute(0, 3, 2, 1)  # [B, D, K, S]
+            for j in range(len(self.conv_blocks[i])):
+                conv = self.conv_blocks[i][j]
+                bn = self.bn_blocks[i][j]
+                grouped_points =  F.relu(bn(conv(grouped_points)))
+            new_points = torch.max(grouped_points, 2)[0]  # [B, D', S]
+            new_points_list.append(new_points)
+
+        new_xyz = new_xyz.permute(0, 2, 1)
+        new_points_concat = torch.cat(new_points_list, dim=1)
+        return new_xyz, new_points_concat
+
+
+class PointNetFeaturePropagation(nn.Module):
+    def __init__(self, in_channel, mlp):
+        super(PointNetFeaturePropagation, self).__init__()
+        self.mlp_convs = nn.ModuleList()
+        self.mlp_bns = nn.ModuleList()
+        last_channel = in_channel
+        for out_channel in mlp:
+            self.mlp_convs.append(nn.Conv1d(last_channel, out_channel, 1))
+            self.mlp_bns.append(nn.BatchNorm1d(out_channel))
+            last_channel = out_channel
+
+    def forward(self, xyz1, xyz2, points1, points2):
+        """
+        Input:
+            xyz1: input points position data, [B, C, N]
+            xyz2: sampled input points position data, [B, C, S]
+            points1: input points data, [B, D, N]
+            points2: input points data, [B, D, S]
+        Return:
+            new_points: upsampled points data, [B, D', N]
+        """
+        xyz1 = xyz1.permute(0, 2, 1)
+        xyz2 = xyz2.permute(0, 2, 1)
+
+        points2 = points2.permute(0, 2, 1)
+        B, N, C = xyz1.shape
+        _, S, _ = xyz2.shape
+
+        if S == 1:
+            interpolated_points = points2.repeat(1, N, 1)
+        else:
+            dists = square_distance(xyz1, xyz2)
+            dists, idx = dists.sort(dim=-1)
+            dists, idx = dists[:, :, :3], idx[:, :, :3]  # [B, N, 3]
+
+            dist_recip = 1.0 / (dists + 1e-8)
+            norm = torch.sum(dist_recip, dim=2, keepdim=True)
+            weight = dist_recip / norm
+            interpolated_points = torch.sum(index_points(points2, idx) * weight.view(B, N, 3, 1), dim=2)
+
+        if points1 is not None:
+            points1 = points1.permute(0, 2, 1)
+            new_points = torch.cat([points1, interpolated_points], dim=-1)
+        else:
+            new_points = interpolated_points
+
+        new_points = new_points.permute(0, 2, 1)
+        for i, conv in enumerate(self.mlp_convs):
+            bn = self.mlp_bns[i]
+            new_points = F.relu(bn(conv(new_points)))
+        return new_points
+
+
+
+

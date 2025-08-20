@@ -25,3 +25,12 @@ def set_ssl_with_steam():
         print('That might have worked.')
 
 
+def disable_ssl():
+    import requests
+    import warnings
+    from requests.packages.urllib3.exceptions import InsecureRequestWarning
+    # 禁用 SSL 验证
+    requests.packages.urllib3.disable_warnings(InsecureRequestWarning)  # 忽略警告
+    session = requests.Session()
+    session.verify = False  # 禁用验证
+    requests.Session = lambda: session  # 全局覆盖 Session

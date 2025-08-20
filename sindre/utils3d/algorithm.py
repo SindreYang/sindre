@@ -2837,6 +2837,7 @@ def detect_boundary_points(points, labels, config=None):
     """
     from sklearn.neighbors import KDTree
     from scipy.stats import mode
+    labels = labels.reshape(-1)
     # 设置默认配置
     default_config = {
         "knn_k": 40,
@@ -2853,7 +2854,7 @@ def detect_boundary_points(points, labels, config=None):
     near_points_indices = tree.query(points, k=config["knn_k"], return_distance=False)
     
     # 获取邻居标签
-    neighbor_labels = np.asarray(labels[near_points_indices], dtype=np.float32)  # 形状: (N, knn_k)
+    neighbor_labels = np.asarray(labels[near_points_indices], dtype=np.int32)  # 形状: (N, knn_k)
     
     # 统计每个点的邻居中主要标签的出现次数
     # def count_dominant_label(row):
@@ -2863,10 +2864,13 @@ def detect_boundary_points(points, labels, config=None):
         label_counts = np.zeros(len(points), dtype=int)
     else:
         label_counts = mode(neighbor_labels, axis=1, keepdims=False).count
-        
+
     # 计算主要标签比例并生成边界掩码
     label_ratio = label_counts / config["knn_k"]
     boundary_mask = label_ratio < config["bdl_ratio"]
+    # print(neighbor_labels.shape,np.unique(neighbor_labels))
+    # print(f"标签比例范围: [{label_ratio.min():.2f}, {label_ratio.max():.2f}]")
+    # print(f"边界点数量: {boundary_mask.sum()}")
     
     return boundary_mask
 
@@ -3676,3 +3680,49 @@ def line_project_mesh(v: np.ndarray, f: np.ndarray, loop_points,gen_new_edge=Fal
     return res_pts,res_pts_idx,res_v ,res_f
 
 
+
+
+def mesh_uv_wrap(mesh):
+    """对3D网格进行UV展开处理，使用xatlas库生成优化的UV坐标。
+
+    该函数接收一个trimesh网格或场景对象，将其转换为单个网格后，
+    使用xatlas算法进行参数化处理以生成UV坐标，最终返回带有UV信息的网格。
+
+    Args:
+        mesh (trimesh.Trimesh or trimesh.Scene or str): 输入的3D网格或mesh路径或场景对象。
+            如果是场景对象，会先合并为单个网格。
+
+    Returns:
+        trimesh.Trimesh: 带有生成的UV坐标的网格对象，顶点和面可能经过重新索引。
+
+    Raises:
+        ValueError: 当输入网格的面数超过500,000,000时抛出，不支持过大的网格处理。
+
+    Note:
+        处理过程中会使用xatlas.parametrize()进行UV展开，这可能会重新组织顶点和 faces索引。
+        生成的UV坐标会存储在网格的visual.uv属性中，可用于纹理映射等后续处理。
+    """
+    # 局部导入模块，避免在不需要该功能时加载依赖
+    import trimesh
+    import xatlas
+    # 如果输入是路径，则合并为单个网格
+    if isinstance(mesh, str):
+        mesh =trimesh.load_mesh(mesh)
+
+    # 如果输入是场景，则合并为单个网格
+    if isinstance(mesh, trimesh.Scene):
+        mesh = mesh.dump(concatenate=True)
+
+    # 检查网格面数是否在支持范围内
+    if len(mesh.faces) > 500_000_000:  # 使用下划线提高可读性
+        raise ValueError("The mesh has more than 500,000,000 faces, which is not supported.")
+
+    # 使用xatlas进行UV参数化
+    vmapping, indices, uvs = xatlas.parametrize(mesh.vertices, mesh.faces)
+
+    # 更新网格的顶点、面和UV坐标
+    mesh.vertices = mesh.vertices[vmapping]
+    mesh.faces = indices
+    mesh.visual.uv = uvs
+
+    return mesh
