@@ -1,3 +1,4 @@
+import os.path
 from functools import cached_property,lru_cache
 import numpy as np
 import json
@@ -533,7 +534,7 @@ class SindreMesh:
                     pickle.dump(self.to_dict, f)
             else:
                 self.to_vedo.write(write_path)
-            self.log.info(f"Mesh saved to {write_path}")
+            self.log.info(f"Mesh saved to {os.path.abspath(write_path)}")
         except Exception as e:
             self.log.error(f"Failed to save mesh: {e}")
 
@@ -559,7 +560,7 @@ class SindreMesh:
             self.faces = data['faces']
             self.compute_normals()
             
-            self.log.info(f"Mesh loaded from {load_path}")
+            self.log.info(f"Mesh loaded from {os.path.abspath(load_path)}")
             
         except Exception as e:
             self.log.error(f"Failed to load mesh: {e}")
@@ -735,23 +736,74 @@ class SindreMesh:
         # 返回最大连通体索引和最小连通索引
         return n_components,largest_component_indices ,remaining_indices
 
+    def get_vertex_labels(self):
+        return self.vertex_labels
+    def get_faces_labels(self):
+        """
+        将顶点标签转换成面片标签
+        Returns:面片标签
+
+        """
+        return vertex_labels_to_face_labels(self.faces,self.vertex_labels)
+
     
     def get_color_mapping(self,value):
         """将向量映射为颜色，遵从vcg映射标准"""
         import matplotlib.colors as mcolors
+        # colors = [
+        #     (1.0, 0.0, 0.0, 1.0),  # 红
+        #     (1.0, 1.0, 0.0, 1.0),  # 黄
+        #     (0.0, 1.0, 0.0, 1.0),  # 绿
+        #     (0.0, 1.0, 1.0, 1.0),  # 青
+        #     (0.0, 0.0, 1.0, 1.0)   # 蓝
+        # ]
         colors = [
-            (1.0, 0.0, 0.0, 1.0),  # 红
-            (1.0, 1.0, 0.0, 1.0),  # 黄
-            (0.0, 1.0, 0.0, 1.0),  # 绿
-            (0.0, 1.0, 1.0, 1.0),  # 青
-            (0.0, 0.0, 1.0, 1.0)   # 蓝
+
+            # 红→黄过渡（R保持1.0，G从0→1）
+            (1.0, 0.0, 0.0, 1.0),    # 红
+            (1.0, 0.2, 0.0, 1.0),    # 红→黄过渡1
+            (1.0, 0.4, 0.0, 1.0),    # 红→黄过渡2
+            (1.0, 0.6, 0.0, 1.0),    # 红→黄过渡3
+            (1.0, 0.8, 0.0, 1.0),    # 红→黄过渡4
+            (1.0, 1.0, 0.0, 1.0),    # 黄
+
+            # 黄→绿过渡（G保持1.0，R从1→0）
+            (0.8, 1.0, 0.0, 1.0),    # 黄→绿过渡1
+            (0.6, 1.0, 0.0, 1.0),    # 黄→绿过渡2
+            (0.4, 1.0, 0.0, 1.0),    # 黄→绿过渡3
+            (0.2, 1.0, 0.0, 1.0),    # 黄→绿过渡4
+            (0.0, 1.0, 0.0, 1.0),    # 绿
+
+            # 绿→青过渡（G保持1.0，B从0→1）
+            (0.0, 1.0, 0.2, 1.0),    # 绿→青过渡1
+            (0.0, 1.0, 0.4, 1.0),    # 绿→青过渡2
+            (0.0, 1.0, 0.6, 1.0),    # 绿→青过渡3
+            (0.0, 1.0, 0.8, 1.0),    # 绿→青过渡4
+            (0.0, 1.0, 1.0, 1.0),    # 青
+
+            # 青→蓝过渡（B保持1.0，G从1→0）
+            (0.0, 0.8, 1.0, 1.0),    # 青→蓝过渡1
+            (0.0, 0.6, 1.0, 1.0),    # 青→蓝过渡2
+            (0.0, 0.4, 1.0, 1.0),    # 青→蓝过渡3
+            (0.0, 0.2, 1.0, 1.0),    # 青→蓝过渡4
+            (0.0, 0.0, 1.0, 1.0),    # 蓝
+
+            # # 蓝延伸过渡（B从1→0，R、G保持0）
+            (0.0, 0.0, 0.8, 1.0),    # 蓝延伸过渡1
+            (0.0, 0.0, 0.6, 1.0),    # 蓝延伸过渡2
+            (0.0, 0.0, 0.4, 1.0),    # 蓝延伸过渡3
+            (0.0, 0.0, 0.2, 1.0)     # 蓝延伸过渡4
         ]
+
         cmap = mcolors.LinearSegmentedColormap.from_list("VCG", colors)
-        norm = mcolors.Normalize(vmin=-1, vmax=1)
+
+        norm = mcolors.Normalize(vmin=value.min(), vmax=value.max())
         value = norm(np.asarray(value))
-        rgba = cmap(value)
-        return (rgba * 255).astype(np.uint8)
-    
+        rgb = cmap(value)[..., :3]
+        return (rgb * 255).astype(np.uint8)
+
+
+
     
     def subdivison(self,face_mask,iterations=3,method="mid"):
         """局部细分"""
@@ -892,15 +944,14 @@ class SindreMesh:
     def get_curvature(self):
         """获取曲率"""
         vd_ms = self.to_vedo.compute_curvature(method=1)
-        self.vertex_curvature =vd_ms.pointdata["Mean_Curvature"]
+        self.vertex_curvature =np.clip(vd_ms.pointdata["Mean_Curvature"],-1,1)#99%坐落在[-1,1]
         self.vertex_colors =self.get_color_mapping(self.vertex_curvature)
 
     def get_curvature_igl(self):
-        def get_curvature_igl(self):
-            if self._count_degenerate_faces()>0:
-                log.warning("网格存在退化面片，执行删除面片")
-                self.remove_degenerate_faces()
-        self.vertex_curvature =compute_curvature_by_igl(self.vertices,self.faces)
+        if self._count_degenerate_faces()>0:
+            log.warning("网格存在退化面片，执行删除面片")
+            self.remove_degenerate_faces()
+        self.vertex_curvature =np.clip(compute_curvature_by_igl(self.vertices,self.faces),-1,1)#99%坐落在[-1,1]
         self.vertex_colors =self.get_color_mapping(self.vertex_curvature)
 
 
@@ -920,28 +971,26 @@ class SindreMesh:
             ms.meshing_remove_unreferenced_vertices()
         
         # 计算主曲率方向
-        ms.compute_curvature_principal_directions_per_vertex(autoclean=False)
+        ms.compute_curvature_principal_directions_per_vertex(method= 'Quadric Fitting',curvcolormethod='Mean Curvature', autoclean=False)
         mmesh = ms.current_mesh()
+        verts = np.array(mmesh.vertex_matrix())
+        curvature = np.clip(mmesh.vertex_scalar_array(),-1,1) #99%坐落在[-1,1]
+        colors =self.get_color_mapping(curvature) #(mmesh.vertex_color_matrix() * 255)[..., :3]
         # 检查顶点数量是否变化
-        if len(mmesh.vertex_matrix()) != len(self.vertices):  # 修复：使用vertex_matrix获取顶点数
+        print( len(verts) ,self.npoints)
+        if len(verts) != self.npoints:
             log.warning("检测到修复后顶点被删除，执行曲率/颜色映射...")
-            # 获取修复后的网格数据
-            repaired_verts = np.array(mmesh.vertex_matrix())
-            repaired_curvature = mmesh.vertex_scalar_array()
-            repaired_colors = (mmesh.vertex_color_matrix() * 255)[..., :3]
-            
             # 为原始网格每个顶点找到最近的点
-            from scipy.spatial import cKDTree  # 高效最近邻搜索
-            kdtree = cKDTree(repaired_verts)
+            from scipy.spatial import cKDTree
+            kdtree = cKDTree(verts)
             _, indices = kdtree.query(self.vertices, k=1)
-            
             # 映射曲率和颜色
-            self.vertex_curvature = repaired_curvature[indices]
-            self.vertex_colors = repaired_colors[indices]
+            self.vertex_curvature = curvature[indices]
+            self.vertex_colors = colors[indices]
         else:
-            # 直接使用计算结果
-            self.vertex_colors = (mmesh.vertex_color_matrix() * 255)[..., :3]
-            self.vertex_curvature = mmesh.vertex_scalar_array()
+            self.vertex_curvature =curvature
+            self.vertex_colors = colors
+
       
             
     def get_near_idx(self,query_vertices):
@@ -1310,7 +1359,7 @@ class SindreMesh:
         return area
     
     @cached_property
-    def faces_center(self):
+    def faces_barycentre(self):
         """每个三角形的中心（重心 [1/3,1/3,1/3]）"""
         return  self.faces_vertices.mean(axis=1)
     
@@ -1326,7 +1375,10 @@ class SindreMesh:
             使用三角形面片面积作为权重，对三角形质心坐标进行加权平均。
             该结果等价于网格的几何中心。
         """
-        return np.average(self.faces_center, weights=self.faces_area, axis=0)
+        return np.average(self.faces_barycentre, weights=self.faces_area, axis=0)
+    @cached_property
+    def radius(self)->float:
+        return np.linalg.norm(self.vertices -self.center, axis=1).max()
     
     
 
@@ -1371,6 +1423,8 @@ class SindreMesh:
         unique_edges, counts = np.unique(edges_sorted, axis=0, return_counts=True)
         # 返回非流形边
         return unique_edges[counts >= 3]
+
+
     
 
     def __repr__(self):

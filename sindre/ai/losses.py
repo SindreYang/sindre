@@ -1314,3 +1314,180 @@ def dice_loss_multi_classes(input, target, epsilon=1e-5, weight=None):
     #     loss = loss * weight
 
     return loss
+
+
+
+
+
+
+class GramLoss(nn.Module):
+    """Gram矩阵损失的实现
+
+    该损失函数通过最小化学生模型与教师模型输出特征的Gram矩阵差异，
+    使学生模型学习到特征间的相关性结构，实现知识蒸馏。
+    Gram矩阵反映了特征之间的关联强度，是一种结构化知识的表示。
+    https://github.com/facebookresearch/dinov3/blob/main/dinov3/loss/gram_loss.py
+    """
+
+    def __init__(
+            self,
+            apply_norm=True,
+            img_level=True,
+            remove_neg=True,
+            remove_only_teacher_neg=False,
+    ):
+        """初始化GramLoss模块
+
+        Args:
+            apply_norm: 是否对特征进行L2归一化。若为True，内积等价于余弦相似度
+            img_level: 是否在单张图像级别计算Gram矩阵
+                       - True: 输入特征形状为(B, N, D)，每张图像单独计算Gram矩阵
+                       - False: 输入特征展平为(B*N, D)，计算全局Gram矩阵
+            remove_neg: 是否将Gram矩阵中的负值置为0，仅保留正相关性
+            remove_only_teacher_neg: 仅将教师Gram矩阵的负值置为0，并同步清零学生矩阵对应位置
+                                     注意：与remove_neg互斥，只能有一个为True
+
+        Raises:
+            AssertionError: 当remove_neg和remove_only_teacher_neg同时为True或同时为False时触发
+        """
+        super().__init__()
+
+        # 采用MSE损失计算两个Gram矩阵的差异
+        self.mse_loss = torch.nn.MSELoss()
+
+        # 保存超参数
+        self.apply_norm = apply_norm
+        self.remove_neg = remove_neg
+        self.remove_only_teacher_neg = remove_only_teacher_neg
+
+        # 确保两个去负值参数不同时生效
+        if self.remove_neg or self.remove_only_teacher_neg:
+            assert self.remove_neg != self.remove_only_teacher_neg, \
+                "remove_neg和remove_only_teacher_neg不能同时为True或同时为False"
+
+    def forward(self, output_feats, target_feats, img_level=True):
+        """计算输入特征与目标特征的Gram矩阵之间的MSE损失
+
+        Args:
+            output_feats: 学生模型输出的特征张量
+                          形状: (B, N, dim) 若img_level=True；(B*N, dim) 若img_level=False
+            target_feats: 教师模型输出的目标特征张量，形状同output_feats
+            img_level: 是否在图像级别计算Gram矩阵（覆盖类初始化时的同名参数）
+
+        Returns:
+            loss: 标量损失值，学生与教师Gram矩阵的MSE差异
+        """
+
+        # 当在图像级别计算时，确保输入是3维张量 (B, N, dim)
+        if img_level:
+            assert len(target_feats.shape) == 3 and len(output_feats.shape) == 3, \
+                "img_level=True时，输入特征必须为3维张量 (B, N, dim)"
+
+        # 转换为float类型以保证计算精度
+        output_feats = output_feats.float()
+        target_feats = target_feats.float()
+
+        # 对教师特征进行归一化（若启用）
+        if self.apply_norm:
+            target_feats = F.normalize(target_feats, dim=-1)  # 按特征维度归一化
+
+        # 若不在图像级别计算且特征是3维，则展平为2维 (B*N, dim)
+        if not img_level and len(target_feats.shape) == 3:
+            target_feats = target_feats.flatten(0, 1)  # 合并批次和特征数维度
+
+        # 计算教师特征的Gram矩阵（特征相关性矩阵）
+        # 形状: (B, N, N) 若img_level=True；(B*N, B*N) 若img_level=False
+        target_sim = torch.matmul(target_feats, target_feats.transpose(-1, -2))
+
+        # 对学生特征进行归一化（若启用）
+        if self.apply_norm:
+            output_feats = F.normalize(output_feats, dim=-1)  # 按特征维度归一化
+
+        # 若不在图像级别计算且特征是3维，则展平为2维 (B*N, dim)
+        if not img_level and len(output_feats.shape) == 3:
+            output_feats = output_feats.flatten(0, 1)  # 合并批次和特征数维度
+
+        # 计算学生特征的Gram矩阵（特征相关性矩阵）
+        student_sim = torch.matmul(output_feats, output_feats.transpose(-1, -2))
+
+        # 处理Gram矩阵中的负值
+        if self.remove_neg:
+            # 将学生和教师Gram矩阵中的所有负值置为0
+            target_sim[target_sim < 0] = 0.0
+            student_sim[student_sim < 0] = 0.0
+
+        elif self.remove_only_teacher_neg:
+            # 仅将教师矩阵的负值置为0，并同步清零学生矩阵中对应位置的负值
+            target_sim[target_sim < 0] = 0.0
+            student_sim[(student_sim < 0) & (target_sim < 0)] = 0.0
+
+        # 计算两个Gram矩阵的MSE损失
+        return self.mse_loss(student_sim, target_sim)
+
+
+
+
+class KoLeoLoss(nn.Module):
+    """Kozachenko-Leonenko熵损失正则化器
+    源自论文：Sablayrolles et al. - 2018 - Spreading vectors for similarity search
+    作用：通过最大化特征分布的熵，使向量在特征空间中更分散，提升相似度搜索性能
+    https://github.com/facebookresearch/dinov3/blob/main/dinov3/loss/koleo_loss.py
+    """
+
+    def __init__(self):
+        super().__init__()
+        # 初始化 pairwise 距离计算器，计算L2距离（欧氏距离）
+        # 参数2表示L2范数，eps为数值稳定性的微小值
+        self.pdist = nn.PairwiseDistance(2, eps=1e-8)
+
+    def pairwise_NNs_inner(self, x):
+        """为L2归一化的向量找到成对的最近邻
+        使用PyTorch实现而非Faiss，以保持在GPU上运行
+
+        Args:
+            x: 形状为 (N, D) 的张量，N为样本数，D为特征维度（已L2归一化）
+
+        Returns:
+            indices: 形状为 (N,) 的张量，每个元素表示对应样本的最近邻索引
+        """
+        # 计算向量间的内积（对于L2归一化向量，内积等价于余弦相似度，与距离成反比）
+        dots = torch.mm(x, x.t())  # 结果形状为 (N, N)
+
+        n = x.shape[0]  # 样本数量
+        # 技巧：将内积矩阵的对角线元素（自身与自身的内积）设为-1
+        # 避免将样本自身识别为最近邻（自身内积为1，是最大的）
+        dots.view(-1)[:: (n + 1)].fill_(-1)
+
+        # 找到每个样本的最大内积对应的索引（即最近邻）
+        # 最大内积对应最小距离（因为内积与距离成反比）
+        _, indices = torch.max(dots, dim=1)
+        return indices
+
+    def forward(self, student_output, eps=1e-8):
+        """前向传播计算损失
+
+        Args:
+            student_output (BxD): 学生模型的backbone输出特征，B为批次大小，D为特征维度
+            eps: 数值稳定性参数，防止log(0)或除以零
+
+        Returns:
+            loss: 标量损失值，越小表示特征分布越分散
+        """
+        # 禁用自动混合精度（确保数值稳定性，尤其是在计算log时）
+        with torch.autocast("cuda", enabled=False):
+            # 对学生输出特征进行L2归一化，使后续内积计算等价于余弦相似度
+            student_output = F.normalize(student_output, eps=eps, p=2, dim=-1)
+
+            # 找到每个特征向量的最近邻索引
+            indices = self.pairwise_NNs_inner(student_output)
+
+            # 计算每个向量与其最近邻的欧氏距离
+            # student_output[indices] 取出每个样本的最近邻特征，形状为 (B, D)
+            # pdist计算对应位置的距离，结果形状为 (B,)
+            distances = self.pdist(student_output, student_output[indices])
+
+            # 损失定义为：负的距离对数的平均值
+            # 最小化此损失会迫使距离增大，从而使特征分布更分散（熵更大）
+            loss = -torch.log(distances + eps).mean()
+
+        return loss

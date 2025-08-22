@@ -756,3 +756,19 @@ class PointNetFeaturePropagation(nn.Module):
 
 
 
+class GEGLU(nn.Module):
+    """
+    GeGLU activation function.
+
+    Taken from 3DShape2VecSet, Zhang et al., SIGGRAPH23.
+    https://github.com/1zb/3DShape2VecSet/blob/master/models_ae.py
+    """
+
+    def forward(self, x):
+        x, gates = x.chunk(2, dim=-1)
+        return x * F.gelu(gates)
+
+    def __repr__(self):
+        return f"GEGLU()"
+
+

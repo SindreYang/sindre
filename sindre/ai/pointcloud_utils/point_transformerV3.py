@@ -1226,7 +1226,7 @@ class SerializedUnpooling(PointModule):
         out_channels,
         norm_layer=None,
         act_layer=None,
-        traceable=False,  # record parent and cluster
+        traceable=True,  # record parent and cluster
     ):
         super().__init__()
         self.proj = PointSequential(nn.Linear(in_channels, out_channels))
@@ -1535,7 +1535,7 @@ class PointTransformerV3(PointModule):
     
 if __name__ == "__main__":
     # 示例用法
-    model = PointTransformerV3(in_channels=6 ,enable_flash=False,enc_patch_size=(128,128,128,128,128),dec_patch_size=(128,128,128,128)).cuda()
+    model = PointTransformerV3(in_channels=6 ,enable_flash=False,enc_patch_size=(128,128,128,128,128),dec_patch_size=(128,128,128,128),cls_mode=False).cuda()
     #model = PointTransformerV3(in_channels=6 ).cuda()
     x = torch.randn(2, 10000, 6).cuda()  # 批次x点数x特征
     p = torch.randn(2, 10000, 3).cuda()  # 坐标
