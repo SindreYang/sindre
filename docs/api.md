@@ -30,12 +30,9 @@
 ---
 
 ## <a id="神经网络api">神经网络API</a>
-::: utils3d.networks.pointnet2
-::: utils3d.networks.point_transformerV3
-::: utils3d.networks.conv_occ
-::: utils3d.networks.network_utils
-::: utils3d.networks.Reconstruct3D
-::: utils3d.networks.point2voxel
+::: ai.layers
+::: ai.losses
+::: ai.utils
 
 ---
 
