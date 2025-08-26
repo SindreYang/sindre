@@ -1491,3 +1491,255 @@ class KoLeoLoss(nn.Module):
             loss = -torch.log(distances + eps).mean()
 
         return loss
+
+
+
+
+
+class SSIMUtil(nn.Module):
+    """
+    结构相似性指数(SSIM)工具类，包含SSIM计算、损失函数和结构一致性度量
+
+    支持两种计算模式：
+    - 高斯滤波模式：使用高斯窗口计算，精度高
+    - 平均池化模式：使用平均池化替代高斯滤波，计算更快
+    """
+    def __init__(self, window_size=11, size_average=True, mode='gaussian'):
+        """
+        初始化SSIM工具类
+
+        参数:
+            window_size: 窗口大小
+            size_average: 是否对结果进行平均
+            mode: 计算模式，'gaussian'或'average'
+        """
+        super(SSIMUtil, self).__init__()
+        self.window_size = window_size
+        self.size_average = size_average
+        self.mode = mode
+        self.channel = 1
+        self.window = self._create_gaussian_window(window_size) if mode == 'gaussian' else None
+
+        # 定义平均池化层（用于average模式）
+        self.avg_pool = nn.AvgPool2d(kernel_size=3, stride=1, padding=1)
+
+        # 稳定常数
+        self.C1 = 0.01 ** 2
+        self.C2 = 0.03 ** 2
+
+    def _create_gaussian_window(self, window_size, sigma=1.5):
+        """创建高斯窗口"""
+        gauss = torch.Tensor([torch.exp(-(x - window_size // 2) **2 / float(2 * sigma** 2))
+                              for x in range(window_size)])
+        gauss = gauss / gauss.sum()
+
+        # 扩展为2D窗口
+        _1D_window = gauss.unsqueeze(1)
+        _2D_window = _1D_window.mm(_1D_window.t()).float().unsqueeze(0).unsqueeze(0)
+        return _2D_window
+
+    def _adjust_window(self, img):
+        """根据输入图像调整窗口以匹配通道数和设备"""
+        _, channel, _, _ = img.size()
+
+        if channel != self.channel or self.window.device != img.device:
+            # 扩展窗口以匹配通道数
+            window = self.window.expand(channel, 1, self.window_size, self.window_size).contiguous()
+            # 确保窗口在正确的设备上
+            window = window.to(img.device)
+            self.window = window
+            self.channel = channel
+
+        return self.window
+
+    def ssim_gaussian(self, img1, img2):
+        """使用高斯滤波计算SSIM"""
+        window = self._adjust_window(img1)
+        channel = self.channel
+
+        # 计算均值
+        mu1 = F.conv2d(img1, window, padding=self.window_size//2, groups=channel)
+        mu2 = F.conv2d(img2, window, padding=self.window_size//2, groups=channel)
+
+        # 计算均值的平方和乘积
+        mu1_sq = mu1.pow(2)
+        mu2_sq = mu2.pow(2)
+        mu1_mu2 = mu1 * mu2
+
+        # 计算方差和协方差
+        sigma1_sq = F.conv2d(img1 * img1, window, padding=self.window_size//2, groups=channel) - mu1_sq
+        sigma2_sq = F.conv2d(img2 * img2, window, padding=self.window_size//2, groups=channel) - mu2_sq
+        sigma12 = F.conv2d(img1 * img2, window, padding=self.window_size//2, groups=channel) - mu1_mu2
+
+        # 计算SSIM
+        ssim_map = ((2 * mu1_mu2 + self.C1) * (2 * sigma12 + self.C2) /
+                    ((mu1_sq + mu2_sq + self.C1) * (sigma1_sq + sigma2_sq + self.C2)))
+
+        # 平均处理
+        if self.size_average:
+            return ssim_map.mean()
+        else:
+            return ssim_map.mean(1).mean(1).mean(1)
+
+    def ssim_average(self, img1, img2):
+        """使用平均池化计算SSIM（快速版）"""
+        # 计算均值
+        mu_x = self.avg_pool(img1)
+        mu_y = self.avg_pool(img2)
+
+        # 计算均值的平方和乘积
+        mu_x_mu_y = mu_x * mu_y
+        mu_x_sq = mu_x.pow(2)
+        mu_y_sq = mu_y.pow(2)
+
+        # 计算方差和协方差
+        sigma_x = self.avg_pool(img1 * img1) - mu_x_sq
+        sigma_y = self.avg_pool(img2 * img2) - mu_y_sq
+        sigma_xy = self.avg_pool(img1 * img2) - mu_x_mu_y
+
+        # 计算SSIM
+        ssim_n = (2 * mu_x_mu_y + self.C1) * (2 * sigma_xy + self.C2)
+        ssim_d = (mu_x_sq + mu_y_sq + self.C1) * (sigma_x + sigma_y + self.C2)
+        ssim_map = ssim_n / ssim_d
+
+        return torch.clamp(ssim_map, 0, 1).mean()
+
+    def forward(self, img1, img2):
+        """
+        计算SSIM值
+
+        参数:
+            img1: 输入图像1
+            img2: 输入图像2
+
+        返回:
+            ssim值
+        """
+        if self.mode == 'gaussian':
+            return self.ssim_gaussian(img1, img2)
+        else:
+            return self.ssim_average(img1, img2)
+
+    def ssim_loss(self, img1, img2):
+        """计算SSIM损失 (1 - SSIM)"""
+        if self.mode == 'gaussian':
+            return 1 - (1 + self.ssim_gaussian(img1, img2)) / 2
+        else:
+            return torch.clamp((1 - self.ssim_average(img1, img2)) / 2, 0, 1)
+
+    def saliency_structure_consistency(self, img1, img2):
+        """计算显著性结构一致性（SSIM均值）"""
+        return self.forward(img1, img2).mean()
+
+
+
+
+
+
+class ContourLoss(torch.nn.Module):
+    """
+    ContourLoss（轮廓损失）
+        核心思想：同时优化区域一致性和轮廓平滑性，特别适合需要精确边界的分割任务（如医学图像分割、目标边缘分割）。
+        组成部分：
+            长度项（length term）：通过计算预测图的水平和垂直梯度，惩罚剧烈变化的区域，鼓励生成平滑连续的轮廓。
+            区域项（region term）：惩罚前景区域（target=1）和背景区域（target=0）的预测误差，确保区域内部的一致性
+    """
+    def __init__(self):
+        super(ContourLoss, self).__init__()
+
+    def forward(self, pred, target, weight=10):
+        '''
+        target, pred: tensor of shape (B, C, H, W), where target[:,:,region_in_contour] == 1,
+                        target[:,:,region_out_contour] == 0.
+        weight: scalar, length term weight.
+        '''
+        # length term
+        delta_r = pred[:,:,1:,:] - pred[:,:,:-1,:] # horizontal gradient (B, C, H-1, W)
+        delta_c = pred[:,:,:,1:] - pred[:,:,:,:-1] # vertical gradient   (B, C, H,   W-1)
+
+        delta_r    = delta_r[:,:,1:,:-2]**2  # (B, C, H-2, W-2)
+        delta_c    = delta_c[:,:,:-2,1:]**2  # (B, C, H-2, W-2)
+        delta_pred = torch.abs(delta_r + delta_c)
+
+        epsilon = 1e-8 # where is a parameter to avoid square root is zero in practice.
+        length = torch.mean(torch.sqrt(delta_pred + epsilon)) # eq.(11) in the paper, mean is used instead of sum.
+
+        c_in  = torch.ones_like(pred)
+        c_out = torch.zeros_like(pred)
+
+        region_in  = torch.mean( pred     * (target - c_in )**2 ) # equ.(12) in the paper, mean is used instead of sum.
+        region_out = torch.mean( (1-pred) * (target - c_out)**2 )
+        region = region_in + region_out
+
+        loss =  weight * length + region
+
+        return loss
+
+
+
+
+class StructureLoss(torch.nn.Module):
+    """
+     StructureLoss（结构损失）
+        核心思想：结合加权二元交叉交叉熵（WBCE）和加权 IoU（WIoU），平衡前景背景不平衡问题，同时关注结构一致性。
+        组成部分：
+            加权 BCE（wbce）：通过权重矩阵weit（基于目标区域的局部均值）赋予前景区域更高的权重，缓解类别不平衡。
+            加权 IoU（wiou）：在 IoU 计算中引入相同权重矩阵，更关注目标结构区域的重叠度。
+    """
+    def __init__(self):
+        super(StructureLoss, self).__init__()
+
+    def forward(self, pred, target):
+        weit  = 1+5*torch.abs(F.avg_pool2d(target, kernel_size=31, stride=1, padding=15)-target)
+        wbce  = F.binary_cross_entropy_with_logits(pred, target, reduction='none')
+        wbce  = (weit*wbce).sum(dim=(2,3))/weit.sum(dim=(2,3))
+
+        pred  = torch.sigmoid(pred)
+        inter = ((pred * target) * weit).sum(dim=(2, 3))
+        union = ((pred + target) * weit).sum(dim=(2, 3))
+        wiou  = 1-(inter+1)/(union-inter+1)
+
+        return (wbce+wiou).mean()
+
+class IoULoss(torch.nn.Module):
+    def __init__(self):
+        super(IoULoss, self).__init__()
+
+    def forward(self, pred, target):
+        b = pred.shape[0]
+        IoU = 0.0
+        for i in range(0, b):
+            # compute the IoU of the foreground
+            Iand1 = torch.sum(target[i, :, :, :] * pred[i, :, :, :])
+            Ior1 = torch.sum(target[i, :, :, :]) + torch.sum(pred[i, :, :, :]) - Iand1
+            IoU1 = Iand1 / Ior1
+            # IoU loss is (1-IoU1)
+            IoU = IoU + (1-IoU1)
+        # return IoU/b
+        return IoU
+class PatchIoULoss(torch.nn.Module):
+    """
+    PatchIoULoss（补丁 IoULoss）
+        核心思想：将图像分割为多个子 patch 计算 IoU 损失，增强对局部细节的关注。
+        实现方式：
+            将图像按固定大小（64×64）划分为多个子区域。
+            对每个子区域计算 IoU 损失并累加。
+        适用场景：
+            大尺寸图像分割（如遥感图像、高分辨率医学影像）。
+            需要关注局部细节的任务（如病灶分割中的小肿瘤区域）。
+
+    """
+    def __init__(self):
+        super(PatchIoULoss, self).__init__()
+        self.iou_loss = IoULoss()
+
+    def forward(self, pred, target):
+        win_y, win_x = 64, 64
+        iou_loss = 0.
+        for anchor_y in range(0, target.shape[0], win_y):
+            for anchor_x in range(0, target.shape[1], win_y):
+                patch_pred = pred[:, :, anchor_y:anchor_y+win_y, anchor_x:anchor_x+win_x]
+                patch_target = target[:, :, anchor_y:anchor_y+win_y, anchor_x:anchor_x+win_x]
+                patch_iou_loss = self.iou_loss(patch_pred, patch_target)
+                iou_loss += patch_iou_loss
+        return iou_loss

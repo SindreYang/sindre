@@ -4,8 +4,6 @@ import torch.nn.functional as F
 import numpy as np
 
 
-
-
 def square_distance(src, dst):
     """
     Calculate Euclid distance between each two points.
@@ -223,5 +221,13 @@ def sdf2mesh_by_diso(sdf,diffdmc=None ,deform=None,return_quads=False, normalize
     v, f = diffdmc(sdf, deform, return_quads=return_quads, normalize=normalize, isovalue=isovalue) 
     return v,f
 
+
+
+def occ2mesh_by_pytorch3d(occ,isovalue=0 ):
+    """用pytorch3d方式给，sdf 转换成 mesh"""
+    from pytorch3d.ops import cubify
+    from pytorch3d.structures import Meshes
+    meshes = cubify(occ, isovalue)
+    return meshes
 
 
