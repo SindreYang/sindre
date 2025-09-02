@@ -1322,6 +1322,8 @@ class PointTransformerV3(PointModule):
         pdnorm_adaptive=False,
         pdnorm_affine=True,
         pdnorm_conditions=("ScanNet", "S3DIS", "Structured3D"),
+        dec_traceable=False,  # record
+
     ):
         super().__init__()
         self.num_stages = len(enc_depths)
@@ -1390,6 +1392,7 @@ class PointTransformerV3(PointModule):
                         stride=stride[s - 1],
                         norm_layer=bn_layer,
                         act_layer=act_layer,
+                        traceable=True,
                     ),
                     name="down",
                 )
@@ -1440,6 +1443,7 @@ class PointTransformerV3(PointModule):
                         out_channels=dec_channels[s],
                         norm_layer=bn_layer,
                         act_layer=act_layer,
+                        traceable=dec_traceable,
                     ),
                     name="up",
                 )

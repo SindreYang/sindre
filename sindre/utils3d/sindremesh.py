@@ -1,7 +1,5 @@
-import os.path
 from functools import cached_property,lru_cache
 import numpy as np
-import json
 from sindre.utils3d.algorithm import *
 from sindre.general.logs import CustomLogger
 
@@ -36,44 +34,44 @@ class SindreMesh:
         new_mesh.face_normals = self.face_normals.copy()
         new_mesh.faces = self.faces.copy()
         return new_mesh
-       
-        
+
+
     def set_vertex_labels(self,vertex_labels):
         """设置顶点labels,并自动渲染颜色"""
         self.vertex_labels=np.array(vertex_labels).reshape(-1,1)
         self.vertex_colors=labels2colors(self.vertex_labels)[...,:3]
 
 
-    
+
 
     def update_geometry(self,new_vertices,new_faces=None):
-        """ 
-    
+        """
+
         更新网格的几何结构（顶点和面片），并通过最近邻算法将原有的顶点属性映射到新顶点上。
-        
+
         适用于在保持网格拓扑结构基本不变的情况下，对网格进行变形，细化，简化的场景。
-        
+
         args:
             new_vertices: 形状为(N,3)的浮点型数组，表示新的顶点坐标
             new_faces: 可选参数，形状为(M,3)的整数型数组，表示新的面片索引
-            
+
         notes:
             - 当新顶点数量与原顶点数量不同时，原顶点属性会根据最近邻关系进行映射
             - 如果未提供新的面片信息，函数会尝试根据旧面片和顶点映射关系重建面片
-            
+
         """
-        
+
         new_vertices = np.array(new_vertices, dtype=np.float64)
         if new_vertices.ndim != 2 or new_vertices.shape[1] != 3:
             raise ValueError("顶点坐标必须是(N,3)的二维数组")
 
         # 重新映射
         near_indices = self.get_near_idx(new_vertices)
-        self.vertex_labels = self.vertex_labels[near_indices] 
-        self.vertex_colors = self.vertex_colors[near_indices] 
-        self.vertex_curvature = self.vertex_curvature[near_indices] 
-        
-      
+        self.vertex_labels = self.vertex_labels[near_indices]
+        self.vertex_colors = self.vertex_colors[near_indices]
+        self.vertex_curvature = self.vertex_curvature[near_indices]
+
+
 
 
         # 更新面片
@@ -88,11 +86,11 @@ class SindreMesh:
                 # for new_idx, old_idx in enumerate(near_indices):
                 #     if old_idx not in vertex_map:
                 #         vertex_map[old_idx] = new_idx
-                
+
                 # # 重新映射面片索引
                 # new_faces_list = []
                 # invalid_count = 0
-                
+
                 # for  f in self.faces:
                 #     new_f = np.array([vertex_map.get(v_idx, -1) for v_idx in f])
                 #     # 检查映射后的面片是否有效(不为-1，且face为有效，)
@@ -100,7 +98,7 @@ class SindreMesh:
                 #         new_faces_list.append(new_f)
                 #     else:
                 #         invalid_count += 1
-                
+
                 # # 只保留有效映射的面片
                 # new_faces = np.array(new_faces_list)
                 # self.log.debug(f"成功映射 {len(new_faces)} 个面片，丢弃 {invalid_count} 个无效面片")
@@ -133,27 +131,27 @@ class SindreMesh:
 
         # 设置新的顶点
         self.vertices = new_vertices
-         # 重置kdtree
+        # 重置kdtree
         self.vertex_kdtree=None
 
 
         # 检测面片合法性
         if np.max(self.faces) >= len(self.vertices):
             raise IndexError(f"面片包含非法索引: {np.max(self.faces)}，新顶点数量: {len(self.vertices)}")
-        
-        # 重新计算法线
-        self.compute_normals(force=True) 
-        
 
-        
-        
+        # 重新计算法线
+        self.compute_normals(force=True)
+
+
+
+
     def compute_normals(self,force=False):
         """计算顶点法线及面片法线.force代表是否强制重新计算"""
         if force or self.vertex_normals is None:
             self.vertex_normals = compute_vertex_normals(self.vertices, self.faces)
         if force or self.face_normals is None:
             self.face_normals = compute_face_normals(self.vertices, self.faces)
-            
+
     def apply_transform_normals(self,mat):
         """处理顶点法线的变换（支持非均匀缩放和反射变换）---废弃，在复杂非正定矩阵，重新计算法线比变换更快，更加准确"""
         RuntimeError("apply_transform_normals ---废弃，在复杂非正定矩阵，重新计算法线比变换更快，更加准确 ")
@@ -171,29 +169,29 @@ class SindreMesh:
         norms[norms == 0] = 1e-6  # 防止除零
         self.vertex_normals /= norms
 
-        
+
         # 将面片法线重新计算
         self.face_normals = None
         self.compute_normals()
-        
+
     def apply_transform(self,mat):
         """对顶点应用4x4/3x3变换矩阵(支持非正交矩阵)"""
         if mat.shape[0]==4:
-             #齐次坐标变换
+            #齐次坐标变换
             homogeneous = np.hstack([self.vertices, np.ones((len(self.vertices), 1))])
             self.vertices = (homogeneous @ mat.T)[:, :3]
         else:
             """对顶点应用3*3旋转矩阵"""
             self.vertices = np.dot(self.vertices,mat.T)
-        
-        # 计算法线  
+
+        # 计算法线
         self.compute_normals(force=True)
-        
+
     def apply_inv_transform(self,mat):
         """对顶点应用4x4/3x3变换矩阵进行逆变换(支持非正交矩阵)"""
         mat=np.linalg.inv(mat)
-        self.vertices = self.apply_transform(self.vertices,mat)
-            
+        self.apply_transform(mat)
+
     def shift_xyz(self,dxdydz):
         """平移xyz指定量,支持输入3个向量和1个向量"""
         dxdydz = np.asarray(dxdydz, dtype=np.float64)  # 统一转换为数组
@@ -203,7 +201,7 @@ class SindreMesh:
             delta = dxdydz.reshape(3)  # 确保形状正确
         else:
             raise ValueError("dxdydz 应为标量或3元素数组")
-        
+
         self.vertices += delta
     def scale_xyz(self,dxdydz):
         """缩放xyz指定量,支持输入3个向量和1个向量"""
@@ -214,8 +212,8 @@ class SindreMesh:
             scale = dxdydz.reshape(3)
         else:
             raise ValueError("dxdydz 应为标量或3元素数组")
-        self.vertices *= scale 
-        
+        self.vertices *= scale
+
     def rotate_xyz(self,angles_xyz,return_mat=False):
         """按照给定xyz角度列表进行xyz对应旋转"""
         # 将角度转换为弧度
@@ -229,8 +227,8 @@ class SindreMesh:
         else:
             self.apply_transform(rotation_matrix)
 
-       
-            
+
+
     def _update(self):
         """内部函数，更新相关变量"""
 
@@ -255,7 +253,7 @@ class SindreMesh:
         if self.vertices is not None and self.faces is not None:
             self.compute_normals()
 
-        
+
     def _convert(self):
         """内部函数，将模型转换到类中"""
         inputobj_type = str(type(self.any_mesh))
@@ -263,34 +261,34 @@ class SindreMesh:
         if isinstance(self.any_mesh, str) and self.any_mesh.endswith((".sm",".smesh")):
             self.load(self.any_mesh)
 
-        
+
         # Trimesh 转换
         elif "Trimesh" in inputobj_type or "primitives" in inputobj_type:
             self.vertices = np.asarray(self.any_mesh.vertices, dtype=np.float64)
             self.faces = np.asarray(self.any_mesh.faces, dtype=np.int32)
             self.vertex_normals = np.asarray(self.any_mesh.vertex_normals, dtype=np.float64)
             self.face_normals = np.asarray(self.any_mesh.face_normals, dtype=np.float64)
-            
+
             if self.any_mesh.visual.kind == "face":
                 self.vertex_colors = np.asarray(self.any_mesh.visual.face_colors, dtype=np.uint8)
             else:
                 self.vertex_colors = np.asarray(self.any_mesh.visual.to_color().vertex_colors, dtype=np.uint8)
 
 
-        
-        
+
+
         # MeshLab 转换
         elif "MeshSet" in inputobj_type:
             mmesh = self.any_mesh.current_mesh()
             self.vertices = np.asarray(mmesh.vertex_matrix(), dtype=np.float64)
             self.faces = np.asarray(mmesh.face_matrix(), dtype=np.int32)
             self.vertex_normals =np.asarray(mmesh.vertex_normal_matrix(), dtype=np.float64)
-            self.face_normals = np.asarray(mmesh.face_normal_matrix(), dtype=np.float64) 
+            self.face_normals = np.asarray(mmesh.face_normal_matrix(), dtype=np.float64)
             if mmesh.has_vertex_color():
                 self.vertex_colors = (np.asarray(mmesh.vertex_color_matrix())[...,:3] * 255).astype(np.uint8)
-                
-            
-        
+
+
+
         # Open3D 转换
         elif "open3d" in inputobj_type:
             import open3d as o3d
@@ -299,21 +297,21 @@ class SindreMesh:
             self.faces = np.asarray(self.any_mesh.triangles, dtype=np.int32)
             self.vertex_normals = np.asarray(self.any_mesh.vertex_normals, dtype=np.float64)
             self.face_normals = np.asarray(self.any_mesh.triangle_normals, dtype=np.float64)
-            
+
             if self.any_mesh.has_vertex_colors():
                 self.vertex_colors = (np.asarray(self.any_mesh.vertex_colors)[...,:3] * 255).astype(np.uint8)
 
 
-          
-        
+
+
         # Vedo 转换
-        elif (isinstance(self.any_mesh, str) 
+        elif (isinstance(self.any_mesh, str)
               or (isinstance(self.any_mesh, list)  and len(self.any_mesh)==2)
-              or "vedo" in inputobj_type 
-              or "vtk" in inputobj_type 
+              or "vedo" in inputobj_type
+              or "vtk" in inputobj_type
               or "meshlib" in inputobj_type
               or "meshio" in inputobj_type
-              ):
+        ):
             import vedo
             if "vedo" not in inputobj_type:
                 self.any_mesh=vedo.Mesh(self.any_mesh)
@@ -324,9 +322,9 @@ class SindreMesh:
             self.face_normals =self.any_mesh.cell_normals
             if self.any_mesh.pointdata["PointsRGBA"] is not  None:
                 self.vertex_colors = np.asarray(self.any_mesh.pointdata["PointsRGBA"][...,:3], dtype=np.uint8)
-                
 
-                
+
+
         # pytorch3d 转换
         elif "pytorch3d.structures.meshes.Meshes" in inputobj_type:
             self.any_mesh._compute_vertex_normals(True)
@@ -337,7 +335,7 @@ class SindreMesh:
             if self.any_mesh.textures is not None:
                 self.vertex_colors = np.asarray(self.any_mesh.textures.verts_features_padded().cpu().numpy()[0]*255, dtype=np.uint8)
 
-        
+
         elif "OCC" in inputobj_type:
             from OCC.Core.BRepMesh import BRepMesh_IncrementalMesh
             from OCC.Core.TopExp import TopExp_Explorer
@@ -345,7 +343,7 @@ class SindreMesh:
             from OCC.Core.TopLoc import TopLoc_Location
             from OCC.Core.TopoDS import topods
             from OCC.Core.BRep import BRep_Tool
-            
+
             BRepMesh_IncrementalMesh(self.any_mesh, 0.1).Perform()
             vertices = []
             faces = []
@@ -422,13 +420,13 @@ class SindreMesh:
                 solid = solid_maker.Solid()
                 # 网格化确保几何质量
                 BRepMesh_IncrementalMesh(solid, 0.1).Perform()
-                return solid 
+                return solid
             else:
                 self.log.warning("警告：Shell无法生成Solid，返回Shell")
-                return shell  
+                return shell
         else:
             self.log.info("返回原始缝合结果（如Compound）")
-            return sewed_shape 
+            return sewed_shape
 
     @property
     def to_trimesh(self):
@@ -478,9 +476,9 @@ class SindreMesh:
         vedo_points.pointdata["curvature"]=self.vertex_curvature
         vedo_points.pointcolors = self.vertex_colors
         return vedo_points
-        
 
-        
+
+
     @property
     def to_open3d(self):
         """转换成open3d"""
@@ -491,7 +489,7 @@ class SindreMesh:
         mesh.vertex_normals = o3d.utility.Vector3dVector(self.vertex_normals)
         mesh.vertex_colors = o3d.utility.Vector3dVector(self.vertex_colors[...,:3]/255.0)
         return mesh
-    
+
     @property
     def to_open3d_t(self,device="CPU:0"):
         """转换成open3d_t"""
@@ -506,7 +504,7 @@ class SindreMesh:
         mesh.vertex.colors= o3d.core.Tensor(self.vertex_colors[...,:3]/255.0,dtype=dtype_f,device=device)
         mesh.vertex.labels=o3d.core.Tensor(self.vertex_labels,dtype=dtype_f,device=device)
         return mesh
-    
+
     @property
     def to_dict(self):
         """将属性转换成python字典"""
@@ -538,7 +536,7 @@ class SindreMesh:
         except Exception as e:
             self.log.error(f"Failed to save mesh: {e}")
 
-            
+
     def load(self,load_path):
         """读取(.sm .smesh)文件"""
         if not os.path.exists(load_path):
@@ -559,14 +557,14 @@ class SindreMesh:
             self.vertex_labels = data['vertex_labels']
             self.faces = data['faces']
             self.compute_normals()
-            
+
             self.log.info(f"Mesh loaded from {os.path.abspath(load_path)}")
-            
+
         except Exception as e:
             self.log.error(f"Failed to load mesh: {e}")
-        
 
-            
+
+
     def to_torch(self,device="cpu"):
         """将顶点&面片转换成torch形式
 
@@ -576,7 +574,7 @@ class SindreMesh:
         import torch
         vertices= torch.from_numpy(self.vertices).to(device,dtype=torch.float32)
         faces= torch.from_numpy(self.faces).to(device,dtype=torch.float32)
-        
+
         vertex_normals = torch.from_numpy(self.vertex_normals).to(device,dtype=torch.float32)
         if self.vertex_colors is not None:
             vertex_colors = torch.from_numpy(self.vertex_colors).to(device,dtype=torch.int8)
@@ -602,45 +600,58 @@ class SindreMesh:
         mesh = Meshes(verts=vertices[None], faces=faces[None],textures=textures)
         return mesh
 
-    
-    def show(self,show_append =[],labels=None,exclude_list=[0],create_axes=True,return_vedo_obj=False):
+
+
+    def show(self,show_append =[],labels=None,exclude_list=[0],create_axes=True,return_obj=False,by_open3d=False):
         """
-        渲染展示网格数据，并根据标签添加标记和坐标轴。
+        渲染并展示网格数据，支持根据标签着色、添加标记及坐标系显示。
 
-        Args:
-            show_append (list) : 需要一起渲染的vedo属性
-            labels (numpy.ndarray, optional): 网格顶点的标签数组，默认为None。如果提供，将根据标签为顶点着色，并为每个非排除标签添加标记。
-            exclude_list (list, optional): 要排除的标签列表，默认为[0]。列表中的标签对应的标记不会被显示。
-            create_axes: 是否强制绘制世界坐标系。
-            return_vedo_obj: 是否返回vedo显示对象列表；
+        Args：
+            show_append (list)：需要与主网格一起渲染的额外vedo对象列表
+            labels (numpy.ndarray, 可选)：网格顶点的标签数组。若提供，将：
+                - 根据标签值为顶点分配颜色
+                - 为每个不在排除列表中的标签添加标记
+            exclude_list (list, 可选)：默认值为[0]，指定不显示标记的标签列表
+            create_axes (bool)：是否强制显示世界坐标系，默认为True
+            return_obj (bool)：是否返回vedo显示对象列表而非直接渲染，默认为False
+            by_open3d (bool)：是否使用Open3D引擎进行渲染，默认为False（使用vedo引擎）
 
-        Returns:
-            None: 该方法没有返回值，直接进行渲染展示。
+        Returns：
+            若return_vedo_obj为True，返回包含所有待显示对象的列表；
+            否则无返回值，直接弹出渲染窗口。
         """
         import vedo
         from sindre.utils3d.algorithm import labels2colors
-        mesh_vd=self.to_vedo
         show_list=[]+show_append
-        if labels is not None:
-            labels = labels.reshape(-1)
-            fss =self._labels_flag(mesh_vd,labels,exclude_list=exclude_list)
-            show_list=show_list+fss
-            colors = labels2colors(labels)
-            mesh_vd.pointcolors=colors
-            self.vertex_colors=colors
-            
-        show_list.append(mesh_vd)
-        if create_axes:
-            show_list.append(self._create_vedo_axes(mesh_vd))
-        
+        if by_open3d:
+            import open3d as o3d
+            mesh_o3d=self.to_open3d
+            show_list.append(mesh_o3d)
+            if return_obj:
+                return show_list
+            o3d.visualization.draw(show_list,title='SindreMesh',show_ui=True)
+        else:
+            mesh_vd=self.to_vedo
+            if labels is not None:
+                labels = labels.reshape(-1)
+                fss =self._labels_flag(mesh_vd,labels,exclude_list=exclude_list)
+                show_list=show_list+fss
+                colors = labels2colors(labels)
+                mesh_vd.pointcolors=colors
+                self.vertex_colors=colors
 
-        if return_vedo_obj:
-            return show_list
-        # 渲染
-        vp = vedo.Plotter(N=1, title="SindreMesh", bg2="black", axes=3)
-        vp.at(0).show(show_list)
-        vp.close()
-        
+            show_list.append(mesh_vd)
+            if create_axes:
+                show_list.append(self._create_vedo_axes(mesh_vd))
+            if return_obj:
+                return show_list
+            # 渲染
+            vp = vedo.Plotter(N=1, title="SindreMesh", bg2="black", axes=3)
+            vp.at(0).show(show_list)
+            vp.close()
+
+
+
 
 
     def _create_vedo_axes(self,mesh_vd):
@@ -684,7 +695,7 @@ class SindreMesh:
                 fs = mesh_vd.flagpost(f"{i}", cent)
                 fss.append(fs)
         return fss
-        
+
 
 
     def _count_duplicate_vertices(self):
@@ -711,14 +722,13 @@ class SindreMesh:
         """判断是否闭合"""
         unique_edges = np.unique(np.sort(self.get_edges, axis=1), axis=0)
         return len(self.get_edges) == 2*len(unique_edges)
-    
-    
-    
+
+
     def split_component(self):
         """
-        
+
         将网格按照连通分量分割,并返回最大和其余连通分量的顶点索引
-    
+
         Returns:
             tuple: 包含三个数组的元组
                 - 第一个元素: 连通分量数量
@@ -746,68 +756,72 @@ class SindreMesh:
         """
         return vertex_labels_to_face_labels(self.faces,self.vertex_labels)
 
-    
+
+
     def get_color_mapping(self,value):
         """将向量映射为颜色，遵从vcg映射标准"""
         import matplotlib.colors as mcolors
-        # colors = [
-        #     (1.0, 0.0, 0.0, 1.0),  # 红
-        #     (1.0, 1.0, 0.0, 1.0),  # 黄
-        #     (0.0, 1.0, 0.0, 1.0),  # 绿
-        #     (0.0, 1.0, 1.0, 1.0),  # 青
-        #     (0.0, 0.0, 1.0, 1.0)   # 蓝
-        # ]
         colors = [
-
-            # 红→黄过渡（R保持1.0，G从0→1）
-            (1.0, 0.0, 0.0, 1.0),    # 红
-            (1.0, 0.2, 0.0, 1.0),    # 红→黄过渡1
-            (1.0, 0.4, 0.0, 1.0),    # 红→黄过渡2
-            (1.0, 0.6, 0.0, 1.0),    # 红→黄过渡3
-            (1.0, 0.8, 0.0, 1.0),    # 红→黄过渡4
-            (1.0, 1.0, 0.0, 1.0),    # 黄
-
-            # 黄→绿过渡（G保持1.0，R从1→0）
-            (0.8, 1.0, 0.0, 1.0),    # 黄→绿过渡1
-            (0.6, 1.0, 0.0, 1.0),    # 黄→绿过渡2
-            (0.4, 1.0, 0.0, 1.0),    # 黄→绿过渡3
-            (0.2, 1.0, 0.0, 1.0),    # 黄→绿过渡4
-            (0.0, 1.0, 0.0, 1.0),    # 绿
-
-            # 绿→青过渡（G保持1.0，B从0→1）
-            (0.0, 1.0, 0.2, 1.0),    # 绿→青过渡1
-            (0.0, 1.0, 0.4, 1.0),    # 绿→青过渡2
-            (0.0, 1.0, 0.6, 1.0),    # 绿→青过渡3
-            (0.0, 1.0, 0.8, 1.0),    # 绿→青过渡4
-            (0.0, 1.0, 1.0, 1.0),    # 青
-
-            # 青→蓝过渡（B保持1.0，G从1→0）
-            (0.0, 0.8, 1.0, 1.0),    # 青→蓝过渡1
-            (0.0, 0.6, 1.0, 1.0),    # 青→蓝过渡2
-            (0.0, 0.4, 1.0, 1.0),    # 青→蓝过渡3
-            (0.0, 0.2, 1.0, 1.0),    # 青→蓝过渡4
-            (0.0, 0.0, 1.0, 1.0),    # 蓝
-
-            # # 蓝延伸过渡（B从1→0，R、G保持0）
-            (0.0, 0.0, 0.8, 1.0),    # 蓝延伸过渡1
-            (0.0, 0.0, 0.6, 1.0),    # 蓝延伸过渡2
-            (0.0, 0.0, 0.4, 1.0),    # 蓝延伸过渡3
-            (0.0, 0.0, 0.2, 1.0)     # 蓝延伸过渡4
+            (1.0, 0.0, 0.0, 1.0),  # 红
+            (1.0, 1.0, 0.0, 1.0),  # 黄
+            (0.0, 1.0, 0.0, 1.0),  # 绿
+            (0.0, 1.0, 1.0, 1.0),  # 青
+            (0.0, 0.0, 1.0, 1.0)   # 蓝
         ]
+        # colors = [
 
+        #     # 红→黄过渡（R保持1.0，G从0→1）
+        #     (1.0, 0.0, 0.0, 1.0),    # 红
+        #     (1.0, 0.2, 0.0, 1.0),    # 红→黄过渡1
+        #     (1.0, 0.4, 0.0, 1.0),    # 红→黄过渡2
+        #     (1.0, 0.6, 0.0, 1.0),    # 红→黄过渡3
+        #     (1.0, 0.8, 0.0, 1.0),    # 红→黄过渡4
+        #     (1.0, 1.0, 0.0, 1.0),    # 黄
+
+        #     # 黄→绿过渡（G保持1.0，R从1→0）
+        #     (0.8, 1.0, 0.0, 1.0),    # 黄→绿过渡1
+        #     (0.6, 1.0, 0.0, 1.0),    # 黄→绿过渡2
+        #     (0.4, 1.0, 0.0, 1.0),    # 黄→绿过渡3
+        #     (0.2, 1.0, 0.0, 1.0),    # 黄→绿过渡4
+        #     (0.0, 1.0, 0.0, 1.0),    # 绿
+
+        #     # 绿→青过渡（G保持1.0，B从0→1）
+        #     (0.0, 1.0, 0.2, 1.0),    # 绿→青过渡1
+        #     (0.0, 1.0, 0.4, 1.0),    # 绿→青过渡2
+        #     (0.0, 1.0, 0.6, 1.0),    # 绿→青过渡3
+        #     (0.0, 1.0, 0.8, 1.0),    # 绿→青过渡4
+        #     (0.0, 1.0, 1.0, 1.0),    # 青
+
+        #     # 青→蓝过渡（B保持1.0，G从1→0）
+        #     (0.0, 0.8, 1.0, 1.0),    # 青→蓝过渡1
+        #     (0.0, 0.6, 1.0, 1.0),    # 青→蓝过渡2
+        #     (0.0, 0.4, 1.0, 1.0),    # 青→蓝过渡3
+        #     (0.0, 0.2, 1.0, 1.0),    # 青→蓝过渡4
+        #     (0.0, 0.0, 1.0, 1.0),    # 蓝
+
+        #     # # 蓝延伸过渡（B从1→0，R、G保持0）
+        #     (0.0, 0.0, 0.8, 1.0),    # 蓝延伸过渡1
+        #     (0.0, 0.0, 0.6, 1.0),    # 蓝延伸过渡2
+        #     (0.0, 0.0, 0.4, 1.0),    # 蓝延伸过渡3
+        #     (0.0, 0.0, 0.2, 1.0)     # 蓝延伸过渡4
+        # ]
         cmap = mcolors.LinearSegmentedColormap.from_list("VCG", colors)
-
-        norm = mcolors.Normalize(vmin=value.min(), vmax=value.max())
-        value = norm(np.asarray(value))
-        rgb = cmap(value)[..., :3]
+        value = np.asarray(value)
+        #  10%~90%分位数裁剪（MeshLab固定逻辑，不可调整）
+        perc_low = np.percentile(value, 10)
+        perc_high = np.percentile(value, 90)
+        norm = mcolors.Normalize(vmin=perc_low, vmax=perc_high)
+        normalized = norm(value)
+        rgb= cmap(normalized)[..., :3]
         return (rgb * 255).astype(np.uint8)
 
 
 
-    
+
+
     def subdivison(self,face_mask,iterations=3,method="mid"):
         """局部细分"""
-        
+
         assert len(face_mask)==len(self.faces),"face_mask长度不匹配:要求每个面片均有对应索引"
         import pymeshlab
         if int(face_mask).max()!=1:
@@ -816,25 +830,26 @@ class SindreMesh:
         ms = pymeshlab.MeshSet()
         ms.add_mesh(pymeshlab.Mesh(vertex_matrix=self.vertices, face_matrix=self.faces,f_scalar_array=face_mask))
         ms.compute_selection_by_condition_per_face(condselect="fq == 1")
-            
+
         if method == "mid":
             ms.meshing_surface_subdivision_midpoint(
                 iterations=iterations,
                 threshold=pymeshlab.PercentageValue(1e-4),
-                selected=True  
+                selected=True
             )
         else:
             ms.meshing_surface_subdivision_ls3_loop(
                 iterations=iterations,
                 threshold=pymeshlab.PercentageValue(1e-4),
-                selected=True  
+                selected=True
             )
         self.any_mesh=ms
         self._convert()
-    
+        return  self
 
 
-        
+
+
     def texture2colors(self,image_path ="texture_uv.png", uv=None ):
         """将纹理贴图转换成顶点颜色"""
         from PIL import Image
@@ -842,7 +857,7 @@ class SindreMesh:
         if uv is None:
             uv=self.get_uv()
         texture = np.array(Image.open(image_path))
-       
+
         # 转换UV到图像坐标（考虑翻转V轴）
         h, w = texture.shape[:2]
         u_coords = uv[:, 0] * (w - 1)
@@ -852,17 +867,18 @@ class SindreMesh:
         for c in range(3):
             sampled = map_coordinates(texture[:, :, c], coords, order=1, mode='nearest')
             channels.append(sampled)
-    
+
         self.vertex_colors = np.stack(channels, axis=1).astype(np.uint8)
+        return self
 
 
-    def get_texture(self,write_path ="texture_uv.png", image_size = (512, 512),uv=None ):
+    def get_texture(self, image_size = (512, 512),uv=None ):
         """将颜色转换为纹理贴图,  Mesh([v, f]).texture(write_path,uv)"""
         from PIL import Image
         from scipy.interpolate import griddata
         if uv is None:
             uv=self.get_uv()
-        
+
         def compute_interpolation_map(shape, tcoords, values):
             points = (tcoords * np.asarray(shape)[None, :]).astype(np.int32)
             x = np.arange(shape[0])
@@ -872,37 +888,100 @@ class SindreMesh:
             res[np.isnan(res)] = 0
             return res
 
-        texture_map = compute_interpolation_map(image_size, uv, self.vertex_colors) 
-        Image.fromarray(texture_map.astype(np.uint8)).save(write_path)
-        
+        texture_map = compute_interpolation_map(image_size, uv, self.vertex_colors)
+        return Image.fromarray(texture_map.astype(np.uint8))
+
     def sample(self,density=1, num_samples=None):
         """
         网格表面上进行点云重采样
         Args:
             density (float, 可选): 每单位面积的采样点数，默认为1
             num_samples (int, 可选): 指定总采样点数N，若提供则忽略density参数
-            
+
         Returns:
             numpy.ndarray: 重采样后的点云数组，形状为(N, 3)，N为总采样点数
-        
+
         """
-        
+
         return resample_mesh(vertices=self.vertices,faces=self.faces,density=density,num_samples=num_samples)
-    
-    
-    def decimate(self,n=10000):
-        """将网格下采样到指定点数，采用面塌陷"""
-        vd_ms= self.to_vedo.decimate(n=n)
-        self.update_geometry(np.asarray(vd_ms.vertices),np.asarray(vd_ms.cells))
-        
+
+
+    def decimate(self,n=10000,method=0):
+
+        """
+        网格下采样到指定目标顶点数，支持4种简化算法，自动传递顶点属性（标签/曲率）。
+
+        核心逻辑：通过面塌陷（Edge Collapse）或空间分箱实现简化，确保简化后网格的顶点属性（标签、曲率）
+        按合理策略聚合（如平均），避免属性丢失。
+
+        Args:
+            n: 目标顶点数（int），需满足 3 ≤ n ≤ 原始顶点数（过小会导致网格拓扑无效）。
+                注意：method=2（Binned）无法精确控制顶点数，仅能通过分箱间接影响。
+            method: 简化算法选择（int，0-3）：
+                0: vedo.decimate → 基于VTK QuadricDecimation，速度中，精度高（优先推荐）；
+                1: vedo.decimate_pro → 基于VTK DecimatePro，速度中，精度中，支持强拓扑控制；
+                2: vedo.decimate_binned → 基于VTK BinnedDecimation，速度高，精度低，无法指定n；
+                3: 3: fast-simplification → 基于快速边折叠，速度最高，精度高，支持属性精确聚合，建议百万顶点上调用。
+
+        Returns:
+            Self: 简化后的网格对象（更新自身的顶点、面、顶点标签、顶点曲率）。
+
+        """
+        if n>=self.npoints:
+            self.log.warning(f"网格顶点数小于目标值,无需简化： {self.npoints} <= {n}")
+            return self
+        vd_ms= self.to_vedo
+        if method==0:
+            vd_ms.decimate(n=n)
+            self.update_geometry(np.asarray( vd_ms.vertices),np.asarray(vd_ms.cells))
+            return self
+        elif method==1:
+            # 自带保留标签
+            vd_ms.decimate_pro(n=n)
+            self.any_mesh = vd_ms
+            self._convert()
+            self.vertex_labels=vd_ms.pointdata["labels"]
+            self.vertex_curvature=vd_ms.pointdata["curvature"]
+        elif method==2:
+            # 自带保留标签
+            vd_ms.decimate_binned()
+            self.any_mesh = vd_ms
+            self._convert()
+            self.vertex_labels=vd_ms.pointdata["labels"]
+            self.vertex_curvature=vd_ms.pointdata["curvature"]
+        else:
+            import fast_simplification as fs
+            points_decim, faces_decim, collapses = fs.simplify(
+                np.asarray(self.vertices,dtype=np.float32), self.faces, target_reduction=1.0-(n/self.npoints), return_collapses=True
+            )
+            points_decim, faces_decim, index_mapping = fs.replay_simplification(
+                np.asarray(self.vertices,dtype=np.float32), self.faces, collapses
+            )
+            # 组建新网格
+            self.vertices = np.asarray(points_decim, dtype=np.float64)
+            self.faces = np.asarray(faces_decim, dtype=np.int32)
+
+            # 曲率算平均
+            unique_values, first_occurrence, counts = np.unique(index_mapping, return_index=True, return_counts=True)
+            curvature = np.zeros(len(unique_values))
+            np.add.at( curvature,index_mapping,  self.vertex_curvature)
+            self.vertex_curvature=curvature/ counts
+
+            # 标签取第一个顶点标签,避免三个标签都不一样
+            self.vertex_labels= self.vertex_labels[first_occurrence]
+
+            # 更新法线
+            self.compute_normals(True)
+            return self
+
     def homogenize(self,n=10000):
         """ 均匀化网格到指定点数，采用聚类"""
         vd_ms=isotropic_remeshing_by_acvd(self.to_vedo, target_num=n)
         self.update_geometry(np.asarray(vd_ms.vertices),np.asarray(vd_ms.cells))
-        
-    
+        return self
 
-    
+
+
     def check(self):
         """检测数据完整性,正常返回True"""
         checks = [
@@ -927,8 +1006,54 @@ class SindreMesh:
             self.faces = self.faces[non_degenerate_mask]
             self.face_normals = self.face_normals[non_degenerate_mask]
         return num_degenerate
-    
-    
+
+
+    def get_normalize(self, method="std"):
+        """对顶点、曲率和颜色数据进行标准化处理
+
+        该方法支持两种标准化方式，可将顶点坐标、曲率值和颜色值
+        归一化到特定范围，便于后续处理和分析。
+
+        Args:
+            method (str, optional): 标准化方法。可选值为"std"或其他。
+                "std"表示将顶点中心移至原点并缩放至单位球内；
+                其他值表示将顶点缩放到[0,1]范围。默认值为"std"。
+
+        Returns:
+            dict: 包含标准化后的数据字典，键值对如下：
+                - "vertices": 标准化后的顶点坐标数组
+                - "curvature": 标准化后的曲率值数组
+                - "colors": 标准化后的颜色值数组（已转换为[0,1]范围）
+        """
+        vertices = self.vertices
+        if method == "std":
+            # 计算顶点中心并平移到原点
+            centroid = np.mean(vertices, axis=0)
+            vertices -= centroid
+            # 计算最大距离并缩放到单位球内
+            m = np.max(np.sqrt(np.sum(vertices**2, axis=1)))
+            vertices /= m
+        else:
+            # 计算顶点坐标范围并缩放到[0,1]
+            vmax = vertices.max(0, keepdims=True)
+            vmin = vertices.min(0, keepdims=True)
+            vertices = (vertices - vmin) / (vmax - vmin).max()
+
+        # 标准化曲率值到[0,1]范围（使用1%和99%分位数去除极端值）
+        curvature = self.vertex_curvature
+        k_low = np.percentile(curvature, 1)
+        k_high = np.percentile(curvature, 99)
+        curvature = (curvature - k_low) / (k_high - k_low + 1e-8)
+
+        # 将颜色值从[0,255]范围转换到[0,1]
+        colors = self.vertex_colors / 255
+
+        return {
+            "vertices": vertices,
+            "curvature": curvature,
+            "colors": colors
+        }
+
     def get_unused_vertices(self):
         """获取未使用顶点的索引"""
         # 获取所有在faces中出现过的顶点索引
@@ -944,19 +1069,19 @@ class SindreMesh:
     def get_curvature(self):
         """获取曲率"""
         vd_ms = self.to_vedo.compute_curvature(method=1)
-        self.vertex_curvature =np.clip(vd_ms.pointdata["Mean_Curvature"],-1,1)#99%坐落在[-1,1]
+        self.vertex_curvature =vd_ms.pointdata["Mean_Curvature"]
         self.vertex_colors =self.get_color_mapping(self.vertex_curvature)
-
+        return self
     def get_curvature_igl(self):
         if self._count_degenerate_faces()>0:
             log.warning("网格存在退化面片，执行删除面片")
             self.remove_degenerate_faces()
-        self.vertex_curvature =np.clip(compute_curvature_by_igl(self.vertices,self.faces),-1,1)#99%坐落在[-1,1]
+        self.vertex_curvature =compute_curvature_by_igl(self.vertices,self.faces)
         self.vertex_colors =self.get_color_mapping(self.vertex_curvature)
+        return self
 
 
 
-    
     def get_curvature_meshlab(self):
         """使用MeshLab获取更加精确曲率，自动处理非流形几何"""
         # 限制太多，舍弃
@@ -969,12 +1094,12 @@ class SindreMesh:
             log.warning("网格存在非流形，开始进行删除非流形面片处理")
             ms.meshing_repair_non_manifold_edges(method='Remove Faces')
             ms.meshing_remove_unreferenced_vertices()
-        
+
         # 计算主曲率方向
         ms.compute_curvature_principal_directions_per_vertex(method= 'Quadric Fitting',curvcolormethod='Mean Curvature', autoclean=False)
         mmesh = ms.current_mesh()
         verts = np.array(mmesh.vertex_matrix())
-        curvature = np.clip(mmesh.vertex_scalar_array(),-1,1) #99%坐落在[-1,1]
+        curvature = mmesh.vertex_scalar_array()
         colors =self.get_color_mapping(curvature) #(mmesh.vertex_color_matrix() * 255)[..., :3]
         # 检查顶点数量是否变化
         print( len(verts) ,self.npoints)
@@ -990,9 +1115,10 @@ class SindreMesh:
         else:
             self.vertex_curvature =curvature
             self.vertex_colors = colors
+        return self
 
-      
-            
+
+
     def get_near_idx(self,query_vertices):
         """获取最近索引"""
         if self.vertex_kdtree is None:
@@ -1033,21 +1159,21 @@ class SindreMesh:
         boundary = Mesh([self.vertices,new_faces]).split()[0].clean().boundaries().join(reset=True).vertices
         return boundary
 
-        
+
     def get_boundary_by_normal_angle(self, angle_threshold=30,max_boundary=True):
         """
         通过相邻三角面法线夹角识别特征边界环
-        
+
         Note:
             1. 计算所有三角面的归一化法向量
             2. 遍历网格所有边，筛选出相邻两面法线夹角大于阈值的边（特征边）
             3. 将特征边连接成有序封闭环
-        
+
         Args:
             self: 必须为水密网格;
             angle_threshold: 法线夹角阈值(度),默认30度;
             max_boundary: 是否仅返回最长边界环,默认True;
-        
+
         Returns:
             边界环顶点索引列表(若max_boundary=True则返回单个环)
         """
@@ -1139,14 +1265,14 @@ class SindreMesh:
         # 计算面法线（已归一化）
         face_normals = self.face_normals.copy()
         from collections import defaultdict
-        
+
         # 获取所有边及其相邻面
         edges = self.get_edges
         edge_faces = defaultdict(list)
         for i, face in enumerate(self.faces):
             for edge in ([face[0], face[1]], [face[1], face[2]], [face[2], face[0]]):
                 edge_faces[tuple(sorted(edge))].append(i)
-        
+
         # 找出特征边（法线夹角大于阈值）
         feature_edges = []
         for edge, faces in edge_faces.items():
@@ -1156,7 +1282,7 @@ class SindreMesh:
                 angle = np.degrees(np.arccos(np.clip(np.dot(n1, n2), -1.0, 1.0)))
                 if angle > angle_threshold:
                     feature_edges.append((edge[0], edge[1]))
-        
+
         # 构建边连接图（增加边计数）
         edge_graph = defaultdict(list)
         edge_counter = defaultdict(int)
@@ -1170,52 +1296,52 @@ class SindreMesh:
         boundaries = []
         visited_edges = set()
         stack = []
-        
+
         # 创建边访问标记（使用冻结集合）
         for edge in feature_edges:
             frozen_edge = frozenset(edge)
             if frozen_edge in visited_edges:
                 continue
-                
+
             stack.append((edge[0], edge[1], [edge[0]]))  # (prev, current, path)
             visited_edges.add(frozen_edge)
             current_loop = None
-            
+
             while stack:
                 prev, current, path = stack.pop()
                 path.append(current)
-                
+
                 # 成功闭合环路
                 if current == path[0] and len(path) > 1:
                     current_loop = path.copy()
                     break
-                    
+
                 # 获取未访问的邻居边
                 neighbors = []
                 for neighbor in edge_graph[current]:
                     frozen = frozenset({current, neighbor})
                     if frozen not in visited_edges:
                         neighbors.append(neighbor)
-                
+
                 # 死胡同处理
                 if not neighbors:
                     continue
-                    
+
                 # 优先选择度数为2的顶点（减少分支）
                 neighbors.sort(key=lambda x: edge_counter[x])
-                
+
                 # 处理第一个邻居
                 next_hop = neighbors[0]
                 new_edge = frozenset({current, next_hop})
                 visited_edges.add(new_edge)
                 stack.append((current, next_hop, path.copy()))
-                
+
                 # 处理其他邻居（新分支）
                 for neighbor in neighbors[1:]:
                     new_edge = frozenset({current, neighbor})
                     visited_edges.add(new_edge)
                     stack.append((current, neighbor, path[:-1].copy()))
-            
+
             # 保存有效环路
             if current_loop is not None and len(current_loop) > 3:
                 # 闭合环检查（首尾重复）
@@ -1223,18 +1349,18 @@ class SindreMesh:
                     boundaries.append(np.array(current_loop))
                 # 清理栈状态
                 stack = []
-        
+
         # 返回结果
         if not boundaries:
             return np.array([], dtype=int) if max_boundary else []
-        
+
         if max_boundary:
             return sorted(boundaries, key=len, reverse=True)[0]
         return boundaries
 
     def get_boundary(self,return_points=True,max_boundary=False):
         """获取非水密网格的边界环（可能有多个环）;
-        
+
             Method:
             1. 获取所有的边（未去重），并统计每条边出现的次数。在三角网格中，内部边会被两个三角形共享，而边界边只被一个三角形使用。
             2. 筛选出只出现一次的边，这些边就是边界边。
@@ -1266,36 +1392,36 @@ class SindreMesh:
             start = next(iter(adj))  # 取任意起点
             loop = [start]
             current = start
-            
+
             while True:
                 # 获取下一顶点并移除已使用边
                 next_vertex = adj[current].pop()
                 adj[next_vertex].remove(current)  # 移除反向连接
-                
+
                 # 清理空节点
                 if not adj[current]:
                     del adj[current]
                 if not adj.get(next_vertex, []):  # 检查存在性
                     adj.pop(next_vertex, None)
-                
+
                 # 闭环检测
                 if next_vertex == start:
                     loops.append(loop + [start])  # 闭合环
                     break
-                    
+
                 # 继续遍历
                 loop.append(next_vertex)
                 current = next_vertex
 
 
-         # 4. 根据max_boundary参数筛选结果
+        # 4. 根据max_boundary参数筛选结果
         if max_boundary:
             # 找到顶点最多的边界环
             longest_idx = np.argmax([len(loop) for loop in loops])
             result = loops[longest_idx]
         else:
             result = loops
-    
+
         # 5. 根据return_points参数转换为坐标
         if return_points:
             if max_boundary:
@@ -1304,11 +1430,12 @@ class SindreMesh:
                 return [self.vertices[loop] for loop in result]
         else:
             return result
-            
-        
-        
-        
-    def remesh(self):
+
+
+
+
+    def fix_mesh(self):
+        """修复基本mesh错误"""
         ms = self.to_meshlab
         # 去除较小连通体
         fix_component_by_meshlab(ms)
@@ -1319,15 +1446,15 @@ class SindreMesh:
         # 更新信息
         self.any_mesh=ms
         self.update_geometry( np.asarray(ms.vertex_matrix(), dtype=np.float64),
-                             np.asarray(ms.face_matrix(), dtype=np.int32))
+                              np.asarray(ms.face_matrix(), dtype=np.int32))
 
-    
+
     @lru_cache(maxsize=None)
     def get_uv(self,return_circle=False):
         """ 获取uv映射 与顶点一致(npoinst,2) """
         uv,_= harmonic_by_igl(self.vertices,self.faces,map_vertices_to_circle=return_circle)
         return uv
-    
+
     @cached_property
     def npoints(self):
         """获取顶点数量"""
@@ -1336,19 +1463,19 @@ class SindreMesh:
     def nfaces(self):
         """获取顶点数量"""
         return len(self.faces)
-    
-        
+
+
     @cached_property
     def faces_vertices(self):
         """将面片索引用顶点来表示"""
         return  self.vertices[self.faces]
-    
-   
+
+
     @cached_property
     def faces_area(self):
         """
         计算每个三角形面片的面积。
-        
+
         Notes:
             使用叉乘公式计算面积：
             面积 = 0.5 * ||(v1 - v0) × (v2 - v0)||
@@ -1357,13 +1484,13 @@ class SindreMesh:
         v0, v1, v2 = tri_vertices[:, 0], tri_vertices[:, 1], tri_vertices[:, 2]
         area = 0.5 * np.linalg.norm(np.cross((v1 - v0), (v2 - v0)), axis=1)
         return area
-    
+
     @cached_property
     def faces_barycentre(self):
         """每个三角形的中心（重心 [1/3,1/3,1/3]）"""
         return  self.faces_vertices.mean(axis=1)
-    
-    
+
+
     @cached_property
     def center(self) -> np.ndarray:
         """计算网格的加权质心（基于面片面积加权）。
@@ -1379,11 +1506,11 @@ class SindreMesh:
     @cached_property
     def radius(self)->float:
         return np.linalg.norm(self.vertices -self.center, axis=1).max()
-    
-    
 
-        
-            
+
+
+
+
     @cached_property
     def get_adj_matrix(self):
         """基于去重边构建邻接矩阵"""
@@ -1394,7 +1521,7 @@ class SindreMesh:
         rows = np.concatenate([edges[:,0], edges[:,1]])
         cols = np.concatenate([edges[:,1], edges[:,0]])
         return csr_matrix((data, (rows, cols)), shape=(n, n))
-    
+
     @cached_property
     def get_adj_list(self):
         """邻接表属性"""
@@ -1408,12 +1535,12 @@ class SindreMesh:
     @cached_property
     def get_edges(self):
         """未去重边缘属性 """
-        edges = np.concatenate([self.faces[:, [0,1]], 
-                                self.faces[:, [1,2]], 
+        edges = np.concatenate([self.faces[:, [0,1]],
+                                self.faces[:, [1,2]],
                                 self.faces[:, [2,0]]], axis=0)
         edges = np.sort(edges, axis=1)  # 确保边无序性
         return edges
-        
+
     @cached_property
     def get_non_manifold_edges(self):
         # 提取有效边并排序
@@ -1425,17 +1552,23 @@ class SindreMesh:
         return unique_edges[counts >= 3]
 
 
-    
+
 
     def __repr__(self):
         """网格质量检测"""
 
         stats = [
             "\033[91m\t网格质量检测(numpy): \033[0m",
-            f"\033[94m顶点数:             {len(self.vertices)} \033[0m",
-            f"\033[94m面片数:             {len(self.faces) }\033[0m",
+            f"\033[94m顶点数:             {len(self.vertices) if self.vertices is not None else 0}\033[0m",
+            f"\033[94m面片数:             {len(self.faces) if self.faces is not None else 0}\033[0m",
+            f"\033[94m顶点范围:           {self.vertices.min():.2f} ~ {self.vertices.max():.2f} \033[0m",
+            f"\033[94m曲率范围:           {self.vertex_curvature.min():.2f} ~ {self.vertex_curvature.max():.2f}\033[0m",
+            f"\033[94m标签类别:           {", ".join([f"{label}" for label in np.unique(self.vertex_labels)])}\033[0m",
+            f"\033[94m最大半径:           {self.radius:.2f}\033[0m",
+            f"\033[94m几何中心:           {", ".join(f"{x:.3f}" for x in self.center)}\033[0m",
+            f"\033[94m曲率大小:           {self.vertex_curvature.min():.2f} ~ {self.vertex_curvature.max():.2f}\033[0m",
             f"\033[94m网格水密(闭合):     {self._is_watertight()}\033[0m",
-            f"\033[94m连通体数量：        {self._count_connected_components()[0]}\033[0m",
+            f"\033[94m连通体数量:         {self._count_connected_components()[0]}\033[0m",
             f"\033[94m未使用顶点:         {self._count_unused_vertices()}\033[0m",
             f"\033[94m重复顶点:           {self._count_duplicate_vertices()}\033[0m",
             f"\033[94m网格退化:           {self._count_degenerate_faces()}\033[0m",
@@ -1444,9 +1577,9 @@ class SindreMesh:
         ]
 
         return "\n".join(stats)
-    
-    
-    
+
+
+
     def print_o3d(self):
         """使用open3d网格质量检测"""
         mesh = self.to_open3d
@@ -1454,15 +1587,20 @@ class SindreMesh:
         edge_manifold_boundary = mesh.is_edge_manifold(allow_boundary_edges=False)
         vertex_manifold = mesh.is_vertex_manifold()
         orientable = mesh.is_orientable()
-        
+
 
 
         stats = [
             "\033[91m\t网格质量检测(open3d): \033[0m",
             f"\033[94m顶点数:             {len(self.vertices) if self.vertices is not None else 0}\033[0m",
             f"\033[94m面片数:             {len(self.faces) if self.faces is not None else 0}\033[0m",
+            f"\033[94m顶点范围:           {self.vertices.min():.2f} ~ {self.vertices.max():.2f} \033[0m",
+            f"\033[94m曲率范围:           {self.vertex_curvature.min():.2f} ~ {self.vertex_curvature.max():.2f}\033[0m",
+            f"\033[94m标签类别:           {", ".join([f"{label}" for label in np.unique(self.vertex_labels)])}\033[0m",
+            f"\033[94m最大半径:           {self.radius:.2f}\033[0m",
+            f"\033[94m几何中心:           {", ".join(f"{x:.3f}" for x in self.center)}\033[0m",
             f"\033[94m网格水密(闭合):     {self._is_watertight()}\033[0m",
-            f"\033[94m连通体数量：        {self._count_connected_components()[0]}\033[0m",
+            f"\033[94m连通体数量:         {self._count_connected_components()[0]}\033[0m",
             f"\033[94m未使用顶点:         {self._count_unused_vertices()}\033[0m",
             f"\033[94m重复顶点:           {self._count_duplicate_vertices()}\033[0m",
             f"\033[94m网格退化:           {self._count_degenerate_faces()}\033[0m",

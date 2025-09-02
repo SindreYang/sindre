@@ -1,5 +1,6 @@
-
-
+import os
+from sindre.general.logs import CustomLogger
+log = CustomLogger(logger_name="general").get_logger()
 
    
     
@@ -89,15 +90,15 @@ def load(path):
 
           
         elif path.endswith(".pts"):
+            import numpy as np
             # up3d线格式
-            data = []
             tooth_id=None 
             with open(path, 'r') as f:
                 data_pts = f.readlines()
                 try:
                     tooth_id = int(data_pts[0][-3:-1])
-                except:
-                    pass
+                except Exception as  e:
+                    log.warning(f"牙位号获取失败: {e}")
                 lines =data_pts[1:-1]
 
             data = [[float(i) for i in line.split()] for line in lines]
@@ -107,6 +108,7 @@ def load(path):
         elif path.endswith('.constructionInfo'):
             # exo导出格式
             import xml.etree.ElementTree as ET
+            import numpy as np
             root = ET.parse(path).getroot()
             
             project_name = root.findtext("ProjectName", "")
@@ -162,9 +164,11 @@ def load(path):
                 })
             return {"project_name":project_name,"teeth_data":teeth_data}
         else:
+            import vedo
             data = vedo.load(path)
         return data
     except Exception as e:
         log.error(f"Error loading .pts file: {e}")
-        return None 
-  
+        return None
+
+

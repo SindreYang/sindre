@@ -3,6 +3,9 @@ import torch.nn as nn
 from typing import Tuple, List, Union, Optional
 import torch.nn.functional as F
 
+from sindre.ai.utils import sample_and_group_all, index_points, farthest_point_sample, query_ball_point, \
+    sample_and_group, square_distance
+
 
 class FourierEmbedder(nn.Module):
     """
@@ -772,3 +775,76 @@ class GEGLU(nn.Module):
         return f"GEGLU()"
 
 
+class AdaIN(nn.Module):
+    """
+    Adaptive Instance Normalization (AdaIN) layer.
+
+    将隐向量中编码的风格迁移到输入张量中。
+    首先对输入张量进行归一化处理（"白化"），然后使用从隐向量生成的参数
+    进行反归一化，从而将风格信息编码到输入张量中。
+
+    原始论文: https://arxiv.org/abs/1703.06868
+    基于实现: https://github.com/SiskonEmilia/StyleGAN-PyTorch
+
+    Attributes:
+    norm: 归一化层，用于对输入图像进行"白化"处理。
+    默认为InstanceNorm2d，也可以是其他归一化模块。
+    """
+
+    def __init__(self, n_channels):
+        super(AdaIN, self).__init__()
+        self.norm = nn.InstanceNorm2d(n_channels)
+
+    def forward(self, image, style):
+        factor, bias = style.view(style.size(0), style.size(1), 1, 1).chunk(2, dim=1)
+        result = self.norm(image) * factor + bias
+        return result
+
+
+class binarize(torch.autograd.Function):
+    """
+    自定义二值化操作的PyTorch函数实现。
+    继承自torch.autograd.Function，支持自动求导。
+    功能：将输入张量根据阈值转换为二值张量（0或1）。
+    """
+    @staticmethod
+    def forward(ctx, x, threshold=0.5):
+        """
+        前向传播：将输入张量根据阈值二值化。
+
+        Args:
+            ctx: 上下文对象
+            x: 输入张量，可以是任意形状
+            threshold: 二值化阈值，默认值为0.5
+
+        Returns:
+            binarized: 二值化后的张量，与x形状相同，值为0或1
+        """
+        with torch.no_grad():
+            # 大于阈值的元素设为1，否则设为0
+            binarized = (x > threshold).float()
+            # 标记二值化结果为不可微分
+            ctx.mark_non_differentiable(binarized)
+
+            return binarized
+
+    @staticmethod
+    def backward(ctx, grad_output):
+        """
+        反向传播：计算输入的梯度。
+
+        Args:
+            ctx: 上下文对象
+            grad_output: 输出的梯度，形状同输出
+
+        Returns:
+            grad_inputs: 输入x的梯度，形状同x（直通估计器）
+        """
+        grad_inputs = None
+
+        # 如果需要计算输入x的梯度
+        if ctx.needs_input_grad[0]:
+            # 输入的梯度直接等于输出的梯度（直通估计器）
+            grad_inputs = grad_output.clone()
+
+        return grad_inputs
