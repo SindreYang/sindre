@@ -43,6 +43,19 @@ class SindreMesh:
 
 
 
+    def update_vertex(self,vertex_mask):
+        # 更新顶点属性
+        self.vertices = self.vertices[vertex_mask]
+        self.vertex_colors = self.vertex_colors[vertex_mask]
+        self.vertex_normals = self.vertex_normals[vertex_mask]
+        self.vertex_curvature = self.vertex_curvature[vertex_mask]
+        self.vertex_labels = self.vertex_labels[vertex_mask]
+        self.vertex_kdtree = KDTree(self.vertices)
+
+    def update_faces(self,faces_mask):
+        # 更新面片属性
+        self.face_normals = self.face_normals[faces_mask]
+        self.faces = self.faces[faces_mask]
 
     def update_geometry(self,new_vertices,new_faces=None):
         """
@@ -993,6 +1006,20 @@ class SindreMesh:
         ]
         return all(checks)
 
+    def remove_faces_by_vertex_indices(self, vertex_indices):
+        """
+        删除所有包含指定顶点索引的面片
+        """
+        # 创建顶点索引的布尔数组
+        vertex_mask = np.zeros(np.max(self.faces) + 1, dtype=bool)
+        vertex_mask[vertex_indices] = True
+        # 检查每个面片是否包含要删除的顶点
+        face_contains_vertex = vertex_mask[self.faces]
+        mask = ~np.any(face_contains_vertex, axis=1)
+        # 保留不包含指定顶点的面片
+        self.update_faces(mask)
+        return mask
+
     def remove_degenerate_faces(self):
         """检测并删除退化面片"""
         # 计算每个面片的面积（使用面法向量的模长/2）
@@ -1003,8 +1030,7 @@ class SindreMesh:
         num_degenerate = np.sum(~non_degenerate_mask)
         if num_degenerate > 0:
             # 删除退化面片
-            self.faces = self.faces[non_degenerate_mask]
-            self.face_normals = self.face_normals[non_degenerate_mask]
+            self.update_faces(non_degenerate_mask)
         return num_degenerate
 
 
@@ -1021,8 +1047,9 @@ class SindreMesh:
 
         Returns:
             dict: 包含标准化后的数据字典，键值对如下：
-                - "vertices": 标准化后的顶点坐标数组
-                - "curvature": 标准化后的曲率值数组
+                - "vertices": 标准化后的顶点坐标数组（已转换method参数为范围）
+                - "normals": 法线（已转换为[-1,1]范围）
+                - "curvature": 标准化后的曲率值数组（已转换为[-1,1]范围）
                 - "colors": 标准化后的颜色值数组（已转换为[0,1]范围）
         """
         vertices = self.vertices
@@ -1043,15 +1070,19 @@ class SindreMesh:
         curvature = self.vertex_curvature
         k_low = np.percentile(curvature, 1)
         k_high = np.percentile(curvature, 99)
-        curvature = (curvature - k_low) / (k_high - k_low + 1e-8)
+        curvature = np.clip(curvature,k_low,k_high)
+        curvature = (curvature - k_low) / (k_high - k_low )
+        curvature =curvature*2-1
 
         # 将颜色值从[0,255]范围转换到[0,1]
         colors = self.vertex_colors / 255
 
         return {
             "vertices": vertices,
+            "normals":self.vertex_normals,
             "curvature": curvature,
-            "colors": colors
+            "colors": colors,
+
         }
 
     def get_unused_vertices(self):
@@ -1102,7 +1133,6 @@ class SindreMesh:
         curvature = mmesh.vertex_scalar_array()
         colors =self.get_color_mapping(curvature) #(mmesh.vertex_color_matrix() * 255)[..., :3]
         # 检查顶点数量是否变化
-        print( len(verts) ,self.npoints)
         if len(verts) != self.npoints:
             log.warning("检测到修复后顶点被删除，执行曲率/颜色映射...")
             # 为原始网格每个顶点找到最近的点
@@ -1394,15 +1424,21 @@ class SindreMesh:
             current = start
 
             while True:
+                # 检查当前节点是否仍在邻接字典中
+                if current not in adj or not adj[current]:
+                    # 当前节点已被移除或没有邻接点，结束当前环
+                    break
                 # 获取下一顶点并移除已使用边
                 next_vertex = adj[current].pop()
-                adj[next_vertex].remove(current)  # 移除反向连接
+                # 移除反向连接（如果存在）
+                if next_vertex in adj and current in adj[next_vertex]:
+                    adj[next_vertex].remove(current)
 
                 # 清理空节点
                 if not adj[current]:
                     del adj[current]
-                if not adj.get(next_vertex, []):  # 检查存在性
-                    adj.pop(next_vertex, None)
+                if next_vertex in adj and not adj[next_vertex]:
+                    del adj[next_vertex]
 
                 # 闭环检测
                 if next_vertex == start:
@@ -1412,6 +1448,10 @@ class SindreMesh:
                 # 继续遍历
                 loop.append(next_vertex)
                 current = next_vertex
+                # 防止无限循环的安全措施
+                if len(loop) > len(boundary_edges) * 2:
+                    break
+
 
 
         # 4. 根据max_boundary参数筛选结果
@@ -1419,6 +1459,8 @@ class SindreMesh:
             # 找到顶点最多的边界环
             longest_idx = np.argmax([len(loop) for loop in loops])
             result = loops[longest_idx]
+        elif max_boundary:
+            return []
         else:
             result = loops
 
@@ -1426,13 +1468,34 @@ class SindreMesh:
         if return_points:
             if max_boundary:
                 return self.vertices[result]
+            elif max_boundary:
+                return []
             else:
                 return [self.vertices[loop] for loop in result]
         else:
             return result
 
-
-
+    def clean(self):
+        """
+        删除退化面片,删除孤立顶点
+        """
+        # 删除退化面片
+        self.remove_degenerate_faces()
+        # 删除未使用的顶点
+        unused_vertices_indices = self.get_unused_vertices()
+        if unused_vertices_indices:
+            # 创建顶点掩码，标记哪些顶点需要保留
+            vertex_mask = np.ones(len(self.vertices), dtype=bool)
+            vertex_mask[unused_vertices_indices] = False
+            # 更新面片索引
+            index_map = np.cumsum(vertex_mask) - 1
+            new_faces = index_map[self.faces]
+            # 移除无效面片（包含已删除顶点的面片）
+            valid_faces_mask = np.all(new_faces >= 0, axis=1)
+            # 更新面片
+            self.update_faces(valid_faces_mask)
+            self.update_faces(vertex_mask)
+        return self
 
     def fix_mesh(self):
         """修复基本mesh错误"""
@@ -1444,9 +1507,9 @@ class SindreMesh:
         # 清理无效结构
         fix_invalid_by_meshlab(ms)
         # 更新信息
-        self.any_mesh=ms
-        self.update_geometry( np.asarray(ms.vertex_matrix(), dtype=np.float64),
-                              np.asarray(ms.face_matrix(), dtype=np.int32))
+        mmesh = ms.current_mesh()
+        self.update_geometry( np.asarray(mmesh.vertex_matrix(), dtype=np.float64),
+                              np.asarray(mmesh.face_matrix(), dtype=np.int32))
 
 
     @lru_cache(maxsize=None)

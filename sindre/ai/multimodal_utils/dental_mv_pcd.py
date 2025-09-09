@@ -1,8 +1,11 @@
+from functools import partial
+
 import numpy as np
 import torch
 import torch.nn as nn
 from monai.networks.nets import UNet
-from sindre.ai.pointcloud_utils.point_transformerV3 import PointTransformerV3,Point
+from sindre.ai.pointcloud_utils.point_transformerV3 import PointTransformerV3, Point, PointSequential, \
+    SerializedPooling, Block
 from addict import Dict
 def map_features(info: str):
     """
@@ -100,6 +103,89 @@ class embed_condition(nn.Module):
         pass
 
 
+from sindre.ai.pointcloud_utils.point_transformerV3 import Embedding
+class PTV3(nn.Module):
+    def __init__(self,
+                 in_channels=6,
+                 stride=(2, 2, 2, 2),
+                 enc_depths=(2, 2, 2, 6, 2),
+                 enc_channels=(32, 64, 128, 256, 512),
+                 enc_num_head=(2, 4, 8, 16, 32),
+                 enc_patch_size=(1024, 1024, 1024, 1024, 1024),
+                 ):
+        super(PTV3, self).__init__()
+
+        # 构建初始函数
+        bn_layer = partial(nn.BatchNorm1d, eps=1e-3, momentum=0.01)
+        ln_layer = nn.LayerNorm
+        act_layer = nn.GELU
+        self.order =("z", "z-trans", "hilbert", "hilbert-trans")
+
+        # 构建特征嵌入器
+        self.embedding = Embedding(
+            in_channels=in_channels,
+            embed_channels=enc_channels[0],
+            norm_layer=bn_layer,
+            act_layer=act_layer,
+        )
+
+        # 根据路径长度分割等长
+        enc_drop_path = []
+        for x in torch.linspace(0, 0.3, sum(enc_depths)):
+            enc_drop_path.append(x.item())
+
+        # 编码容器
+        self.enc = PointSequential()
+        for s in range(len(enc_depths)):
+            enc_drop_path_ = enc_drop_path[sum(enc_depths[:s]) : sum(enc_depths[: s + 1])]
+            enc = PointSequential()
+            # 从第二层添加池化层
+            if s > 0:
+                enc.add(
+                    SerializedPooling(
+                        in_channels=enc_channels[s - 1],
+                        out_channels=enc_channels[s],
+                        stride=stride[s - 1],
+                        norm_layer=bn_layer,
+                        act_layer=act_layer,
+                        traceable=True,
+                    ),
+                    name="down",
+                )
+            # 每层按照约定添加卷积模块
+            for i in range(enc_depths[s]):
+                enc.add(
+                    Block(
+                        channels=enc_channels[s],
+                        num_heads=enc_num_head[s],
+                        patch_size=enc_patch_size[s],
+                        mlp_ratio=4,
+                        qkv_bias=True,
+                        qk_scale=None,
+                        attn_drop=0.0,
+                        proj_drop=0.0,
+                        drop_path=enc_drop_path_[i],
+                        norm_layer=ln_layer,
+                        act_layer=act_layer,
+                        pre_norm=True,
+                        order_index=i % len(self.order),
+                        cpe_indice_key=f"stage{s}",
+                        enable_rpe=False,
+                        enable_flash=True,
+                        upcast_attention=False,
+                        upcast_softmax=False,
+                    ),
+                    name=f"block{i}",
+                )
+            if len(enc) != 0:
+                self.enc.add(module=enc, name=f"enc{s}")
+
+
+
+
+
+
+
 
 class mv_pcd(nn.Module):
     def __init__(self,):
@@ -158,16 +244,18 @@ class mv_pcd(nn.Module):
 
 # 测试函数
 if __name__ == "__main__":
-    m= mv_pcd()
-    # 测试前向传播
-    x = torch.randn(2, 10000, 6).cuda()  # 批次x点数x特征
-    p = torch.randn(2, 10000, 3).cuda()  # 坐标
-    output = m(x, p)
-    print(f"output shape: {output.feat.shape}")
+    m= PTV3()
+    # # 测试前向传播
+    # x = torch.randn(2, 10000, 6).cuda()  # 批次x点数x特征
+    # p = torch.randn(2, 10000, 3).cuda()  # 坐标
+    # output = m(x, p)
+    # print(f"output shape: {output.feat.shape}")
+    #
+    # # 编码器前向传播
+    # features = m.create_pointdict(x,p)
+    # features = m.pcd_encoder(features)
+    # output = m.pcd_decoder(features)
+    # print(f"\nEncoder output shape: {output.feat.shape,features.feat.shape}")
 
-    # 编码器前向传播
-    features = m.create_pointdict(x,p)
-    features = m.pcd_encoder(features)
-    output = m.pcd_decoder(features)
-    print(f"\nEncoder output shape: {output.feat.shape,features.feat.shape}")
+
 

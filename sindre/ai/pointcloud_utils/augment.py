@@ -64,40 +64,7 @@ class ElasticDistortion(object):
                     )
         return data_dict
 
-def set_seeds(seed: int = 1024,cudnn_enable: bool = False) -> None:
-    """
-    为Python环境和主要深度学习库设置固定的随机数种子，确保结果可复现。
-    
-    参数:
-        seed (int): 要使用的基础随机数种子，默认值为42。
-        cudnn_enable (bool): 是否将CuDNN设置为确定性模式，默认值为False。
-    """
-    # 设置Python内置的随机数生成器
-    import random,os
-    random.seed(seed)
-    
-    # 设置Python哈希种子
-    os.environ['PYTHONHASHSEED'] = str(seed)
-    
-    # 设置NumPy的随机数生成器
-    np.random.seed(seed)
-    
-    # 尝试设置PyTorch的随机数生成器
-    try:
-        torch.manual_seed(seed)
-        if torch.cuda.is_available():
-            torch.cuda.manual_seed_all(seed)
-            if cudnn_enable:
-                # 控制CuDNN的确定性和性能之间的平衡
-                torch.backends.cudnn.deterministic = True
-                # 禁用CuDNN的自动寻找最优算法
-                torch.backends.cudnn.benchmark = False
-    except ImportError:
-        pass 
 
-   
-
-    print(f"已将随机数种子设置为 {seed}")
  
 
 

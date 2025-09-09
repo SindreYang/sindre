@@ -1472,6 +1472,37 @@ class PointTransformerV3(PointModule):
                         name=f"block{i}",
                     )
                 self.dec.add(module=dec, name=f"dec{s}")
+    def encode_points(self,x,p):
+        # 数据预处理 ------------------------------------------------------------
+        # 构造符合Pointcept要求的data_dict字典
+        data_dict = Dict()  # 使用自定义字典对象
+
+        # 展平特征矩阵: (B, N, C) -> (B*N, C)
+        data_dict.feat = torch.flatten(x, start_dim=0, end_dim=1)
+
+        # 生成批次索引: 每个点对应所属的样本批次
+        data_dict.batch = torch.arange(x.shape[0]).repeat_interleave(x.shape[1]).to(x.device)
+
+        # 构造三维坐标:  (B, N, 3) -> (B*N, 3)
+        data_dict.coord = torch.flatten(p, start_dim=0, end_dim=1)
+
+        # 设置体素化网格尺寸
+        data_dict.grid_size = 0.01
+
+        # 点云处理流程 ----------------------------------------------------------
+        # 初始化点云处理对象
+        point = Point(data_dict)
+
+        # 序列化处理：对点云进行有序化排列
+        # - order: 排序依据的维度顺序
+        # - shuffle_orders: 是否启用随机维度顺序（数据增强）
+        point.serialization(order=self.order, shuffle_orders=self.shuffle_orders)
+
+        # 稀疏化处理：将点云转换为稀疏张量格式
+        point.sparsify()
+
+        return point
+
 
     def forward(self, x, p):
         """PyTorch前向传播函数，用于处理点云数据的特征提取与变换。
@@ -1496,33 +1527,7 @@ class PointTransformerV3(PointModule):
             - coord: 包含三维坐标（添加z轴零值）的展平坐标
             - grid_size: 体素化网格尺寸
         """
-        # 数据预处理 ------------------------------------------------------------
-        # 构造符合Pointcept要求的data_dict字典
-        data_dict = Dict()  # 使用自定义字典对象
-        
-        # 展平特征矩阵: (B, N, C) -> (B*N, C)
-        data_dict.feat = torch.flatten(x, start_dim=0, end_dim=1)
-        
-        # 生成批次索引: 每个点对应所属的样本批次
-        data_dict.batch = torch.arange(x.shape[0]).repeat_interleave(x.shape[1]).to(x.device)
-        
-        # 构造三维坐标:  (B, N, 3) -> (B*N, 3)
-        data_dict.coord = torch.flatten(p, start_dim=0, end_dim=1)
-        
-        # 设置体素化网格尺寸
-        data_dict.grid_size = 0.01
-
-        # 点云处理流程 ----------------------------------------------------------
-        # 初始化点云处理对象
-        point = Point(data_dict)
-        
-        # 序列化处理：对点云进行有序化排列
-        # - order: 排序依据的维度顺序
-        # - shuffle_orders: 是否启用随机维度顺序（数据增强）
-        point.serialization(order=self.order, shuffle_orders=self.shuffle_orders)
-        
-        # 稀疏化处理：将点云转换为稀疏张量格式
-        point.sparsify()
+        point = self.encode_points(x,p)
 
         # 特征变换流程 ----------------------------------------------------------
         # 嵌入层：特征空间映射
@@ -1539,9 +1544,9 @@ class PointTransformerV3(PointModule):
     
 if __name__ == "__main__":
     # 示例用法
-    model = PointTransformerV3(in_channels=6 ,enable_flash=False,enc_patch_size=(128,128,128,128,128),dec_patch_size=(128,128,128,128),cls_mode=False).cuda()
+    model = PointTransformerV3(in_channels=6 ,enable_flash=True,cls_mode=False).cuda()
     #model = PointTransformerV3(in_channels=6 ).cuda()
-    x = torch.randn(2, 10000, 6).cuda()  # 批次x点数x特征
-    p = torch.randn(2, 10000, 3).cuda()  # 坐标
+    x = torch.randn(2, 1000, 6).cuda()  # 批次x点数x特征
+    p = torch.randn(2, 1000, 3).cuda()  # 坐标
     output = model(x, p)
     print(f"输出形状: {output.feat.shape},{output.batch.shape},{output.coord.shape}, {output.keys()}")  
