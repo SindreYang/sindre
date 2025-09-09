@@ -61,40 +61,45 @@ def save_checkpoint(
         save_best_only: 是否仅在损失更优时保存模型，默认为True
     """
     try:
-        # 获取已保存模型loss（如果存在）
-        curr_best_loss = float('inf')
-        if os.path.exists(save_path):
-            try:
-                checkpoint = torch.load(save_path, map_location='cpu')
-                curr_best_loss = checkpoint.get("loss", float('inf'))
-            except Exception as e:
-                log.warning(f"Failed to load existing checkpoint: {str(e)}")
-        # 检查是否需要保存（如果不是仅保存最佳模型，则直接保持当前模型）
-        if not save_best_only or  loss<curr_best_loss:
-            # 获取模型状态字典
-            if multi_gpu:
-                net_dict = network.module.state_dict()
-            else:
-                net_dict = network.state_dict()
+        # 判断是否需要最优保存
+        if save_best_only:
+            # 仅保存最佳模型时，才需要检查当前最佳损失
+            curr_best_loss = float('inf')
+            if os.path.exists(save_path):
+                try:
+                    checkpoint = torch.load(save_path, map_location='cpu')
+                    curr_best_loss = checkpoint.get("loss", float('inf'))
+                except Exception as e:
+                    log.warning(f"Failed to load existing checkpoint: {str(e)}")
+            # 检查当前损失是否更优
+            if loss > curr_best_loss:
+                log.info(f"Current loss {loss} is not better than best {curr_best_loss}, skip saving")
+                return  # 不保存，直接返回
 
-            # 创建保存字典
-            save_dict = {
-                "state_dict": net_dict,
-                "optimizer": optimizer.state_dict(),
-                "curr_iter": curr_iter,
-                "loss": loss,
-            }
+        # 获取模型状态字典
+        if multi_gpu:
+            net_dict = network.module.state_dict()
+        else:
+            net_dict = network.state_dict()
 
-            # 添加额外信息
-            if extra_info is not None:
-                save_dict.update(extra_info)
-            # 确保保存目录存在
-            save_dir = os.path.dirname(save_path)
-            if save_dir and not os.path.exists(save_dir):
-                os.makedirs(save_dir, exist_ok=True)
-            # 保存模型
-            torch.save(save_dict, save_path)
-            log.info(f"Save model path: {save_path},损失: {loss}, epoch: {curr_iter}")
+        # 创建保存字典
+        save_dict = {
+            "state_dict": net_dict,
+            "optimizer": optimizer.state_dict(),
+            "curr_iter": curr_iter,
+            "loss": loss,
+        }
+
+        # 添加额外信息
+        if extra_info is not None:
+            save_dict.update(extra_info)
+        # 确保保存目录存在
+        save_dir = os.path.dirname(save_path)
+        if save_dir and not os.path.exists(save_dir):
+            os.makedirs(save_dir, exist_ok=True)
+        # 保存模型
+        torch.save(save_dict, save_path)
+        log.info(f"Save model path: {save_path},loss: {loss}, iteration: {curr_iter}")
 
     except Exception as e:
         log.error(f"Failed to save model: {str(e)}", exc_info=True)

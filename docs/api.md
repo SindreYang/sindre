@@ -22,7 +22,6 @@
 
 ## <a id="三维算法api">三维算法API</a>
 ::: utils3d.algorithm
-::: utils3d.pointcloud_augment
 ::: utils3d.dental_tools
 ::: utils3d.sindremesh
 ::: utils3d.vedo_tools
