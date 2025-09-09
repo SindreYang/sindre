@@ -38,58 +38,63 @@ def set_global_seeds(seed: int = 1024,cudnn_enable: bool = False) -> None:
 
 
 def save_checkpoint(
-        path,
+        save_path:str,
         network: torch.nn.Module,
         optimizer: torch.optim.Optimizer,
         loss: float,
         curr_iter: int,
         multi_gpu: bool = False,
-        extra_info: Optional[Dict] = None
+        extra_info: Optional[Dict] = None,
+        save_best_only: bool = True
 ) -> None:
     """
     保存模型状态、优化器状态、当前迭代次数和损失值
 
     Args:
-        path: 包含模型保存路径等参数的配置对象
+        save_path: 包含模型保存路径等参数的配置对象
         network: 神经网络模型
         optimizer: 优化器
         loss: 当前损失值
         curr_iter: 当前迭代次数
         multi_gpu: 是否使用多GPU训练
         extra_info: 可选的额外信息字典，用于保存其他需要的信息
+        save_best_only: 是否仅在损失更优时保存模型，默认为True
     """
     try:
+        # 获取已保存模型loss（如果存在）
+        curr_best_loss = float('inf')
+        if os.path.exists(save_path):
+            try:
+                checkpoint = torch.load(save_path, map_location='cpu')
+                curr_best_loss = checkpoint.get("loss", float('inf'))
+            except Exception as e:
+                log.warning(f"Failed to load existing checkpoint: {str(e)}")
+        # 检查是否需要保存（如果不是仅保存最佳模型，则直接保持当前模型）
+        if not save_best_only or  loss<curr_best_loss:
+            # 获取模型状态字典
+            if multi_gpu:
+                net_dict = network.module.state_dict()
+            else:
+                net_dict = network.state_dict()
 
+            # 创建保存字典
+            save_dict = {
+                "state_dict": net_dict,
+                "optimizer": optimizer.state_dict(),
+                "curr_iter": curr_iter,
+                "loss": loss,
+            }
 
-        # 获取已保存模型loss
-
-
-
-
-        # 获取模型状态字典
-        if multi_gpu and torch.cuda.device_count() > 1:
-            net_dict = network.module.state_dict()
-        else:
-            net_dict = network.state_dict()
-
-        # 创建保存字典
-        save_dict = {
-            "state_dict": net_dict,
-            "optimizer": optimizer.state_dict(),
-            "curr_iter": curr_iter,
-            "loss": loss,
-        }
-
-        # 添加额外信息
-        if extra_info is not None:
-            save_dict.update(extra_info)
-        # 确保保存目录存在
-        save_dir = os.path.dirname(path)
-        if save_dir and not os.path.exists(save_dir):
-            os.makedirs(save_dir, exist_ok=True)
-        # 保存模型
-        torch.save(save_dict, path)
-        log.info(f"Save model path: {path},损失: {loss}, epoch: {curr_iter}")
+            # 添加额外信息
+            if extra_info is not None:
+                save_dict.update(extra_info)
+            # 确保保存目录存在
+            save_dir = os.path.dirname(save_path)
+            if save_dir and not os.path.exists(save_dir):
+                os.makedirs(save_dir, exist_ok=True)
+            # 保存模型
+            torch.save(save_dict, save_path)
+            log.info(f"Save model path: {save_path},损失: {loss}, epoch: {curr_iter}")
 
     except Exception as e:
         log.error(f"Failed to save model: {str(e)}", exc_info=True)
