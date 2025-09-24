@@ -1496,7 +1496,7 @@ def furthestsampling_jit(xyz: np.ndarray, offset: np.ndarray, new_offset: np.nda
     
     return indices
 
-def farthest_point_sampling(vertices: np.ndarray, n_sample: int = 2000, auto_seg: bool = True, n_batches: int = 10) -> np.ndarray:
+def farthest_point_sampling(vertices: np.ndarray, n_sample: int = 2000, auto_seg: bool = False, n_batches: int = 10) -> np.ndarray:
     """
     最远点采样，支持自动分批处理
     
@@ -1535,14 +1535,11 @@ def farthest_point_sampling(vertices: np.ndarray, n_sample: int = 2000, auto_seg
          # 计算批次采样数分配
         base_samples = n_sample // n_batches
         remainder = n_sample % n_batches
-        
         # 创建采样数数组，前remainder个批次多采1点
         batch_samples = [base_samples + 1 if i < remainder else base_samples 
                         for i in range(n_batches)]
-        
         # 生成偏移数组（累加形式）
         new_offset = np.cumsum(batch_samples).astype(np.int32)
-        
         # 原始点云分批偏移（均匀分配）
         batch_size = n_total // n_batches
         offset = np.array([batch_size*(i+1) for i in range(n_batches)], dtype=np.int32)
@@ -1554,13 +1551,35 @@ def farthest_point_sampling(vertices: np.ndarray, n_sample: int = 2000, auto_seg
     return  furthestsampling_jit(xyz,offset,new_offset)
 
 
-def farthest_point_sampling_by_open3d(vertices: np.ndarray, n_sample: int = 2000) -> np.ndarray:
-    """ 基于open3d最远点采样，返回采样后的点 """
+def farthest_point_sampling_by_open3d(vertices: np.ndarray, n_sample: int = 2000,device ="CPU:0") -> np.ndarray:
+    """
+    基于Open3D的最远点采样算法，返回采样点的索引数组
+
+   该函数利用Open3D库的高效实现，从输入的点云中按最远点策略采样指定数量的点，
+   并返回这些采样点在原始点云中的索引，便于后续还原采样前的点云数据。
+
+   Args:
+       vertices: 输入点云数据，形状为[N, 3]的numpy数组，其中N为点的数量，3对应xyz坐标
+       n_sample: 期望采样的点数量，默认值为2000
+       device: 计算设备，可选"CPU:0"或"CUDA:1"等，默认使用CPU
+
+   Returns:
+       采样点的索引数组，形状为[n_sample]的numpy数组，元素为原始点云的索引值
+
+   Raises:
+       若输入点云数量小于n_sample，可能会抛出Open3D内部异常
+       若设备指定无效（如CUDA不可用时指定"CUDA:1"），会抛出设备初始化错误
+   """
     import open3d as o3d
-    pcd = o3d.t.geometry.PointCloud(np.ascontiguousarray(vertices,dtype=np.float32))
+    device = o3d.core.Device(device)
+    dtype = o3d.core.float32
+    pcd = o3d.t.geometry.PointCloud(device)
+    pcd.point.positions =o3d.core.Tensor(np.ascontiguousarray(vertices,dtype=np.float32), dtype, device)
+    # 用索引代替标签，方便还原
+    pcd.point.labels = o3d.core.Tensor(np.arange(len(vertices)) ,o3d.core.int32, device)
     downpcd_farthest = pcd.farthest_point_down_sample(n_sample)
-    out  =downpcd_farthest.point.positions.numpy()
-    return out
+    idx= downpcd_farthest.point.labels.cpu().numpy()
+    return idx
 
     
 

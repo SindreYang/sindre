@@ -1,14 +1,14 @@
 
-from sklearn.cluster import DBSCAN
 import numpy as np
 from scipy.optimize import leastsq
+from sklearn.cluster import DBSCAN
 
 
 def parameterize_points_on_xy_plane(points, params=None):
     """
     将3D点云投影到XY平面并拟合抛物线参数化
 
-    功能：
+    功能:
     1. 将输入点集投影到XY平面（忽略Z坐标）
     2. 使用最小二乘法拟合抛物线方程 y = ax² + bx + c
     3. 为每个点计算其在抛物线上的最近点参数和距离
@@ -67,11 +67,11 @@ def seg_nms(pred_seg, label):
     """
     基于IoU的语义分割结果非极大值抑制(NMS)
 
-    功能：
+    功能:
     1. 对多个预测分割结果进行重叠区域合并
     2. 通过IoU阈值判断是否属于同一牙齿
 
-    参数：
+    参数:
     :param pred_seg: 预测的分割结果，形状[K, N]（K个预测，N个点）
     :param label: 初始标签图，形状[N]
     :return:
@@ -137,7 +137,7 @@ def infer_labels_denoise(patch_points, pred_seg):
 def rearrange_id_flip(points, pred_seg, arranged_pred_cls, tooth_nms_id, params, times=0):
     # 递归校正牙齿ID顺序错误
     #
-    # 功能：
+    # 功能:
     # 检测并校正因参数化排序导致的牙齿类别翻转错误
 
    if times > 5:
@@ -197,15 +197,26 @@ def rearrange_id_flip(points, pred_seg, arranged_pred_cls, tooth_nms_id, params,
 
 
 def rearrange_labels(points, pred_seg, pred_cls, id_flip=True):
-
     # 牙齿分割结果后处理主函数
     #
-    # 功能：
-    # 1. 过滤低质量预测
-    # 2. 校正上下颌分类
-    # 3. 参数化排列牙齿
-    # 4. 处理缺失/重复牙齿
-    # 5. 生成最终标签图
+    # 功能:
+    #     1. 过滤低质量预测
+    #     2. 校正上下颌分类
+    #     3. 参数化排列牙齿
+    #     4. 处理缺失重复牙齿
+    #     5. 生成最终标签图
+    #
+    # Args:
+    #     points: 牙齿点云数据,形状为[N, 3],N为点数量;
+    #     pred_seg: 分割预测结果,形状为[M, N],M为候选牙齿数量,N为点数量,每个元素表示该点属于对应牙齿的置信度;
+    #     pred_cls: 分类预测结果,形状为[M],表示每个候选牙齿的FDI标签预测值, FDI牙位表示法:11-18为上颌右侧,21-28为上颌左侧,31-38为下颌左侧,41-48为下颌右侧;
+    #     id_flip: 是否尝试翻转牙位排序,用于处理左右侧可能的识别错误;
+    #
+    # Returns:
+    #    final_labels: 最终的牙齿标签图,形状为[N],每个点对应一个牙齿的FDI标签;
+
+
+
    def fdi_diff(a, b):
        sign = -1 if (a // 10) % 2 == 0 else 1
        if a // 10 == b // 10:
@@ -411,7 +422,7 @@ def rearrange_labels(points, pred_seg, pred_cls, id_flip=True):
 def rearrange_labels_backup(points, pred_seg, pred_cls):
     # 标签重排备用方案（简单合并）
     #
-    # 功能：
+    # 功能:
     # 当主重排算法失败时的降级方案，直接合并预测结果
     final_labels = np.zeros((points.shape[0],))
     pred_seg = pred_seg[pred_cls > 0, :]

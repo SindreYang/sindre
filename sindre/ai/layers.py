@@ -248,6 +248,8 @@ class QKVMultiheadCrossAttention(nn.Module):
         self.q_norm = norm_layer(width // heads, elementwise_affine=True, eps=1e-6) if qk_norm else nn.Identity()
         self.k_norm = norm_layer(width // heads, elementwise_affine=True, eps=1e-6) if qk_norm else nn.Identity()
 
+        # 特殊层
+        self.processor = None
     def forward(self, q, kv):
         # 分割多头并计算注意力
         bs, n_ctx, _ = q.shape
@@ -264,7 +266,11 @@ class QKVMultiheadCrossAttention(nn.Module):
         # 重排维度并计算注意力
         from einops import rearrange
         q, k, v = map(lambda t: rearrange(t, 'b n h d -> b h n d', h=self.heads), (q, k, v))
-        out = F.scaled_dot_product_attention(q, k, v).transpose(1, 2).reshape(bs, n_ctx, -1)
+        if self.processor is not None:
+            out = self.processor(self,q, k, v)
+        else:
+            out =F.scaled_dot_product_attention(q, k, v)
+        out =out .transpose(1, 2).reshape(bs, n_ctx, -1)
         return out
 
 
@@ -527,7 +533,6 @@ class CrossAttentionDecoder(nn.Module):
         heads (int): 注意力头的数量。
         qkv_bias (bool): 是否在 Q/K/V 投影中添加偏置项，默认为 True。
         qk_norm (bool): 是否对 Q/K 进行层归一化，默认为 False。
-        label_type (str): 输出标签类型，支持 "binary"（二分类）或 "multiclass"（多分类），默认为 "binary"。
 
     Attributes:
         query_proj (nn.Linear): 将傅里叶嵌入后的查询投影到指定宽度的线性层。
@@ -551,7 +556,6 @@ class CrossAttentionDecoder(nn.Module):
             heads: int,
             qkv_bias: bool = True,
             qk_norm: bool = False,
-            label_type: str = "binary"
     ):
         super().__init__()
         self.fourier_embedder = fourier_embedder
@@ -571,7 +575,6 @@ class CrossAttentionDecoder(nn.Module):
         # 后处理层
         self.ln_post = nn.LayerNorm(width)  # 输出归一化
         self.output_proj = nn.Linear(width, out_channels)  # 输出投影
-        self.label_type = label_type  # 标签类型（暂未直接使用，可扩展损失函数）
 
     def forward(self, queries: torch.FloatTensor, latents: torch.FloatTensor) -> torch.FloatTensor:
         """前向传播流程：傅里叶嵌入 -> 投影 -> 交叉注意力 -> 归一化 -> 输出投影。

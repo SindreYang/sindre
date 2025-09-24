@@ -40,15 +40,15 @@ def set_global_seeds(seed: int = 1024,cudnn_enable: bool = False) -> None:
 def save_checkpoint(
         save_path:str,
         network: torch.nn.Module,
-        optimizer: torch.optim.Optimizer,
         loss: float,
-        curr_iter: int,
-        multi_gpu: bool = False,
+        optimizer: Optional[torch.optim.Optimizer]=None,
+        curr_iter: int=0,
         extra_info: Optional[Dict] = None,
         save_best_only: bool = True
 ) -> None:
     """
-    保存模型状态、优化器状态、当前迭代次数和损失值
+    保存模型状态、优化器状态、当前迭代次数和损失值;
+    save_best_only开启后，直接比较已保存模型的loss(避免硬件故障引起保存问题)
 
     Args:
         save_path: 包含模型保存路径等参数的配置对象
@@ -56,7 +56,6 @@ def save_checkpoint(
         optimizer: 优化器
         loss: 当前损失值
         curr_iter: 当前迭代次数
-        multi_gpu: 是否使用多GPU训练
         extra_info: 可选的额外信息字典，用于保存其他需要的信息
         save_best_only: 是否仅在损失更优时保存模型，默认为True
     """
@@ -73,11 +72,10 @@ def save_checkpoint(
                     log.warning(f"Failed to load existing checkpoint: {str(e)}")
             # 检查当前损失是否更优
             if loss > curr_best_loss:
-                log.info(f"Current loss {loss} is not better than best {curr_best_loss}, skip saving")
                 return  # 不保存，直接返回
 
-        # 获取模型状态字典
-        if multi_gpu:
+        # 获取模型状态字典torch.nn.parallel.distributed.DistributedDataParalle
+        if "DataParalle" in str(type(network)):
             net_dict = network.module.state_dict()
         else:
             net_dict = network.state_dict()
@@ -109,11 +107,10 @@ def load_checkpoint(
         path: str,
         net: torch.nn.Module,
         optimizer: Optional[torch.optim.Optimizer] = None,
-        load_optimizer: bool = True,
         strict: bool = True,
         check_shape: bool = True,
         map_location: Optional[str] = None
-) -> Tuple[torch.nn.Module, Optional[torch.optim.Optimizer], int, float, Dict]:
+) -> Tuple[int, float, Dict]:
     """
     加载模型状态，可以支持部分参数加载
 
@@ -126,23 +123,40 @@ def load_checkpoint(
         path: 模型文件路径
         net: 要加载参数的神经网络模型
         optimizer: 优化器，如果需要加载优化器状态
-        load_optimizer: 是否加载优化器状态
         strict: 是否严格匹配模型参数
         check_shape: 是否检查参数形状匹配
         map_location: 指定设备映射，例如"cpu"或"cuda:0"
 
     Returns:
-        加载了参数的模型、优化器、最后迭代次数、最后损失值、额外信息字典
+        加载了最后迭代次数、最后损失值、额外信息字典
     """
     try:
         # 检查模型文件是否存在
         if not os.path.exists(path):
-            raise FileNotFoundError(f"模型文件不存在: {path}")
+            log.error(f"模型文件不存在: {path}")
+            return 0,float("inf"),{}
 
         # 加载模型数据
         log.info(f"加载模型: {path}")
         checkpoint = torch.load(path, map_location=map_location)
         model_state, checkpoint_state = net.state_dict(), checkpoint["state_dict"]
+
+
+        #  DDP前缀适配：统一参数名格式
+        is_ddp = "DataParalle" in str(type(net))
+        has_module_prefix = any(k.startswith("module.") for k in checkpoint_state.keys())
+        norm_ckpt = {}
+
+        log.info(f"参数是DDP:{has_module_prefix}, 网络是DDP：{is_ddp}")
+        for k, v in checkpoint_state.items():
+            if is_ddp and not has_module_prefix:
+                norm_k = f"module.{k}"  # DDP缺前缀→补
+            elif not is_ddp and has_module_prefix:
+                norm_k = k[7:] if k.startswith("module.") else k  # 普通模型多前缀→删
+            else:
+                norm_k = k
+            norm_ckpt[norm_k] = v
+        checkpoint_state=norm_ckpt
 
         # 处理参数匹配
         if check_shape and not strict:
@@ -158,21 +172,20 @@ def load_checkpoint(
             net.load_state_dict(checkpoint_state, strict=strict)
 
         # 加载优化器状态
-        if optimizer is not None and load_optimizer:
+        if optimizer is not None:
             if "optimizer" in checkpoint:
                 optimizer.load_state_dict(checkpoint["optimizer"])
                 log.info("优化器状态已加载")
         # 获取额外信息
         curr_iter = checkpoint.get("curr_iter", 0)
-        loss = checkpoint.get("loss", 0.0)
+        loss = checkpoint.get("loss", float("inf"))
         known_keys = {"state_dict", "optimizer", "curr_iter", "loss"}
         extra_info = {k: v for k, v in checkpoint.items() if k not in known_keys}
-        log.info(f"模型加载完成，最后迭代次数: {curr_iter}, 最后损失值: {loss:.6f}")
-        return net, optimizer, curr_iter, loss, extra_info
+        log.info(f"模型加载完成，最后迭代次数: {curr_iter}, 最后损失值: {loss:.6f},额外信息:{extra_info.keys()}")
+        return  curr_iter, loss, extra_info
     except Exception as e:
         log.error(f"加载模型失败: {str(e)}", exc_info=True)
         raise
-
 
 
 
@@ -529,3 +542,70 @@ def knn_by_dgcnn(x, k):
     # 获取每个点的k个最近邻索引
     idx = pairwise_distance.topk(k=k, dim=-1)[1]
     return idx
+
+
+def feat_to_voxel(feat_data, grid_size=None, fill_mode='feature'):
+    """
+    将稀疏特征还原为体素特征网格
+    # 查看特征数据结构（确认关键字段）
+    print("特征包含的键:", feat.keys())
+    print("稀疏形状:", feat.sparse_shape)
+    print("特征形状:", feat.sparse_conv_feat.features.shape)
+
+    voxel_feat = feat_to_voxel(feat,grid_size=[289,289,289], fill_mode='feature')
+    voxel_feat = F.max_pool3d(torch.from_numpy(voxel_feat).unsqueeze(0).permute(0, 4, 1, 2, 3), kernel_size=(3,3,3), stride=(3,3,3)).permute(0, 2, 3, 4, 1).squeeze(0).cpu().numpy()
+    print("体素特征网格形状:", voxel_feat.shape,voxel_feat[...,0].shape)
+    # verts, faces, normals, values = measure.marching_cubes(
+    #     voxel_feat[...,30],
+    #     level=0,
+    #     spacing=(0.01, 0.01, 0.01),
+    # )
+    # reconstructed_mesh = vedo.Mesh([verts, faces])
+    # vedo.show([reconstructed_mesh]).show().close()
+
+    Args:
+        feat_data: 包含稀疏特征的数据结构，需包含:
+                  - sparse_conv_feat: spconv.SparseConvTensor
+                  - sparse_shape: 稀疏网格形状
+                  - grid_size: 体素尺寸（可选）
+        grid_size: 自定义体素网格尺寸，默认使用sparse_shape
+        fill_mode: 填充模式:
+                  - 'feature': 使用原始特征（取第一个特征值）
+                  - 'count': 使用体素内点数量
+                  - 'mean': 使用特征平均值
+    Returns:
+        dense_voxel: 密集体素特征网格，形状 [D, H, W] 或 [D, H, W, C]
+    """
+    # 1. 提取关键数据
+    sparse_feat = feat_data.sparse_conv_feat
+    sparse_shape = feat_data.sparse_shape if grid_size is None else grid_size
+    indices = sparse_feat.indices.cpu().numpy()  # [N, 4]：[batch_idx, z, y, x]（spconv坐标格式）
+    features = sparse_feat.features.cpu().numpy()  # [N, C]：体素特征
+    batch_size = sparse_feat.batch_size
+
+    # 2. 初始化体素网格（多批次支持）
+    if isinstance(sparse_shape, (list, tuple)) and len(sparse_shape) == 3:
+        z_size, y_size, x_size = sparse_shape
+    else:
+        z_size = y_size = x_size = sparse_shape  # 若为单值则使用立方体网格
+    # 根据填充模式定义网格形状
+    if fill_mode == 'feature' and features.shape[1] > 1:
+        dense_voxel = np.zeros((batch_size, z_size, y_size, x_size, features.shape[1]), dtype=np.float32)
+    else:
+        dense_voxel = np.zeros((batch_size, z_size, y_size, x_size), dtype=np.float32)
+
+    # 3. 填充体素特征
+    for i in range(indices.shape[0]):
+        batch_idx, z, y, x = indices[i].astype(int)
+        # 检查坐标是否在有效范围内
+        if 0 <= z < z_size and 0 <= y < y_size and 0 <= x < x_size and batch_idx < batch_size:
+            # 使用原始特征（支持多通道）
+            if features.shape[1] == 1:
+                dense_voxel[batch_idx, z, y, x] = features[i, 0]
+            else:
+                dense_voxel[batch_idx, z, y, x] = features[i]
+    # 4. 单批次数据可去除批次维度
+    if batch_size == 1:
+        dense_voxel = dense_voxel[0]
+
+    return dense_voxel

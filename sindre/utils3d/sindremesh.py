@@ -1493,8 +1493,9 @@ class SindreMesh:
             # 移除无效面片（包含已删除顶点的面片）
             valid_faces_mask = np.all(new_faces >= 0, axis=1)
             # 更新面片
+            self.faces = new_faces
             self.update_faces(valid_faces_mask)
-            self.update_faces(vertex_mask)
+            self.update_vertex(vertex_mask)
         return self
 
     def fix_mesh(self):
