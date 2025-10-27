@@ -9,7 +9,7 @@
 
 
 from PyQt5 import QtCore, QtGui, QtWidgets
-from PyQt5.QtWidgets import (QFileDialog, QInputDialog, QMessageBox, QLineEdit, 
+from PyQt5.QtWidgets import (QFileDialog, QInputDialog, QMessageBox, QLineEdit, QHBoxLayout,
                             QDialog, QVBoxLayout, QComboBox, QLabel, QPushButton,
                             QDialogButtonBox, QGroupBox)
 
@@ -239,7 +239,7 @@ class DataConfigDialog(QDialog):
         self.type_group = QGroupBox("数据类型")
         type_layout = QVBoxLayout()
         self.data_type_combo = QComboBox()
-        self.data_type_combo.addItems(["点云(Point Cloud)", "网格(Mesh)"])
+        self.data_type_combo.addItems(["点云(Point Cloud)", "网格(Mesh)","图片(Image)"])
         type_layout.addWidget(QLabel("选择数据类型:"))
         type_layout.addWidget(self.data_type_combo)
         self.type_group.setLayout(type_layout)
@@ -278,6 +278,41 @@ class DataConfigDialog(QDialog):
         self.face_group.setVisible(False)  # 默认隐藏
         self.layout.addWidget(self.face_group)
         
+
+
+        # 图片配置部分
+        self.image_group = QGroupBox("图片配置")
+        image_layout = QVBoxLayout()
+
+        image_layout.addWidget(QLabel("图片键名:"))
+        self.image_key_combo = QComboBox()
+        self.image_key_combo.addItem("无")
+        self.image_key_combo.addItems(keys)
+        image_layout.addWidget(self.image_key_combo)
+
+        image_layout.addWidget(QLabel("边界框键名 (可选):"))
+        self.bbox_key_combo = QComboBox()
+        self.bbox_key_combo.addItem("无")
+        self.bbox_key_combo.addItems(keys)
+        image_layout.addWidget(self.bbox_key_combo)
+
+        image_layout.addWidget(QLabel("关键点键名 (可选):"))
+        self.keypoints_key_combo = QComboBox()
+        self.keypoints_key_combo.addItem("无")
+        self.keypoints_key_combo.addItems(keys)
+        image_layout.addWidget(self.keypoints_key_combo)
+
+        image_layout.addWidget(QLabel("分割掩码键名 (可选):"))
+        self.segmentation_key_combo = QComboBox()
+        self.segmentation_key_combo.addItem("无")
+        self.segmentation_key_combo.addItems(keys)
+        image_layout.addWidget(self.segmentation_key_combo)
+        self.image_group.setLayout(image_layout)
+        self.image_group.setVisible(False)  # 默认隐藏
+        self.layout.addWidget(self.image_group)
+
+
+
         # 名称键配置
         self.name_group = QGroupBox("索引配置")
         name_layout = QVBoxLayout()
@@ -287,7 +322,7 @@ class DataConfigDialog(QDialog):
         name_layout.addWidget(self.name_key_combo)
         self.name_group.setLayout(name_layout)
         self.layout.addWidget(self.name_group)
-        
+
         # 按钮
         self.button_box = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
         self.button_box.accepted.connect(self.accept)
@@ -346,15 +381,47 @@ class DataConfigDialog(QDialog):
             index = self.name_key_combo.findText(config_dict["name_key"])
             if index >= 0:
                 self.name_key_combo.setCurrentIndex(index)
-        
+
+
+        # 设置图片相关键
+        if "image_key" in config_dict:
+            image_key = config_dict["image_key"] or "无"
+            index = self.image_key_combo.findText(image_key)
+            if index >= 0:
+                self.image_key_combo.setCurrentIndex(index)
+
+        if "bbox_key" in config_dict:
+            bbox_key = config_dict["bbox_key"] or "无"
+            index = self.bbox_key_combo.findText(bbox_key)
+            if index >= 0:
+                self.bbox_key_combo.setCurrentIndex(index)
+
+        if "keypoints_key" in config_dict:
+            keypoints_key = config_dict["keypoints_key"] or "无"
+            index = self.keypoints_key_combo.findText(keypoints_key)
+            if index >= 0:
+                self.keypoints_key_combo.setCurrentIndex(index)
+
+        if "segmentation_key" in config_dict:
+            segmentation_key = config_dict["segmentation_key"] or "无"
+            index = self.segmentation_key_combo.findText(segmentation_key)
+            if index >= 0:
+                self.segmentation_key_combo.setCurrentIndex(index)
         # 更新UI状态（确保面片组可见性正确）
         self.update_ui()
     
     def update_ui(self):
         """根据数据类型更新UI显示"""
-        is_mesh = self.data_type_combo.currentText() == "网格(Mesh)"
+        data_type = self.data_type_combo.currentText()
+        is_mesh = data_type == "网格(Mesh)"
+        is_point_cloud = data_type == "点云(Point Cloud)"
+        is_image = data_type == "图片(Image)"
+
+        # 显示/隐藏相关配置组
+        self.vertex_group.setVisible(is_mesh or is_point_cloud)
         self.face_group.setVisible(is_mesh)
-    
+        self.image_group.setVisible(is_image)
+
     def get_config(self):
         """获取当前配置"""
         config = {
@@ -363,6 +430,11 @@ class DataConfigDialog(QDialog):
             "vertex_label_key": self.vertex_label_combo.currentText() if self.vertex_label_combo.currentText() != "无" else None,
             "face_key": self.face_key_combo.currentText() if self.data_type_combo.currentText() == "网格(Mesh)" else None,
             "face_label_key": self.face_label_combo.currentText() if self.face_label_combo.currentText() != "无" and self.data_type_combo.currentText() == "网格(Mesh)" else None,
-            "name_key": self.name_key_combo.currentText()
+            "name_key": self.name_key_combo.currentText(),
+            # 图片相关
+            "image_key": self.image_key_combo.currentText() if self.image_key_combo.currentText() != "无" else None,
+            "bbox_key": self.bbox_key_combo.currentText() if self.bbox_key_combo.currentText() != "无" else None,
+            "keypoints_key": self.keypoints_key_combo.currentText() if self.keypoints_key_combo.currentText() != "无" else None,
+            "segmentation_key": self.segmentation_key_combo.currentText() if self.segmentation_key_combo.currentText() != "无" else None,
         }
         return config

@@ -90,7 +90,9 @@ class config_thread(QtCore.QThread):
         self.progress_int.emit(100)
 
 class LMDB_Viewer(QtWidgets.QWidget):
-    def __init__(self, parent=None):
+    # 添加信号
+    countChanged = QtCore.pyqtSignal(int)
+    def __init__(self, parent=None,config_file = "viewer_config.ini"):
         super().__init__(parent)
 
         self.app_ui = Ui_Form()
@@ -108,7 +110,7 @@ class LMDB_Viewer(QtWidgets.QWidget):
         
         # 使用configparser作为缓存
         self.config_parser = configparser.ConfigParser()
-        self.config_file = "viewer_config.ini"
+        self.config_file = config_file
         
         # 加载现有配置或创建新配置
         if os.path.exists(self.config_file):
@@ -126,6 +128,10 @@ class LMDB_Viewer(QtWidgets.QWidget):
             self.config_parser.set('DATA_CONFIG', 'face_key', 'mesh_faces')
             self.config_parser.set('DATA_CONFIG', 'face_label_key', 'face_labels')
             self.config_parser.set('DATA_CONFIG', 'name_key', 'name')
+            self.config_parser.set('DATA_CONFIG', 'image_key', "image")
+            self.config_parser.set('DATA_CONFIG', 'bbox_key',  "bbox")
+            self.config_parser.set('DATA_CONFIG', 'keypoints_key', "keypoints")
+            self.config_parser.set('DATA_CONFIG', 'segmentation_key',  "segmentation")
             # 创建STATE节
             self.config_parser.add_section('STATE')
             self.config_parser.add_section('INDEX_MAPPING')
@@ -138,7 +144,11 @@ class LMDB_Viewer(QtWidgets.QWidget):
             "vertex_label_key": self.config_parser.get('DATA_CONFIG', 'vertex_label_key'),
             "face_key": self.config_parser.get('DATA_CONFIG', 'face_key'),
             "face_label_key": self.config_parser.get('DATA_CONFIG', 'face_label_key'),
-            "name_key": self.config_parser.get('DATA_CONFIG', 'name_key')
+            "name_key": self.config_parser.get('DATA_CONFIG', 'name_key'),
+            "image_key": self.config_parser.get('DATA_CONFIG', 'image_key'),
+            "bbox_key": self.config_parser.get('DATA_CONFIG', 'bbox_key'),
+            "keypoints_key": self.config_parser.get('DATA_CONFIG', 'keypoints_key'),
+            "segmentation_key": self.config_parser.get('DATA_CONFIG', 'segmentation_key'),
         }
 
         # 信息视图
@@ -156,7 +166,31 @@ class LMDB_Viewer(QtWidgets.QWidget):
         self.app_ui.state_bt.clicked.connect(self.SetState)
         self.app_ui.Pre_view_Button.clicked.connect(self.Previous_Page)
         self.app_ui.Next_view_Button.clicked.connect(self.Next_Page)
-        self.app_ui.functionButton.clicked.connect(self.ExportMesh)
+        # 功能区
+        self.app_ui.functionButton.clicked.connect(self.toggle_sub_buttons)
+        # 创建子按钮容器（弹出式）
+        self.sub_functionButton = QWidget()
+        self.sub_functionButton.setWindowFlags(QtCore.Qt.Popup)  # 无标题栏的弹出窗口
+        sub_layout = QtWidgets.QHBoxLayout(self.sub_functionButton)
+        sub_layout.setContentsMargins(2, 2, 2, 2)  # 减小边距，紧凑显示
+        # 导出按钮（绑定fun1：ExportMesh）
+        self.export_btn = QPushButton("导出")
+        self.export_btn.clicked.connect(self.ExportMesh)  # 绑定导出功能
+        self.export_btn.clicked.connect(self.sub_functionButton.hide)  # 点击后隐藏子窗口
+        # 删除按钮（绑定fun2：比如DeleteMesh）
+        self.delete_btn = QPushButton("删除")
+        self.delete_btn.clicked.connect(self.DeleteMesh)  # 绑定删除功能
+        self.delete_btn.clicked.connect(self.sub_functionButton.hide)  # 点击后隐藏子窗
+        # 添加子按钮到布局
+        sub_layout.addWidget(self.export_btn)
+        sub_layout.addWidget(self.delete_btn)
+        # 初始隐藏子按钮容器
+        self.sub_functionButton.hide()
+
+
+
+
+
         
 
         # 3D界面 
@@ -182,6 +216,30 @@ class LMDB_Viewer(QtWidgets.QWidget):
 
     ###############################按钮逻辑#######################################
 
+    def toggle_sub_buttons(self):
+        """切换子按钮的显示/隐藏状态"""
+        if self.sub_functionButton.isHidden():
+            # 计算子按钮显示位置（主按钮下方）
+            btn_pos = self.app_ui.functionButton.mapToGlobal(self.app_ui.functionButton.rect().bottomLeft())
+            self.sub_functionButton.move(btn_pos)
+            self.sub_functionButton.show()
+        else:
+            self.sub_functionButton.hide()
+    def DeleteMesh(self):
+        try:
+            # 确保有可删除的对象
+            if self.max_count==0:
+                QMessageBox.warning(self, "导出失败", "没有可删除的对象！")
+                return
+            # 弹出对话框核对
+            ok_ = QMessageBox.question(self, "确认删除",f"确认删除当前数据库索引：{self.count}",
+                                       QMessageBox.Yes | QMessageBox.No)
+            if ok_ == QMessageBox.Yes:
+                with Writer(self.db_path,1024*100) as writer:
+                    writer.delete_sample(self.count)
+                QMessageBox.information(self, "删除成功", f"已删除当前数据库索引：{self.count},重新加载生效!")
+        except Exception as e:
+            QMessageBox.critical(self, "删除错误", f"出错:\n{str(e)}")
     def ExportMesh(self):
         """导出当前视图中的网格为PLY文件"""
         try:
@@ -252,16 +310,22 @@ class LMDB_Viewer(QtWidgets.QWidget):
             else:
                 self.count = number
                 self.UpdateDisplay()
+                # 发射信号
+                self.countChanged.emit(self.count)
 
     def NextFile(self):
         if self.count < self.max_count - 1:
             self.count += 1
             self.UpdateDisplay()
+            # 发射信号
+            self.countChanged.emit(self.count)
 
     def PreFile(self):
         if 0 < self.count < self.max_count - 1:
             self.count -= 1
             self.UpdateDisplay()
+            # 发射信号
+            self.countChanged.emit(self.count)
 
     ###############################按钮逻辑#######################################
 
@@ -270,6 +334,9 @@ class LMDB_Viewer(QtWidgets.QWidget):
     def load_view_data(self):
         start_index = (self.current_page - 1) * self.page_size
         end_index = self.current_page * self.page_size
+
+        if end_index > self.max_count+1:
+            end_index = self.max_count+1
         
         # 防止用户快速点击视图按钮
         self.app_ui.Next_view_Button.setEnabled(False)
@@ -286,6 +353,7 @@ class LMDB_Viewer(QtWidgets.QWidget):
         self.write_thread.progress_int.connect(self.app_ui.fun_progressBar.setValue)
         self.write_thread.finished.connect(self.update_view_data)
         self.write_thread.start()
+
 
     def update_view_data(self):
         start_index = (self.current_page - 1) * self.page_size
@@ -313,6 +381,7 @@ class LMDB_Viewer(QtWidgets.QWidget):
     def Next_Page(self):
         self.current_page += 1
         self.load_view_data()
+
 
     def Previous_Page(self):
         if self.current_page > 1:
@@ -356,6 +425,52 @@ class LMDB_Viewer(QtWidgets.QWidget):
             self.UpdateDisplay()
 
     ###############################资源视图#######################################
+    def draw_image_annotations(self, image, bboxes=None, keypoints=None, segmentation=None):
+        """在图片上绘制标注"""
+        from imgaug.augmentables import Keypoint, KeypointsOnImage
+        from imgaug.augmentables.bbs import BoundingBox, BoundingBoxesOnImage
+        from imgaug.augmentables.segmaps import SegmentationMapsOnImage
+        colors = SegmentationMapsOnImage.DEFAULT_SEGMENT_COLORS
+
+        if bboxes is not None:
+            # 绘制边界框
+            bbs_list = []
+            color_list=[]
+            for bbox in bboxes:
+                if len(bbox)==5:
+                    bbs_list.append(BoundingBox(x1=bbox[0], y1=bbox[1], x2=bbox[2], y2=bbox[3],label=bbox[4]))
+                    color_list.append(colors[bbox[4]%len(colors)])
+                else:
+                    bbs_list.append(BoundingBox(x1=bbox[0], y1=bbox[1], x2=bbox[2], y2=bbox[3]))
+            bbs = BoundingBoxesOnImage(bbs_list, shape=image.shape)
+            for bb, color in zip(bbs.bounding_boxes, color_list):
+                image = bb.draw_on_image(image, color=color,alpha=0.8)
+
+
+        if keypoints is not None:
+            # 绘制关键点
+            kps_list =[]
+            color_list=[]
+            for kp in keypoints:
+                if len(kp)==3:
+                    kps_list.append(Keypoint(x=kp[0], y=kp[1]))
+                    color_list.append(colors[kp[3]%len(colors)])
+                else:
+                    kps_list.append(Keypoint(x=kp[0], y=kp[1]))
+                    color_list.append((0,255,0))
+
+            kps = KeypointsOnImage(kps_list, shape=image.shape)
+            for kk, color in zip(kps.keypoints, color_list):
+                image = kk.draw_on_image(image, color=color)
+
+        if segmentation is not None:
+            # 绘制分割掩码（半透明叠加）
+            H,W = image.shape[:2]
+            segmap = segmentation.reshape(H,W)
+            segmap = SegmentationMapsOnImage(segmap, shape=image.shape)
+            image = segmap.draw_on_image(image,alpha=0.3)[0]
+
+        return image
 
 
     def _labels_flag(self, mesh_vd, labels,is_points=True):
@@ -406,7 +521,7 @@ class LMDB_Viewer(QtWidgets.QWidget):
                 fss.append(mesh)
                 self.vp.show(fss, axes=3)
                 self.current_mesh = mesh
-            else:
+            elif self.data_config["data_type"] == "点云(Point Cloud)":
                 points = np.array(data[self.data_config["vertex_key"]][...,:3])
                 pc = Points(points)
                 fss = []
@@ -418,7 +533,43 @@ class LMDB_Viewer(QtWidgets.QWidget):
                 fss.append(pc)
                 self.vp.show(fss, axes=3)
                 self.current_mesh = pc
-            
+
+
+            elif self.data_config["data_type"] == "图片(Image)":
+                image = data[self.data_config["image_key"]]
+                if image.dtype != np.uint8:
+                    if image.max() <= 1.0:
+                        image = (image * 255).astype(np.uint8)
+                    else:
+                        image = image.astype(np.uint8)
+                # 处理多通道图片
+                if len(image.shape) == 3 and image.shape[0] in [1, 3]:  # CHW格式
+                    image = image.transpose(1, 2, 0)
+                if len(image.shape) == 3 and image.shape[2] == 1:  # 单通道转RGB
+                    image = np.repeat(image, 3, axis=2)
+                if len(image.shape) == 2:  # 灰度图转RGB
+                    image = np.stack([image] * 3, axis=2)
+
+
+                # 绘制标注
+                bboxes = None
+                keypoints = None
+                segmentation = None
+                if self.data_config.get("bbox_key") and self.data_config["bbox_key"] in data:
+                    bboxes = data[self.data_config["bbox_key"]]
+                if self.data_config.get("keypoints_key") and self.data_config["keypoints_key"] in data:
+                    keypoints = data[self.data_config["keypoints_key"]]
+                if self.data_config.get("segmentation_key") and self.data_config["segmentation_key"] in data:
+                    segmentation = data[self.data_config["segmentation_key"]]
+                annotated_image = self.draw_image_annotations(image, bboxes, keypoints, segmentation)
+                # 创建vedo图片对象并显示
+                vedo_image = vedo.Image(annotated_image)
+                self.current_mesh = vedo_image
+                self.vp.show(vedo_image)
+
+
+
+
         except KeyError as e:
             QMessageBox.critical(self, "键名错误", f"未找到配置的键名: {str(e)}")
         except Exception as e:
@@ -439,6 +590,9 @@ class LMDB_Viewer(QtWidgets.QWidget):
         self.app_ui.NowNumber.display(str(self.count))
         self.app_ui.MaxNumber.display(str(self.max_count))
         self.vp.render()
+        # 在更新显示后发射信号
+        self.countChanged.emit(self.count)
+
 
 
     def save_config(self):
@@ -483,7 +637,11 @@ class LMDB_Viewer(QtWidgets.QWidget):
                     self.config_parser.set('DATA_CONFIG', 'vertex_label_key', self.data_config["vertex_label_key"] or "")
                     self.config_parser.set('DATA_CONFIG', 'face_key', self.data_config["face_key"] or "")
                     self.config_parser.set('DATA_CONFIG', 'face_label_key', self.data_config["face_label_key"] or "")
-                    self.config_parser.set('DATA_CONFIG', 'name_key', self.data_config["name_key"])
+                    self.config_parser.set('DATA_CONFIG', 'name_key', self.data_config["name_key"] or "")
+                    self.config_parser.set('DATA_CONFIG', 'image_key', self.data_config["image_key"] or "")
+                    self.config_parser.set('DATA_CONFIG', 'bbox_key', self.data_config["bbox_key"] or "")
+                    self.config_parser.set('DATA_CONFIG', 'keypoints_key', self.data_config["keypoints_key"] or "")
+                    self.config_parser.set('DATA_CONFIG', 'segmentation_key', self.data_config["segmentation_key"] or "")
                     self.save_config()
                     
                     # 清除旧的索引映射
@@ -511,7 +669,18 @@ def main():
     app = QtWidgets.QApplication(sys.argv)
     
     app.setStyleSheet(qdarkstyle.load_stylesheet(qt_api='pyqt5', palette=qdarkstyle.DarkPalette()))
-    window = LMDB_Viewer()
+    # 选择启动模式
+    choice = QMessageBox.question(None, "启动模式","是否启用单LMDB查看器？\n\n是 - 单查看器模式\n否 - 双查看器模式",QMessageBox.Yes | QMessageBox.No | QMessageBox.Cancel)
+    if choice == QMessageBox.No:
+        # 双查看器模式
+        from DualApp import DualLMDBViewer
+        window = DualLMDBViewer()
+    elif choice == QMessageBox.Yes:
+        # 单查看器模式
+        window = LMDB_Viewer()
+    else:
+        # 取消
+        return
     window.show()
     app.aboutToQuit.connect(window.onClose)
     app.exec_()

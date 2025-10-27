@@ -47,7 +47,7 @@ class TestLMDBWriter:
     def test_writer_basic(self):
         writer = Writer(WRITE_FILE, map_size_limit=1024*1024*10)
         data = {0: {"arr": np.arange(10), "label": 1}}
-        writer.put_samples(data)
+        writer.put_sample(data)
         writer.close()
         assert os.path.exists(WRITE_FILE)
         # 读回校验

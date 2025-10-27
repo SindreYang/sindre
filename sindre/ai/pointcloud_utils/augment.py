@@ -279,7 +279,7 @@ class RandomDropout_np(object):
 
 
 class Normalize_np:
-    def __init__(self,method="std",v_range=[0,1]):
+    def __init__(self,method="ball",v_range=[0,1]):
         self.method = method
         self.v_range=v_range
         if len(self.v_range) != 2 or not (self.v_range[0] < self.v_range[1]):
@@ -288,12 +288,14 @@ class Normalize_np:
 
     def __call__(self,points):
         vertices =points[:,0:3]
-        if self.method =="std":
+        if self.method =="ball":
+            # 单位球归一化
             self.centroid = np.mean(vertices, axis=0)
             vertices = vertices -  self.centroid
             self.m = np.max(np.sqrt(np.sum(vertices**2, axis=1)))
             vertices = vertices /  self.m
         else:
+            # 矩形归一化
             self.vmax = vertices.max(0, keepdims=True)
             self.vmin = vertices.min(0, keepdims=True)
             vertices = (vertices - self.vmin) / (self.vmax - self.vmin).max()
@@ -304,7 +306,7 @@ class Normalize_np:
         return points
     
     def get_info(self):
-        if self.method =="std":
+        if self.method =="ball":
             return self.centroid,self.m
         else:
             return self.vmax,self.vmin
@@ -588,12 +590,12 @@ class RandomDropout:
 class Normalize:
     """对点云进行归一化处理。"""
 
-    def __init__(self, method="std", v_range=[0, 1]):
+    def __init__(self, method="ball", v_range=[0, 1]):
         """
         初始化归一化处理器。
 
         Args:
-            method (str, optional): 归一化方法，可选"std"（标准化）或其他（最大最小归一化）.
+            method (str, optional): 归一化方法，可选"ball"（标准化）或其他（最大最小归一化）.
                                     Defaults to "std".
             v_range (list, optional): 当使用最大最小归一化时的目标范围. Defaults to [0, 1].
         """
@@ -611,7 +613,7 @@ class Normalize:
             torch.Tensor: 归一化后的点云数据
         """
         vertices = points[:, 0:3]
-        if self.method == "std":
+        if self.method == "ball":
             self.centroid = torch.mean(vertices, dim=0)
             vertices -= self.centroid
             self.m = torch.max(torch.norm(vertices, dim=1))
@@ -625,7 +627,7 @@ class Normalize:
         return points
     
     def get_info(self):
-        if self.method =="std":
+        if self.method =="ball":
             return self.centroid,self.m
         else:
             return self.vmax,self.vmin

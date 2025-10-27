@@ -15,275 +15,38 @@ except ImportError:
         "instructions."
     )
 
-__all__ = ["Reader","ReaderList","ReaderSSDList","ReaderSSD", "Writer", "SplitLmdb", "MergeLmdb", "fix_lmdb_windows_size","parallel_write"]
+__all__ = ["Reader","ReaderList","ReaderSSDList","ReaderSSD", "Writer", "split_lmdb", "merge_lmdb","get_data_size", "fix_lmdb_windows_size","parallel_write"]
 
 
-class ReaderList:
-    """组合多个LMDB数据库进行统一读取的类，提供序列协议的接口
-    
-    该类用于将多个LMDB数据库合并为一个逻辑数据集，支持通过索引访问和获取长度。
-    内部维护数据库索引映射表和真实索引映射表，实现跨数据库的透明访问。
-    
-    Attributes:
-        db_list (List[Reader]): 存储打开的LMDB数据库实例列表
-        db_mapping (List[int]): 索引到数据库索引的映射表，每个元素表示对应索引数据所在的数据库下标
-        real_idx_mapping (List[int]): 索引到数据库内真实索引的映射表，每个元素表示数据在对应数据库中的原始索引
-    """
 
-    def __init__(self, db_path_list: list,multiprocessing:bool=True):
-        """初始化组合数据库读取器
-        
-        Args:
-            db_path_list (List[str]): LMDB数据库文件路径列表，按顺序加载每个数据库
-        """
-        self.db_list = []
-        self.db_mapping = []  # 数据库索引映射表
-        self.real_idx_mapping = []  # 真实索引映射表
-        
-        for db_idx, db_path in enumerate(db_path_list):
-            db = Reader(db_path, multiprocessing)
-            db_length = len(db)
-            self.db_list.append(db)
-            # 扩展映射表
-            self.db_mapping.extend([db_idx] * db_length)
-            self.real_idx_mapping.extend(range(db_length))
-            print(f"load: {db_path} --> len: {db_length}")
-
-    def __len__(self) -> int:
-        """获取组合数据集的总条目数
-        
-        Returns:
-            int: 所有LMDB数据库的条目数之和
-        """
-        return len(self.real_idx_mapping)
-
-    def __getitem__(self, idx: int):
-        """通过索引获取数据条目
-        
-        Args:
-            idx (int): 数据条目在组合数据集中的逻辑索引
-        
-        Returns:
-            object: 对应位置的数据条目，具体类型取决于LMDB存储的数据格式
-        
-        Raises:
-            IndexError: 当索引超出组合数据集范围时抛出
-        """
-        db_idx = self.db_mapping[idx]
-        real_idx = self.real_idx_mapping[idx]
-        return self.db_list[db_idx][real_idx]
-
-    def close(self):
-        """关闭所有打开的LMDB数据库连接
-        
-        该方法应在使用完毕后显式调用，确保资源正确释放
-        """
-        for db in self.db_list:
-            db.close()
-
-    def __del__(self):
-        """析构函数，自动调用close方法释放资源
-        
-        注意：不保证析构函数会被及时调用，建议显式调用close()
-        """
-        self.close()
-        
-class ReaderSSD:
-    """针对SSD优化的LMDB数据库读取器，支持高效随机访问
-    
-    该类针对SSD存储特性优化，每次读取时动态打开数据库连接，
-    适合需要高并发随机访问的场景，可充分利用SSD的IOPS性能。
-    
-    Attributes:
-        db_len (int): 数据库条目总数
-        db_path (str): LMDB数据库文件路径
-        multiprocessing (bool): 是否启用多进程模式
-    """
-    
-    def __init__(self, db_path: str, multiprocessing: bool = False):
-        """初始化SSD优化的LMDB读取器
-        
-        Args:
-            db_path (str): LMDB数据库文件路径
-            multiprocessing (bool, optional): 是否启用多进程支持。
-                启用后将允许在多个进程中同时打开数据库连接。默认为False。
-        """
-        self.db_len = 0
-        self.db_path = db_path
-        self.multiprocessing = multiprocessing
-        with Reader(self.db_path, multiprocessing=self.multiprocessing) as db:
-            self.db_len = len(db)  # 修正: 使用传入的db变量
-    
-    def __len__(self) -> int:
-        """获取数据库的总条目数
-        
-        Returns:
-            int: 数据库中的条目总数
-        """
-        return self.db_len
-    
-    def __getitem__(self, idx: int) -> object:
-        """通过索引获取单个数据条目
-        
-        每次调用时动态打开数据库连接，读取完成后立即关闭。
-        适合随机访问模式，特别是在SSD存储上。
-        
-        Args:
-            idx (int): 数据条目索引
-        
-        Returns:
-            object: 索引对应的数据条目
-        
-        Raises:
-            IndexError: 当索引超出有效范围时抛出
-        """
-        with Reader(self.db_path, multiprocessing=self.multiprocessing) as db:
-            return db[idx]
-    
-    def get_batch(self, indices: list) :
-        """批量获取多个数据条目
-        
-        优化的批量读取接口，在一个数据库连接中读取多个条目，
-        减少频繁打开/关闭连接的开销。
-        
-        Args:
-            indices (list[int]): 数据条目索引列表
-        
-        Returns:
-            list[object]: 索引对应的数据条目列表
-        
-        Raises:
-            IndexError: 当任何索引超出有效范围时抛出
-        """
-        with Reader(self.db_path, multiprocessing=self.multiprocessing) as db:
-            return [db[idx] for idx in indices]
-
-
-class ReaderSSDList:
-    """组合多个SSD优化的LMDB数据库进行统一读取的类，提供序列协议的接口
-    
-    该类用于将多个SSD优化的LMDB数据库合并为一个逻辑数据集，支持通过索引访问和获取长度。
-    内部维护数据库索引映射表和真实索引映射表，实现跨数据库的透明访问，同时保持SSD优化特性。
-    
-    Attributes:
-        db_path_list (List[str]): LMDB数据库文件路径列表
-        db_mapping (List[int]): 索引到数据库索引的映射表，每个元素表示对应索引数据所在的数据库下标
-        real_idx_mapping (List[int]): 索引到数据库内真实索引的映射表，每个元素表示数据在对应数据库中的原始索引
-        multiprocessing (bool): 是否启用多进程模式
-    """
-
-    def __init__(self, db_path_list: list, multiprocessing: bool = False):
-        """初始化组合SSD优化数据库读取器
-        
-        Args:
-            db_path_list (List[str]): LMDB数据库文件路径列表，按顺序加载每个数据库
-            multiprocessing (bool, optional): 是否启用多进程支持。默认为False。
-        """
-        self.db_path_list = db_path_list
-        self.db_mapping = []  # 数据库索引映射表
-        self.real_idx_mapping = []  # 真实索引映射表
-        self.multiprocessing = multiprocessing
-        
-        for db_idx, db_path in enumerate(db_path_list):
-            # 使用ReaderSSD获取数据库长度而不保持连接
-            db = ReaderSSD(db_path, multiprocessing)
-            db_length = len(db)
-            # 扩展映射表
-            self.db_mapping.extend([db_idx] * db_length)
-            self.real_idx_mapping.extend(range(db_length))
-            print(f"load: {db_path} --> len: {db_length}")
-
-    def __len__(self) -> int:
-        """获取组合数据集的总条目数
-        
-        Returns:
-            int: 所有LMDB数据库的条目数之和
-        """
-        return len(self.real_idx_mapping)
-
-    def __getitem__(self, idx: int):
-        """通过索引获取数据条目
-        
-        Args:
-            idx (int): 数据条目在组合数据集中的逻辑索引
-        
-        Returns:
-            object: 对应位置的数据条目，具体类型取决于LMDB存储的数据格式
-        
-        Raises:
-            IndexError: 当索引超出组合数据集范围时抛出
-        """
-        if idx < 0 or idx >= len(self):
-            raise IndexError(f"Index {idx} out of range")
-        db_idx = self.db_mapping[idx]
-        real_idx = self.real_idx_mapping[idx]
-        db_path = self.db_path_list[db_idx]
-        # 使用ReaderSSD动态打开数据库并获取条目
-        db = ReaderSSD(db_path, self.multiprocessing)
-        return db[real_idx]
-
-    def get_batch(self, indices: list):
-        """批量获取多个数据条目
-        
-        对同一数据库中的索引进行分组，然后使用对应数据库的get_batch方法批量读取，
-        减少频繁打开/关闭连接的开销。
-        
-        Args:
-            indices (list[int]): 数据条目索引列表
-        
-        Returns:
-            list[object]: 索引对应的数据条目列表
-        
-        Raises:
-            IndexError: 当任何索引超出有效范围时抛出
-        """
-        # 检查所有索引是否有效
-        for idx in indices:
-            if idx < 0 or idx >= len(self):
-                raise IndexError(f"Index {idx} out of range")
-        
-        # 按数据库分组索引
-        db_groups = {}
-        for idx in indices:
-            db_idx = self.db_mapping[idx]
-            real_idx = self.real_idx_mapping[idx]
-            if db_idx not in db_groups:
-                db_groups[db_idx] = []
-            db_groups[db_idx].append(real_idx)
-        
-        # 对每个数据库批量读取
-        results = [None] * len(indices)
-        for db_idx, real_indices in db_groups.items():
-            db_path = self.db_path_list[db_idx]
-            db = ReaderSSD(db_path, self.multiprocessing)
-            # 获取该数据库中所有索引对应的数据
-            batch_results = db.get_batch(real_indices)
-            # 将结果放入正确的位置
-            for i, real_idx in enumerate(real_indices):
-                # 找到原始索引在indices中的位置
-                original_idx_pos = indices.index(self._find_original_index(db_idx, real_idx))
-                results[original_idx_pos] = batch_results[i]
-        
-        return results
-    
-    def _find_original_index(self, db_idx, real_idx):
-        """根据数据库索引和真实索引找到原始索引"""
-        # 找到第一个属于该数据库的索引位置
-        first_db_idx = self.db_mapping.index(db_idx)
-        # 计算该数据库内的偏移量
-        return first_db_idx + real_idx    
-
-    
-
-        
-    
 
 class Reader:
     """
     用于读取包含张量(`numpy.ndarray`)数据集的对象。
     这些张量是通过使用MessagePack从Lightning Memory-Mapped Database (LMDB)中读取的。
 
+    支持功能：
+    - 读取使用新键管理系统存储的数据
+    - 兼容旧版本数据库格式
+    - 支持多进程读取
+    - 支持任意类型元数据读取
+    - 支持读取已删除的样本
 
+    Note:
+        with Reader(dirpath='dataset.lmdb') as reader:
+            # 基本读取操作
+            sample = reader[5]                    # 读取第5个样本
+            sample = reader.get_sample(5)         # 读取第5个样本
+            samples = reader.get_samples([1,3,5]) # 读取多个样本
+
+            # 获取信息
+            mapping = reader.get_mapping()        # 获取键映射关系
+            data_keys = reader.get_data_keys(0)   # 获取数据键名
+            meta_keys = reader.get_meta_keys()    # 获取元数据键名
+
+            # 特殊功能
+            deleted_sample = reader.get_delete_sample(10)  # 读取已删除的样本
+            meta_value = reader.get_meta('key')   # 读取元数据
     """
 
     def __init__(self, dirpath: str,multiprocessing:bool=False):
@@ -298,7 +61,14 @@ class Reader:
 
         self.dirpath = dirpath
         self.multiprocessing=multiprocessing
-        
+
+
+        # 键管理系统
+        self.physical_keys = []      # 所有物理存在的键
+        self.read_keys = []          # 当前有效的读取键
+        self.deleted_keys = set()    # 已删除的键
+        self.nb_samples = 0          # 数据库大小
+        self.internal_keys=[b"__physical_keys__", b"__read_keys__", b"__deleted_keys__",encode_str("nb_samples")] #内部保留键
 
         # 以只读模式打开LMDB环境
         subdir_bool =False if  bool(os.path.splitext(dirpath)[1])  else True
@@ -321,97 +91,115 @@ class Reader:
         self.data_db = self._lmdb_env.open_db(DATA_DB)
         self.meta_db = self._lmdb_env.open_db(META_DB)
 
-        # 读取元数据,BODGE:修复读取空数据库报错
-        try:
-            self.nb_samples = int(self.get_meta_str(NB_SAMPLES))
-        except ValueError:
-            self.nb_samples = 0
+        # 加载键管理系统
+        self._load_keys()
 
-    def get_meta_key_info(self) -> set:
-        """
-
-        Returns:
-            获取元数据库所有键
-
-        """
-        key_set = set()
-        # 创建一个读事务和游标
+    def _load_keys(self):
+        """加载键管理信息，兼容旧版本数据库"""
         with self._lmdb_env.begin(db=self.meta_db) as txn:
-            cursor = txn.cursor()
-            # 遍历游标并获取键值对
-            for key, value in cursor:
-                key_set.add(decode_str(key))
-        return key_set
+            # 尝试加载新版本的键管理信息
+            physical_data = txn.get(b"__physical_keys__")
+            read_data = txn.get(b"__read_keys__")
+            deleted_data = txn.get(b"__deleted_keys__")
+            if physical_data and read_data:
+                # 新版本数据库：使用键管理系统
+                self.physical_keys = msgpack.unpackb(physical_data)
+                self.read_keys = msgpack.unpackb(read_data)
+                if deleted_data:
+                    self.deleted_keys = set(msgpack.unpackb(deleted_data))
+                else:
+                    self.deleted_keys = set()
 
-    def get_data_key_info(self) -> set:
+                # nb_samples 与 read_keys 保持一致
+                self.nb_samples = len(self.read_keys)
+            else:
+                # 旧版本数据库：从现有数据重建键管理系统
+                print("\033[93m检测到旧版本数据库，使用兼容模式...\033[0m")
+                # 从meta_db获取样本数
+                nb_samples_data = txn.get(encode_str("nb_samples"))
+                if nb_samples_data:
+                    try:
+                        self.nb_samples = int(decode_str(nb_samples_data))
+                    except:
+                        # 如果不是字符串，尝试用msgpack解码
+                        self.nb_samples = msgpack.unpackb(nb_samples_data)
+                else:
+                    # 如果没有样本数信息，从数据中统计
+                    with self._lmdb_env.begin(db=self.data_db) as data_txn:
+                        cursor = data_txn.cursor()
+                        self.nb_samples = sum(1 for _ in cursor)
+
+                # 重建键列表
+                self.physical_keys = list(range(self.nb_samples))
+                self.read_keys = list(range(self.nb_samples))
+                self.deleted_keys = set()
+
+    def get_meta(self, key) :
         """
+       从元数据库读取任意类型的数据
 
-        Returns:
-            获取元数据库所有键
+       Args:
+           key: 键名
 
-        """
-        key_set = set()
-        # 创建一个读事务和游标
-        with self._lmdb_env.begin(db=self.data_db) as txn:
-            cursor = txn.cursor()
-            # 遍历游标并获取键值对
-            for key, value in cursor:
-                dict_v = msgpack.unpackb(value, raw=False, use_list=True)
-                for k in dict_v.keys():
-                    key_set.add(k)
-        return key_set
-
-    def get_meta_str(self, key) -> str:
-        """
-        将输入键对应的值作为字符串返回。
-        该值从`meta_db`中检索。
-        Args:
-            key: 字符串或字节字符串
-
-        Returns:
-            str,输入键对应的值
-
-        """
-
+       Returns:
+           存储的数据，如果不存在则返回None
+       """
         if isinstance(key, str):
             _key = encode_str(key)
         else:
             _key = key
 
         with self._lmdb_env.begin(db=self.meta_db) as txn:
-            _k = txn.get(_key)
-            if isinstance(_k, bytes):
-                return decode_str(_k)
-            else:
-                return str(_k)
-
-    def get_data_keys(self, i: int = 0) -> list:
+            data = txn.get(_key)
+            if data is None:
+                return None
+            # 特殊处理键管理信息
+            if _key in self.internal_keys:
+                return msgpack.unpackb(data)
+            try:
+                return msgpack.unpackb(data)
+            except:
+                return data
+    def get_meta_keys(self) -> set:
         """
-        返回第i个样本在`data_db`中的所有键的列表。
-        如果所有样本包含相同的键,则只需要检查第一个样本,因此默认值为`i=0`
-
-        Args:
-            i: 索引
 
         Returns:
-            list类型对象
+            获取元数据库所有键
 
         """
+        key_set = set()
+        # 创建一个读事务和游标
+        with self._lmdb_env.begin(db=self.meta_db) as txn:
+            cursor = txn.cursor()
+            # 遍历游标并获取键值对
+            for key, value in cursor:
+                # 特殊处理键管理信息
+                if key in self.internal_keys:
+                    continue
+                key_set.add(decode_str(key))
+        return key_set
 
+
+
+    def get_data_keys(self, i) -> list:
+        """
+        返回第i个样本在`data_db`中的所有键的列表
+        Args:
+            i: 索引，默认检查第一个样本
+
+        Returns:
+            list: 数据键名列表
+        """
         return list(self[i].keys())
 
-    def get_data_value(self, i: int, key: str):
+    def get_data_value(self, i: int, key):
         """
         返回第i个样本对应于输入键的值。
-
         该值从`data_db`中检索。
-
         因为每个样本都存储在一个msgpack中,所以在返回值之前,我们需要先读取整个msgpack。
-
         Args:
             i: 索引
             key: 该索引的键
-
         Returns:
             对应的值
 
@@ -421,17 +209,16 @@ class Reader:
         except KeyError:
             raise KeyError("键不存在:{}".format(key))
 
+
+
     def get_data_specification(self, i: int) -> dict:
         """
         返回第i个样本的所有数据对象的规范。
         规范包括形状和数据类型。这假设每个数据对象都是`numpy.ndarray`。
-
         Args:
             i: 索引
-
         Returns:
-            数据字典
-
+            dict: 数据规范字典
         """
         spec = {}
         sample = self[i]
@@ -442,26 +229,40 @@ class Reader:
                 spec[key]["shape"] = sample[key].shape
             except KeyError:
                 raise KeyError("键不存在:{}".format(key))
-
         return spec
 
-    def get_sample(self, i: int) -> dict:
+    def get_mapping(self, phy2log: bool = True):
         """
-        从`data_db`返回第i个样本。
+        获取逻辑索引与物理键的映射关系
+
         Args:
-            i:  索引
+            phy2log: True=物理键到逻辑索引的映射关系，False=逻辑索引到物理键的映射关系
 
         Returns:
-            字典类型对象
-
+            dict: 映射关系 {物理键: 逻辑索引} or {逻辑索引: 物理键}
+        """
+        if phy2log:
+            return {physical_key: logical_idx for logical_idx, physical_key in enumerate(self.read_keys)}
+        else:
+            return {logical_idx: physical_key for logical_idx, physical_key in enumerate(self.read_keys)}
+    def get_sample(self, i: int) -> dict:
+        """
+        从`data_db`返回第i个样本（逻辑索引）
+        Args:
+            i: 逻辑索引
+        Returns:
+            dict: 样本数据字典
+        Raises:
+            IndexError: 如果索引超出范围
         """
 
         if 0 > i or self.nb_samples <= i:
             raise IndexError("所选样本编号超出范围: %d" % i)
 
-        # 将样本编号转换为带有尾随零的字符串
-        key = encode_str("{:010}".format(i))
-
+        # 获取对应的物理键
+        physical_key = self.read_keys[i]
+        # 将物理键转换为带有尾随零的字符串
+        key = encode_str("{:010}".format(physical_key))
         obj = {}
         with self._lmdb_env.begin(db=self.data_db) as txn:
             # 从LMDB读取msgpack,并解码其中的每个值
@@ -475,41 +276,32 @@ class Reader:
                 obj[_k] = msgpack.unpackb(
                     _obj[_k], raw=False, use_list=False, object_hook=decode_data
                 )
-
         return obj
 
-    def get_samples(self, i: int, size: int) -> list:
+    def get_samples(self, keys: list) -> list:
         """
-        返回从`i`到`i + size`的所有连续样本。
-
-        Notes:
-         假设:
-            * 从`i`到`i + size`的每个样本具有相同的键集。
-            * 样本中的所有数据对象都是`numpy.ndarray`类型。
-            * 与同一个键关联的值具有相同的张量形状和数据类型。
-
-
+        list所有连续样本
         Args:
-            i: int, 开始索引
-            size: int, 索引长度
+            keys: 需要返回的索引对应的数据
 
         Returns:
-            所有样本组成的list
+            list: 所有样本组成的列表
 
-
+        Raises:
+            IndexError: 如果索引范围超出边界
         """
-        if 0 > i or self.nb_samples <= i + size - 1:
-            raise IndexError(
-                "所选样本编号超出范围: %d 到 %d(大小:%d)" % (i, i + size, size)
-            )
-
-        # 基于第i个样本做出关于数据的假设
         samples_sum = []
         with self._lmdb_env.begin(db=self.data_db) as txn:
-            for _i in range(i, i + size):
+            for _i in keys:
                 samples = {}
+                # 获取对应的物理键
+                try:
+                    physical_key = self.read_keys[_i]
+                except KeyError:
+                    print(f"检测到数据库不存在键{_i},跳过...")
+                    continue
                 # 将样本编号转换为带有尾随零的字符串
-                key = encode_str("{:010}".format(_i))
+                key =  encode_str("{:010}".format(physical_key))
                 # 从LMDB读取msgpack,解码其中的每个值,并将其添加到检索到的样本集合中
                 obj = msgpack.unpackb(txn.get(key), raw=False, use_list=True)
                 for k in obj:
@@ -525,36 +317,49 @@ class Reader:
 
         return samples_sum
 
-    def __getitem__(self, key) -> list:
+
+    def get_delete_sample(self, physical_key: int) -> dict:
         """
-        使用`get_sample()`从`data_db`返回样本。
+        读取已删除的样本数据（通过物理键）
 
         Args:
-            key: int/slice类型的值
+            physical_key: 物理键值
 
         Returns:
-            对应索引对象
+            dict: 已删除的样本数据
 
+        Raises:
+            ValueError: 如果物理键不存在或未被标记为删除
         """
-        if isinstance(key, (int, np.integer)):
-            _key = int(key)
-            if 0 > _key:
-                _key += len(self)
-            if 0 > _key or len(self) <= _key:
-                raise IndexError("所选样本超出范围:`{}`".format(key))
-            return self.get_sample(_key)
-        elif isinstance(key, slice):
-            return [self[i] for i in range(*key.indices(len(self)))]
-        else:
-            raise TypeError("无效的参数类型:`{}`".format(type(key)))
+        if physical_key not in self.deleted_keys:
+            raise ValueError(f"物理键 {physical_key} 未被标记删除或不存在")
+
+        # 检查物理键是否在有效范围内
+        if physical_key < 0 or physical_key >= len(self.physical_keys):
+            raise ValueError(f"物理键 {physical_key} 超出有效范围")
+
+        # 将物理键转换为带有尾随零的字符串
+        key = encode_str("{:010}".format(physical_key))
+        obj = {}
+        with self._lmdb_env.begin(db=self.data_db) as txn:
+            # 从LMDB读取msgpack,并解码其中的每个值
+            _obj = msgpack.unpackb(txn.get(key), raw=False, use_list=True)
+            for k in _obj:
+                # 如果键存储为字节对象,则必须对其进行解码
+                if isinstance(k, bytes):
+                    _k = decode_str(k)
+                else:
+                    _k = str(k)
+                obj[_k] = msgpack.unpackb(
+                    _obj[_k], raw=False, use_list=False, object_hook=decode_data
+                )
+        return obj
+
+    def __getitem__(self, key:int) -> dict:
+
+        return self.get_sample(key)
 
     def __len__(self) -> int:
-        """
-
-        Returns:
-            返回数据集中的样本数量。
-
-        """
         return self.nb_samples
 
     def __enter__(self):
@@ -564,54 +369,63 @@ class Reader:
         self.close()
 
     def __repr__(self):
-        spec = self.get_data_specification(0)
-        # 使用ANSI转义序列将输出文本设置为黄色
+        if len(self) == 0:
+            return "\033[93m数据库为空\033[0m"
+
         out = "\033[93m"
         out += "类名:\t\t{}\n".format(self.__class__.__name__)
         out += "位置:\t\t'{}'\n".format(os.path.abspath(self.dirpath))
         out += "样本数量:\t{}\n".format(len(self))
-        if len(self)<100:
-            out += f"data_db所有键:\n\t{self.get_data_key_info()}\n"
-            out += f"meta_db所有键:\n\t{self.get_meta_key_info()}\n"
+        out += "物理存储大小:\t{}\n".format(len(self.physical_keys))
+        out += "已删除样本:\t{}\n".format(len(self.deleted_keys))
+        out += f"第一个数据所有键:\n\t{self.get_data_keys(0)}\n"
+        out += f"元数据键:\n\t{self.get_meta_keys()}\n"
+
+
+
         out += "数据键(第0个样本):"
-        for key in self.get_data_keys():
-            out += "\n\t'{}' <- 数据类型: {}, 形状: {}".format(
-                key, spec[key]["dtype"], spec[key]["shape"]
-            )
-        out += "\n\t提示:如果需要查看更多键类型可以使用-->get_data_specification(i=1)查看. "
-        out += f"\n\t如果数据库文件在固态硬盘,这样可以避免内存占用,请使用with Reader(db_path) as db: data=db[i] "
+        spec = self.get_data_specification(0)
+        for key in self.get_data_keys(0):
+            out += f"\n\t'{key}' <- 数据类型: {spec[key]["dtype"]}, 形状: {spec[key]["shape"]}"
+
+
+        out += "\n提示:\t使用 get_mapping() 查看逻辑索引与物理键的映射关系; "
+        out += "\n\t使用 get_delete_sample(physical_key) 读取已删除的样本;"
+        out += "\n\t如果数据库文件在固态硬盘,这样可以避免内存占用,请使用 with Reader(db_path) as db: data=db[i];"
         out += "\033[0m\n"
         return out
 
     def close(self):
-        """
-
-        Returns:
-            关闭环境。使打开的任何迭代器、游标和事务无效。
-
-        """
         self._lmdb_env.close()
 
 
 class Writer:
     """
-    用于将数据集的对象 ('numpy.ndarray') 写入闪电内存映射数据库 (LMDB),并带有MessagePack压缩。
-    Note:
-    
-    
-        db =  sindre.lmdb.Writer(dirpath=r'datasets/lmdb', map_size_limit=1024*100,ram_gb_limit=3.0)
-        db.set_meta_str("描述信息", "xxxx")
-        
-        data = {xx:np.array(xxx)} # 尽量占用ram_gb_limit内存
-        
-        gb_required = db.check_sample_size(data) # 计算数据占用内存(GB)
 
-        db.put_samples(data) # 一次性写入,注意gb_required<ram_gb_limit限制
-            
-       
+    用于将数据集的对象 ('numpy.ndarray') 写入闪电内存映射数据库 (LMDB),并带有MessagePack压缩。
+
+    功能特点：
+    - 支持数据的保存、修改、删除、插入操作
+    - 使用双键管理系统：物理键和逻辑键分离
+    - 标记删除而非物理删除，支持数据恢复
+    - 兼容旧版本数据库格式
+    - 支持多进程模式
+
+    Note:
+        db = Writer(dirpath=r'datasets/lmdb.db', map_size_limit=1024*100)
+        # 元数据操作
+        db.put_meta_("描述信息", "xxxx")
+        db.put_meta_("元信息",{"version”:"1.0.0","list":[1,2]})
+        db.put_meta_("列表",[1,2,3])
+
+        # 基本操作
+        data = {xx:np.array(xxx)}
+        db.put_sample(data)                    # 在末尾添加样本
+        db.insert_sample(5, data)             # 在指定位置插入样本
+        db.change_sample(3, data)              # 修改指定位置的样本
+        db.delete_sample(2)                    # 标记删除指定位置的样本
+        db.restore_sample(10)                  # 恢复已删除的样本
         db.close()
-            
-    
     """
 
     def __init__(self, dirpath: str, map_size_limit: int,multiprocessing:bool=False):
@@ -625,26 +439,25 @@ class Writer:
         """
         self.dirpath = dirpath
         self.map_size_limit = map_size_limit  # Megabytes (MB)
-        #self.ram_gb_limit = ram_gb_limit  # Gigabytes (GB)
-        self.keys = []
-        self.nb_samples = 0
         self.multiprocessing=multiprocessing
+        self.stats=None  # 记录数据库状态
+
+        # 键管理系统---原则上不允许删除数据
+        self.physical_keys = []      # 所有物理存在的键
+        self.read_keys = []          # 当前有效的读取键
+        self.deleted_keys = set()    # 已删除的键
+        self.nb_samples = 0          # 数据库大小
+
 
         # 检测参数
         if self.map_size_limit <= 0:
             raise ValueError(
-                "LMDB map 大小必须为正:{}".format(self.map_size_limit)
+                "LMDB map 大小必须为正数:{}".format(self.map_size_limit)
             )
-        # if self.ram_gb_limit <= 0:
-        #     raise ValueError(
-        #         "每次写入的RAM限制 (GB) 必须为为正:{}".format(self.ram_gb_limit)
-        #     )
 
         # 将 `map_size_limit` 从 B 转换到 MB
         map_size_limit <<= 20
-        
-         # 将 `map_size_limit` 从 B 转换到 GB
-        #map_size_limit <<= 30
+
 
         # 打开LMDB环境，检测用户路径是否带尾缀，带就以文件形式打开。
         subdir_bool =False if  bool(os.path.splitext(dirpath)[1])  else True
@@ -670,180 +483,81 @@ class Writer:
                                         max_dbs=NB_DBS,
                                         subdir=subdir_bool)
         except lmdb.Error as e :
-            raise ValueError(f"创建错误：{e} \t(map_size_limit设置创建 {map_size_limit >> 30} GB 数据库)")
+            raise ValueError(f"创建错误：{e} \t(map_size_limit设置创建 {map_size_limit >> 30} MB 数据库)")
         
         # 打开与环境关联的默认数据库
-        self.data_db = self._lmdb_env.open_db(DATA_DB)
-        self.meta_db = self._lmdb_env.open_db(META_DB)
+        self.data_db = self._lmdb_env.open_db(DATA_DB) # 数据集
+        self.meta_db = self._lmdb_env.open_db(META_DB) # 数据信息
 
-        # 启动检测服务
-        self.check_db_stats()
-
-    def change_db_value(self, key: int, value: dict, safe_model: bool = True):
-        """
-
-         修改键值
-
-        Args:
-            key: 键
-            value:  内容
-            safe_model: 安全模式,如果开启,则修改会提示;
+        # 加载键信息
+        self._load_keys()
 
 
-        """
 
-        num_size = self.nb_samples
-        if key < num_size:
-            if safe_model:
-                _ok = input("\033[93m请确认你的行为,因为这样做,会强制覆盖数据,无法找回!\n"
-                            f"当前数据库大小为<< {num_size} >>,索引从< 0 >>0开始计数,现在准备将修改<< {key} >>的值,同意请输入yes! 请输入:\033[93m")
-                if _ok.strip().lower() != "yes":
-                    print(f"用户选择退出! 您输入的是{_ok.strip().lower()}")
-                    sys.exit(0)
-            self.change_value(key, value)
-        else:
-            raise ValueError(
-                f"当前数据库大小为<< {num_size} >>,将修改<< {key} >>应该小于当前数据库大小,索引从<< 0 >>开始计数! \033[0m\n")
 
-    def change_value(self, num_id: int, samples: dict):
-        """
-
-        通过指定索引,修改内容
-        Args:
-            num_id: 索引
-            samples: 内容
-
-        Returns:
-
-        """
-        # 对于每个样本,构建一个msgpack并将其存储在LMDB中
-        with self._lmdb_env.begin(write=True, db=self.data_db) as txn:
-            # 为每个数据对象构建一个msgpack
-            msg_pkgs = {}
-            for key in samples:
-                # 确保当前样本是`numpy.ndarray`
-                obj = samples[key]
-                if not isinstance(obj, np.ndarray):
-                    obj = np.array(obj)
-                # 创建msgpack
-                msg_pkgs[key] = msgpack.packb(obj, use_bin_type=True, default=encode_data)
-
-                # LMDB键:样本编号作为带有尾随零的字符串
-                key = encode_str("{:010}".format(num_id))
-
-                # 构建最终的msgpack并将其存储在LMDB中
-                pkg = msgpack.packb(msg_pkgs, use_bin_type=True)
-                txn.put(key, pkg)
-
-    def check_db_stats(self):
-        """
-        检查lmdb是继续写,还是新写
-
-        """
-
+    def _load_keys(self):
+        """加载键管理信息，兼容旧版本数据库"""
         with self._lmdb_env.begin(db=self.meta_db) as txn:
-            _k = txn.get(encode_str("nb_samples"))
-            if not _k:
-                self.db_stats = "create_stats"
-                print(
-                    f"\n\033[92m检测到{self.dirpath}数据库\033[93m<数据为空>,\033[92m 启动创建模式,键从<< {self.nb_samples} >>开始 \033[0m\n")
-            else:
-                if isinstance(_k, bytes):
-                    self.nb_samples = int(decode_str(_k))
+            # 尝试加载新版本的键管理信息
+            physical_data = txn.get(b"__physical_keys__")
+            read_data = txn.get(b"__read_keys__")
+            deleted_data = txn.get(b"__deleted_keys__")
+            nb_samples_data = txn.get(encode_str("nb_samples"))
+
+            if physical_data and read_data:
+
+                # 新版本数据库：使用键管理系统
+                self.physical_keys = msgpack.unpackb(physical_data)
+                self.read_keys = msgpack.unpackb(read_data)
+                if deleted_data:
+                    self.deleted_keys = set(msgpack.unpackb(deleted_data))
                 else:
-                    self.nb_samples = int(_k)
-                self.db_stats = "auto_update_stats"
-                if not self.multiprocessing:
-                    print(
-                    f"\n\033[92m检测到{self.dirpath}数据库\033[93m<已有数据存在>,\033[92m启动自动增量更新模式,键从<< {self.nb_samples} >>开始\033[0m\n")
+                    self.deleted_keys = set()
+                # nb_samples 与 read_keys 保持一致
+                self.nb_samples = len(self.read_keys)
+                self.stats = "update_stats"
+                print(f"\n\033[92m检测到{self.dirpath}数据库\033[93m<已有数据存在>,\033[92m数据库大小: {self.nb_samples}, 物理存储大小: {self.physical_size}\033[0m\n")
 
-
-    def check_sample_size(self,samples:dict):
-        """
-        检测sample字典的大小
-
-        Args:
-            samples (_type_): 字典类型数据
-            
-        Return:
-            gb_required : 字典大小(GB) 
-        """
-        # 检查数据类型
-        gb_required = 0
-        for key in samples:
-            # 所有数据对象的类型必须为`numpy.ndarray`
-            if not isinstance(samples[key], np.ndarray):
-                raise ValueError(
-                    "不支持的数据类型:" "`numpy.ndarray` != %s" % type(samples[key])
-                )
-            else:
-                gb_required += np.uint64(samples[key].nbytes)
-
-        # 确保用户指定的假设RAM大小可以容纳要存储的样本数
-        gb_required = float(gb_required / 10 ** 9)
-        
-        return gb_required
-
-
-    def put_samples(self, samples: dict):
-        """
-        将传入内容的键和值放入`data_db` LMDB中。
-
-        Notes:
-            函数假设所有值的第一个轴表示样本数。因此,单个样本必须在`numpy.newaxis`之前。
-
-            作为Python字典:
-
-                put_samples({'key1': value1, 'key2': value2, ...})
-
-        Args:
-            samples: 由字符串和numpy数组组成
-
-        """
-        try:
-            # 对于每个样本,构建一个msgpack并将其存储在LMDB中
-            with self._lmdb_env.begin(write=True, db=self.data_db) as txn:
-                # 为每个数据对象构建一个msgpack
-                msg_pkgs = {}
-                for key in samples:
-                    # 确保当前样本是`numpy.ndarray`
-                    obj = samples[key]
-                    if not isinstance(obj, np.ndarray):
-                        obj = np.array(obj)
+            if not physical_data and nb_samples_data:
+                # 旧版本数据库：从现有数据重建键管理系统
+                print("\033[93m检测到旧版本数据库，正在重建键管理系统...\033[0m")
+                # 从meta_db获取样本数
+                with self._lmdb_env.begin(db=self.meta_db) as txn:
+                    nb_samples_data = txn.get(encode_str("nb_samples"))
+                    if nb_samples_data:
                         try:
-                            # 检查是否存在 NaN 或 Inf
-                            if np.isnan(obj).any() or np.isinf(obj).any() or obj.dtype==np.object_:
-                                raise ValueError("\033[91m 数据中包含 NaN 或 Inf 或 obj,请检查数据.\033[0m\n")
-                        except Exception as e:
-                            # 不支持校验
-                            pass 
-                    # 创建msgpack
-                    msg_pkgs[key] = msgpack.packb(obj, use_bin_type=True, default=encode_data)
+                            self.nb_samples = int(decode_str(nb_samples_data))
+                        except:
+                            # 如果不是字符串，尝试用msgpack解码
+                            self.nb_samples = msgpack.unpackb(nb_samples_data)
+                    else:
+                        # 如果没有样本数信息，从数据中统计
+                        with self._lmdb_env.begin(db=self.data_db) as data_txn:
+                            cursor = data_txn.cursor()
+                            self.nb_samples = sum(1 for _ in cursor)
+                # 重建键列表
+                self.physical_keys = list(range(self.nb_samples))
+                self.read_keys = list(range(self.nb_samples))
+                self.deleted_keys = set()
+                # 保存新的键管理系统
+                self._save_keys()
+                print(f"\033[92m成功重建键管理系统，数据库大小: {self.nb_samples}\033[0m")
+                self.stats = "update_stats"
 
-                    # LMDB键:样本编号作为带有尾随零的字符串
-                    key = encode_str("{:010}".format(self.nb_samples))
+            if not nb_samples_data:
+                self.stats = "create_stats"
+                print(f"\n\033[92m检测到{self.dirpath}数据库\033[93m<数据为空>,\033[92m 启动创建模式\033[0m\n")
 
-                    # 构建最终的msgpack并将其存储在LMDB中
-                    pkg = msgpack.packb(msg_pkgs, use_bin_type=True)
-                    txn.put(key, pkg)
 
-                # 增加全局样本计数器
-                self.nb_samples += 1
-        except lmdb.MapFullError as e:
-            raise AttributeError(
-                "LMDB 的map_size 太小:%s MB, %s" % (self.map_size_limit, e)
-            )
 
-        # 将当前样本数写入`meta_db`
-        self.set_meta_str(NB_SAMPLES, str(self.nb_samples))
 
-    def set_meta_str(self, key, string: str):
+    def put_meta(self, key:str, value):
         """
-        将输入的字符串写入`meta_db`中的输入键。
+        将任意类型的数据写入元数据库
 
         Args:
-            key: string or bytestring
-            string:  string
+            key: 键名
+            value: 任意可序列化的数据（支持str、list、dict等）
 
         """
 
@@ -851,9 +565,191 @@ class Writer:
             _key = encode_str(key)
         else:
             _key = key
-
         with self._lmdb_env.begin(write=True, db=self.meta_db) as txn:
-            txn.put(_key, encode_str(string))
+            # 使用msgpack序列化任意类型数据
+            txn.put(_key, msgpack.packb(value, use_bin_type=True))
+    def _save_keys(self):
+        """保存
+        键管理信息到 meta_db"""
+        with self._lmdb_env.begin(write=True, db=self.meta_db) as txn:
+            txn.put(b"__physical_keys__", msgpack.packb(self.physical_keys))
+            txn.put(b"__read_keys__", msgpack.packb(self.read_keys))
+            txn.put(b"__deleted_keys__", msgpack.packb(list(self.deleted_keys)))
+            txn.put(encode_str("nb_samples"), msgpack.packb(self.nb_samples))
+    def _write_data(self,new_physical_key,sample):
+        # 存储样本数据
+        with self._lmdb_env.begin(write=True, db=self.data_db) as txn:
+            msg_pkgs = {}
+            for key in sample:
+                obj = sample[key]
+                if not isinstance(obj, np.ndarray):
+                    obj = np.array(obj)
+                    try:
+                        # 检查是否存在 NaN 或 Inf
+                        if np.isnan(obj).any() or np.isinf(obj).any() or obj.dtype==np.object_:
+                            raise ValueError("\033[91m 数据中包含 NaN 或 Inf 或 obj,请检查数据.\033[0m\n")
+                    except Exception as e:
+                        # 不支持校验
+                        pass
+                msg_pkgs[key] = msgpack.packb(obj, use_bin_type=True, default=encode_data)
+            physical_key_str = encode_str("{:010}".format(new_physical_key))
+            pkg = msgpack.packb(msg_pkgs, use_bin_type=True)
+            txn.put(physical_key_str, pkg)
+    @property
+    def size(self):
+        """数据库大小（有效样本数）- 与 nb_samples 保持一致"""
+        return self.nb_samples
+
+    @property
+    def physical_size(self):
+        """物理存储大小"""
+        return len(self.physical_keys)
+    def insert_sample(self,key: int, sample: dict, safe_model: bool = True):
+        """
+        在指定逻辑索引位置插入样本
+
+        Args:
+           key: 要插入的逻辑索引位置
+           sample: 要插入的样本数据
+           safe_model: 安全模式，如果开启则会提示确认
+        """
+        if key < 0 or key > self.nb_samples:
+            raise ValueError(f"插入索引 {key} 超出范围 [0, {self.nb_samples}]")
+
+        if safe_model:
+            _ok = input(f"\033[93m将在逻辑索引 {key} 处插入新样本。确认请输入 'yes': \033[0m")
+            if _ok.strip().lower() != "yes":
+                print("用户取消插入操作")
+                return
+
+        # 开始处理插入
+        new_physical_key = len(self.physical_keys) #新位置=尾插
+        self._write_data(new_physical_key,sample)
+        # 更新键管理系统
+        self.physical_keys.append(new_physical_key)
+        self.read_keys.insert(key, new_physical_key)
+        self.nb_samples = len(self.read_keys)
+        # 保存信息
+        self._save_keys()
+        print(f"\033[92m成功在逻辑索引 {key} 处插入新样本，数据库大小: {self.nb_samples}, 物理存储大小: {self.physical_size}\033[0m")
+    def delete_sample(self, key: int):
+        """
+        删除指定逻辑索引位置的样本（标记删除）
+
+        Args:
+            key: 要删除的逻辑索引位置
+        """
+        if key < 0 or key >= self.nb_samples:
+            raise ValueError(f"删除索引 {key} 超出范围 [0, {self.nb_samples - 1}]")
+        # 获取物理键
+        physical_key = self.read_keys[key]
+        # 标记删除--从读取里删除
+        self.read_keys.pop(key)
+        self.deleted_keys.add(physical_key)
+        self.nb_samples = len(self.read_keys)
+        # 更新保存的信息
+        self._save_keys()
+        print(f"\033[92m成功标记删除逻辑索引 {key} 处的样本，当前数据库大小: {self.nb_samples}\033[0m")
+
+    def change_sample(self, key: int, sample: dict, safe_model: bool = True):
+        """
+
+         修改键值
+
+        Args:
+            key: 键
+            sample:  字典类型数据
+            safe_model: 安全模式,如果开启,则修改会提示;
+
+
+        """
+
+        if key < 0 or key >= self.nb_samples:
+            raise ValueError(f"修改索引 {key} 超出范围 [0, {self.nb_samples - 1}]")
+
+        if safe_model:
+            _ok = input("\033[93m请确认你的行为,因为这样做,会强制覆盖数据,无法找回!\n"
+                        f"当前数据库大小为<< {self.nb_samples} >>,索引从< 0 >>开始计数,现在准备将修改<< {key} >>的值,同意请输入yes! 请输入:\033[93m")
+            if _ok.strip().lower() != "yes":
+                print(f"用户选择退出! 您输入的是{_ok.strip().lower()}")
+                return
+
+        physical_key = self.read_keys[key]
+        self._write_data(physical_key,sample)
+        print(f"\033[92m成功修改逻辑索引 {key} 处的样本\033[0m")
+
+    def put_sample(self,sample:dict):
+        """
+        将传入内容的键和值放入`data_db` LMDB中。
+
+        Notes:
+            put_samples({'key1': value1, 'key2': value2, ...})
+
+        Args:
+            sample: 由str为键,numpy类型为值组成
+
+        """
+        try:
+            # 生成新的物理键
+            new_physical_key = len(self.physical_keys)
+            self._write_data(new_physical_key,sample)
+            # 更新键管理系统
+            self.physical_keys.append(new_physical_key)
+            self.read_keys.append(new_physical_key)
+            self.nb_samples = len(self.read_keys)
+            # 保存信息
+            self._save_keys()
+        except lmdb.MapFullError as e:
+            raise AttributeError(
+                "LMDB 的map_size 太小:%s MB, %s" % (self.map_size_limit, e)
+            )
+
+
+
+    ####################其他功能###############################################
+
+    def get_mapping(self,phy2log=True):
+        """
+        获取逻辑索引与物理键的映射关系
+        Args:
+            phy2log:True=物理键到逻辑索引的映射关系，False=逻辑索引到物理键的映射关系
+
+        Returns:
+            dict: 映射关系{物理键: 逻辑索引} or {逻辑索引: 物理键}
+        """
+
+        if phy2log:
+            return {physical_key: logical_idx for logical_idx, physical_key in enumerate(self.read_keys)}
+        else:
+            return {logical_idx: physical_key for logical_idx, physical_key in enumerate(self.read_keys)}
+
+
+
+
+
+
+
+    def restore_sample(self, physical_key: int):
+        """
+        恢复标记删除的样本
+
+        Args:
+            physical_key: 要恢复的物理键
+        """
+        if physical_key not in self.deleted_keys:
+            print(f"物理键 {physical_key} 未被标记删除")
+            return
+        # 从删除标记中移除
+        self.deleted_keys.remove(physical_key)
+        # 将恢复的样本添加到读取键的末尾
+        self.read_keys.append(physical_key)
+        # 更新样本计数
+        self.nb_samples = len(self.read_keys)
+        # 保存键信息和元数据
+        self._save_keys()
+        print(f"\033[92m成功恢复物理键 {physical_key} 的样本，当前数据库大小: {self.nb_samples}\033[0m")
+
+
 
     def __enter__(self):
         return self
@@ -866,9 +762,10 @@ class Writer:
         out += f"类名:\t\t\t{self.__class__.__name__}\n"
         out += f"位置:\t\t\t'{os.path.abspath(self.dirpath)}'\n"
         out += f"LMDB的map_size:\t\t{self.map_size_limit}MB\n"
-        #out += f"每份数据RAM限制:\t\t{self.ram_gb_limit}GB\n"
-        out += f"当前模式:\t\t{self.db_stats}\n"
-        out += f"当前开始序号为:\t\t{self.nb_samples}\n"
+        out += f"数据库大小:\t\t{self.nb_samples}\n"
+        out += f"物理存储大小:\t\t{self.physical_size}\n"
+        out += f"已删除样本:\t\t{len(self.deleted_keys)}\n"
+        out += f"当前模式:\t\t{self.stats}\n"
         out += "\033[0m\n"
         return out
 
@@ -878,12 +775,47 @@ class Writer:
         在关闭之前,将样本数写入`meta_db`,使所有打开的迭代器、游标和事务无效。
 
         """
-        self.set_meta_str(NB_SAMPLES, str(self.nb_samples))
+        self._save_keys()
         self._lmdb_env.close()
         if sys.platform.startswith('win') and not self.multiprocessing:
             print(f"检测到windows系统, 请运行  fix_lmdb_windows_size({self.dirpath}) 修复文件大小问题")
-           
-            
+
+
+
+#######################################################################
+#######################################################################
+###########################其他工具 #####################################
+#######################################################################
+#######################################################################
+#######################################################################
+#######################################################################
+def get_data_size(samples:dict):
+    """
+    检测sample字典的大小
+
+    Args:
+        samples (_type_): 字典类型数据
+
+    Return:
+        gb_required : 字典大小(GB)
+    """
+    # 检查数据类型
+    gb_required = 0
+    for key in samples:
+        # 所有数据对象的类型必须为`numpy.ndarray`
+        if not isinstance(samples[key], np.ndarray):
+            raise ValueError(
+                "不支持的数据类型:" "`numpy.ndarray` != %s" % type(samples[key])
+            )
+        else:
+            gb_required += np.uint64(samples[key].nbytes)
+
+    # 确保用户指定的假设RAM大小可以容纳要存储的样本数
+    gb_required = float(gb_required / 10 ** 9)
+
+    return gb_required
+
+
 
 def fix_lmdb_windows_size(dirpath: str):
     """
@@ -901,7 +833,7 @@ def fix_lmdb_windows_size(dirpath: str):
 
 
 
-def MergeLmdb(target_dir: str, source_dirs: list, map_size_limit: int, multiprocessing: bool = False):
+def merge_lmdb(target_dir: str, source_dirs: list, map_size_limit: int, multiprocessing: bool = False):
     """
     将多个源LMDB数据库合并到目标数据库
     
@@ -939,7 +871,7 @@ def MergeLmdb(target_dir: str, source_dirs: list, map_size_limit: int, multiproc
         for reader in readers:
             for i in range(len(reader)):
                 sample = reader[i]
-                writer.put_samples(sample)
+                writer.put_sample(sample)
                 pbar.update(1)
                 pbar.set_postfix({"当前数据库": os.path.basename(reader.dirpath)})
     
@@ -951,7 +883,7 @@ def MergeLmdb(target_dir: str, source_dirs: list, map_size_limit: int, multiproc
 
 
 
-def SplitLmdb(source_dir: str, target_dirs: list, map_size_limit: int, multiprocessing: bool = False):
+def split_lmdb(source_dir: str, target_dirs: list, map_size_limit: int, multiprocessing: bool = False):
     """
     将源LMDB数据库均匀拆分到多个目标数据库
     
@@ -987,7 +919,7 @@ def SplitLmdb(source_dir: str, target_dirs: list, map_size_limit: int, multiproc
             
             for i in range(total_samples):
                 sample = reader[i]
-                writers[writer_idx].put_samples(sample)
+                writers[writer_idx].put_sample(sample)
                 count_in_writer += 1
                 
                 # 更新进度条
@@ -1107,7 +1039,7 @@ def parallel_write(output_dir: str,
                 time.sleep(0.1)
 
         # 合并临时数据库
-        MergeLmdb(
+        merge_lmdb(
                     target_dir=output_dir,
                     source_dirs=temp_dirs,
                     map_size_limit=map_size_limit, 
@@ -1166,7 +1098,7 @@ def _worker_write(temp_dir: str,
             
             if out:
                 # 写入数据库
-                writer.put_samples(out)
+                writer.put_sample(out)
             else:
                 print(f"函数返回值异常: {out}")
             processed_count += 1
@@ -1186,4 +1118,450 @@ def _worker_write(temp_dir: str,
         progress_queue.put(processed_count % 10)
     
     writer.close()
-    
+
+
+
+
+class ReaderList:
+    """组合多个LMDB数据库进行统一读取的类，提供序列协议的接口
+
+    该类用于将多个LMDB数据库合并为一个逻辑数据集，支持通过索引访问和获取长度。
+    内部维护数据库索引映射表和真实索引映射表，实现跨数据库的透明访问。
+
+    Attributes:
+        db_list (List[Reader]): 存储打开的LMDB数据库实例列表
+        db_mapping (List[int]): 索引到数据库索引的映射表，每个元素表示对应索引数据所在的数据库下标
+        real_idx_mapping (List[int]): 索引到数据库内真实索引的映射表，每个元素表示数据在对应数据库中的原始索引
+    """
+
+    def __init__(self, db_path_list: list,multiprocessing:bool=True):
+        """初始化组合数据库读取器
+
+        Args:
+            db_path_list (List[str]): LMDB数据库文件路径列表，按顺序加载每个数据库
+        """
+        self.db_list = []
+        self.db_mapping = []  # 数据库索引映射表
+        self.real_idx_mapping = []  # 真实索引映射表
+
+        for db_idx, db_path in enumerate(db_path_list):
+            db = Reader(db_path, multiprocessing)
+            db_length = len(db)
+            self.db_list.append(db)
+            # 扩展映射表
+            self.db_mapping.extend([db_idx] * db_length)
+            self.real_idx_mapping.extend(range(db_length))
+            print(f"load: {db_path} --> len: {db_length}")
+
+    def __len__(self) -> int:
+        """获取组合数据集的总条目数
+
+        Returns:
+            int: 所有LMDB数据库的条目数之和
+        """
+        return len(self.real_idx_mapping)
+
+    def __getitem__(self, idx: int):
+        """通过索引获取数据条目
+
+        Args:
+            idx (int): 数据条目在组合数据集中的逻辑索引
+
+        Returns:
+            object: 对应位置的数据条目，具体类型取决于LMDB存储的数据格式
+
+        Raises:
+            IndexError: 当索引超出组合数据集范围时抛出
+        """
+        db_idx = self.db_mapping[idx]
+        real_idx = self.real_idx_mapping[idx]
+        return self.db_list[db_idx][real_idx]
+
+    def close(self):
+        """关闭所有打开的LMDB数据库连接
+
+        该方法应在使用完毕后显式调用，确保资源正确释放
+        """
+        for db in self.db_list:
+            db.close()
+
+    def __del__(self):
+        """析构函数，自动调用close方法释放资源
+
+        注意：不保证析构函数会被及时调用，建议显式调用close()
+        """
+        self.close()
+
+class ReaderSSD:
+    """针对SSD优化的LMDB数据库读取器，支持高效随机访问
+
+    该类针对SSD存储特性优化，每次读取时动态打开数据库连接，
+    适合需要高并发随机访问的场景，可充分利用SSD的IOPS性能。
+
+    Attributes:
+        db_len (int): 数据库条目总数
+        db_path (str): LMDB数据库文件路径
+        multiprocessing (bool): 是否启用多进程模式
+    """
+
+    def __init__(self, db_path: str, multiprocessing: bool = False):
+        """初始化SSD优化的LMDB读取器
+
+        Args:
+            db_path (str): LMDB数据库文件路径
+            multiprocessing (bool, optional): 是否启用多进程支持。
+                启用后将允许在多个进程中同时打开数据库连接。默认为False。
+        """
+        self.db_len = 0
+        self.db_path = db_path
+        self.multiprocessing = multiprocessing
+        with Reader(self.db_path, multiprocessing=self.multiprocessing) as db:
+            self.db_len = len(db)  # 修正: 使用传入的db变量
+
+    def __len__(self) -> int:
+        """获取数据库的总条目数
+
+        Returns:
+            int: 数据库中的条目总数
+        """
+        return self.db_len
+
+    def __getitem__(self, idx: int) -> object:
+        """通过索引获取单个数据条目
+
+        每次调用时动态打开数据库连接，读取完成后立即关闭。
+        适合随机访问模式，特别是在SSD存储上。
+
+        Args:
+            idx (int): 数据条目索引
+
+        Returns:
+            object: 索引对应的数据条目
+
+        Raises:
+            IndexError: 当索引超出有效范围时抛出
+        """
+        with Reader(self.db_path, multiprocessing=self.multiprocessing) as db:
+            return db[idx]
+
+    def get_batch(self, indices: list) :
+        """批量获取多个数据条目
+
+        优化的批量读取接口，在一个数据库连接中读取多个条目，
+        减少频繁打开/关闭连接的开销。
+
+        Args:
+            indices (list[int]): 数据条目索引列表
+
+        Returns:
+            list[object]: 索引对应的数据条目列表
+
+        Raises:
+            IndexError: 当任何索引超出有效范围时抛出
+        """
+        with Reader(self.db_path, multiprocessing=self.multiprocessing) as db:
+            return [db[idx] for idx in indices]
+
+
+class ReaderSSDList:
+    """组合多个SSD优化的LMDB数据库进行统一读取的类，提供序列协议的接口
+
+    该类用于将多个SSD优化的LMDB数据库合并为一个逻辑数据集，支持通过索引访问和获取长度。
+    内部维护数据库索引映射表和真实索引映射表，实现跨数据库的透明访问，同时保持SSD优化特性。
+
+    Attributes:
+        db_path_list (List[str]): LMDB数据库文件路径列表
+        db_mapping (List[int]): 索引到数据库索引的映射表，每个元素表示对应索引数据所在的数据库下标
+        real_idx_mapping (List[int]): 索引到数据库内真实索引的映射表，每个元素表示数据在对应数据库中的原始索引
+        multiprocessing (bool): 是否启用多进程模式
+    """
+
+    def __init__(self, db_path_list: list, multiprocessing: bool = False):
+        """初始化组合SSD优化数据库读取器
+
+        Args:
+            db_path_list (List[str]): LMDB数据库文件路径列表，按顺序加载每个数据库
+            multiprocessing (bool, optional): 是否启用多进程支持。默认为False。
+        """
+        self.db_path_list = db_path_list
+        self.db_mapping = []  # 数据库索引映射表
+        self.real_idx_mapping = []  # 真实索引映射表
+        self.multiprocessing = multiprocessing
+
+        for db_idx, db_path in enumerate(db_path_list):
+            # 使用ReaderSSD获取数据库长度而不保持连接
+            db = ReaderSSD(db_path, multiprocessing)
+            db_length = len(db)
+            # 扩展映射表
+            self.db_mapping.extend([db_idx] * db_length)
+            self.real_idx_mapping.extend(range(db_length))
+            print(f"load: {db_path} --> len: {db_length}")
+
+    def __len__(self) -> int:
+        """获取组合数据集的总条目数
+
+        Returns:
+            int: 所有LMDB数据库的条目数之和
+        """
+        return len(self.real_idx_mapping)
+
+    def __getitem__(self, idx: int):
+        """通过索引获取数据条目
+
+        Args:
+            idx (int): 数据条目在组合数据集中的逻辑索引
+
+        Returns:
+            object: 对应位置的数据条目，具体类型取决于LMDB存储的数据格式
+
+        Raises:
+            IndexError: 当索引超出组合数据集范围时抛出
+        """
+        if idx < 0 or idx >= len(self):
+            raise IndexError(f"Index {idx} out of range")
+        db_idx = self.db_mapping[idx]
+        real_idx = self.real_idx_mapping[idx]
+        db_path = self.db_path_list[db_idx]
+        # 使用ReaderSSD动态打开数据库并获取条目
+        db = ReaderSSD(db_path, self.multiprocessing)
+        return db[real_idx]
+
+    def get_batch(self, indices: list):
+        """批量获取多个数据条目
+
+        对同一数据库中的索引进行分组，然后使用对应数据库的get_batch方法批量读取，
+        减少频繁打开/关闭连接的开销。
+
+        Args:
+            indices (list[int]): 数据条目索引列表
+
+        Returns:
+            list[object]: 索引对应的数据条目列表
+
+        Raises:
+            IndexError: 当任何索引超出有效范围时抛出
+        """
+        # 检查所有索引是否有效
+        for idx in indices:
+            if idx < 0 or idx >= len(self):
+                raise IndexError(f"Index {idx} out of range")
+
+        # 按数据库分组索引
+        db_groups = {}
+        for idx in indices:
+            db_idx = self.db_mapping[idx]
+            real_idx = self.real_idx_mapping[idx]
+            if db_idx not in db_groups:
+                db_groups[db_idx] = []
+            db_groups[db_idx].append(real_idx)
+
+        # 对每个数据库批量读取
+        results = [None] * len(indices)
+        for db_idx, real_indices in db_groups.items():
+            db_path = self.db_path_list[db_idx]
+            db = ReaderSSD(db_path, self.multiprocessing)
+            # 获取该数据库中所有索引对应的数据
+            batch_results = db.get_batch(real_indices)
+            # 将结果放入正确的位置
+            for i, real_idx in enumerate(real_indices):
+                # 找到原始索引在indices中的位置
+                original_idx_pos = indices.index(self._find_original_index(db_idx, real_idx))
+                results[original_idx_pos] = batch_results[i]
+
+        return results
+
+    def _find_original_index(self, db_idx, real_idx):
+        """根据数据库索引和真实索引找到原始索引"""
+        # 找到第一个属于该数据库的索引位置
+        first_db_idx = self.db_mapping.index(db_idx)
+        # 计算该数据库内的偏移量
+        return first_db_idx + real_idx
+
+
+
+
+if __name__ == '__main__':
+    db_path="test.db"
+    # 测试1: 创建数据库并写入数据
+    print("\n1. 测试数据写入功能")
+    print("-" * 40)
+
+    with Writer(dirpath=db_path, map_size_limit=1024) as writer:
+        print(writer)
+
+        # 创建测试数据
+        sample1 = {
+            "image": np.random.rand(32, 32, 3).astype(np.float32),
+            "label": np.array([1, 0, 0]),
+            "metadata": np.array([100, 200])
+        }
+
+        sample2 = {
+            "image": np.random.rand(32, 32, 3).astype(np.float32),
+            "label": np.array([0, 1, 0]),
+            "metadata": np.array([150, 250])
+        }
+
+        sample3 = {
+            "image": np.random.rand(32, 32, 3).astype(np.float32),
+            "label": np.array([0, 0, 1]),
+            "metadata": np.array([200, 300])
+        }
+
+        # 测试 put_sample 方法
+        print("添加样本1...")
+        writer.put_sample(sample1)
+
+        print("添加样本2...")
+        writer.put_sample(sample2)
+
+        print("添加样本3...")
+        writer.put_sample(sample3)
+
+        # 测试元数据存储
+        writer.put_meta("dataset_info", {
+            "name": "测试数据集",
+            "version": "1.0",
+            "created_by": "test_script"
+        })
+
+        writer.put_meta("description", "这是一个测试数据集")
+
+    print(f"写入完成，数据库大小: {writer.size}")
+    print(writer)
+
+    # 测试2: 读取数据
+    print("\n2. 测试数据读取功能")
+    print("-" * 40)
+
+    with Reader(dirpath=db_path) as reader:
+        print(reader)
+
+        # 测试基本读取
+        print("\n读取单个样本:")
+        sample_0 = reader[0]
+        print(f"样本0的键: {list(sample_0.keys())}")
+        print(f"样本0的图像形状: {sample_0['image'].shape}")
+        print(f"样本0的标签: {sample_0['label']}")
+
+        # 测试 get_sample 方法
+        sample_1 = reader.get_sample(1)
+        print(f"样本1的标签: {sample_1['label']}")
+
+        # 测试 get_samples 方法
+        samples = reader.get_samples([0, 2])
+        print(f"批量读取样本数量: {len(samples)}")
+
+        # 测试元数据读取
+        dataset_info = reader.get_meta("dataset_info")
+        print(f"数据集信息: {dataset_info}")
+
+        description = reader.get_meta("description")
+        print(f"数据集描述: {description}")
+
+        # 测试数据规范
+        spec = reader.get_data_specification(0)
+        print(f"数据规范: {spec}")
+
+        # 测试映射关系
+        mapping = reader.get_mapping()
+        print(f"物理键到逻辑索引映射 (前3个): {dict(list(mapping.items())[:3])}")
+
+    # 测试3: 修改、插入和删除操作
+    print("\n3. 测试修改、插入和删除功能")
+    print("-" * 40)
+
+    with Writer(dirpath=db_path, map_size_limit=1024) as writer:
+        print(f"重新打开数据库，当前大小: {writer.size}")
+
+        # 测试修改样本
+        modified_sample = {
+            "image": np.ones((32, 32, 3), dtype=np.float32),
+            "label": np.array([1, 1, 1]),
+            "metadata": np.array([999, 999])
+        }
+
+        print("修改索引1的样本...")
+        writer.change_sample(1, modified_sample, safe_model=False)
+
+        # 测试插入样本
+        new_sample = {
+            "image": np.zeros((32, 32, 3), dtype=np.float32),
+            "label": np.array([0, 0, 0]),
+            "metadata": np.array([0, 0])
+        }
+
+        print("在索引1位置插入新样本...")
+        writer.insert_sample(1, new_sample, safe_model=False)
+
+        print(f"插入后数据库大小: {writer.size}")
+
+        # 测试删除样本
+        print("删除索引2的样本...")
+        writer.delete_sample(2)
+
+        print(f"删除后数据库大小: {writer.size}")
+
+        # 添加更多样本用于测试删除功能
+        for i in range(2):
+            extra_sample = {
+                "image": np.random.rand(32, 32, 3).astype(np.float32),
+                "label": np.array([i, i, i]),
+                "metadata": np.array([i * 100, i * 200])
+            }
+            writer.put_sample(extra_sample)
+
+        print(f"添加额外样本后数据库大小: {writer.size}")
+
+    # 测试4: 读取修改后的数据
+    print("\n4. 测试读取修改后的数据")
+    print("-" * 40)
+
+    with Reader(dirpath=db_path) as reader:
+        print(reader)
+
+        # 验证修改的样本
+        sample_1 = reader[1]
+        print(f"修改后的样本1标签: {sample_1['label']}")
+        print(f"修改后的样本1元数据: {sample_1['metadata']}")
+
+        # 验证插入的样本
+        sample_2 = reader[2]
+        print(f"插入的样本2标签: {sample_2['label']}")
+
+        # 测试读取已删除的样本
+        print("\n5. 测试读取已删除的样本")
+        print("-" * 40)
+
+        deleted_physical_keys = reader.deleted_keys
+        print(deleted_physical_keys)
+        if deleted_physical_keys:
+            print(f"发现 {len(deleted_physical_keys)} 个已删除的样本")
+
+            # 读取第一个已删除的样本
+            deleted_physical_key = list(deleted_physical_keys)[0]
+            try:
+                deleted_sample = reader.get_delete_sample(deleted_physical_key)
+                print(f"已删除样本(物理键{deleted_physical_key})的标签: {deleted_sample['label']}")
+            except Exception as e:
+                print(f"读取已删除样本失败: {e}")
+        else:
+            print("没有找到已删除的样本")
+
+        # 测试边界情况
+        print("\n6. 测试边界情况")
+        print("-" * 40)
+
+        try:
+            invalid_sample = reader[1000]  # 不存在的索引
+        except IndexError as e:
+            print(f"边界测试 - 捕获预期的IndexError: {e}")
+
+        try:
+            invalid_value = reader.get_data_value(0, "nonexistent_key")
+        except KeyError as e:
+            print(f"边界测试 - 捕获预期的KeyError: {e}")
+
+    print("\n" + "=" * 60)
+    print("所有测试完成！")
+    print("=" * 60)

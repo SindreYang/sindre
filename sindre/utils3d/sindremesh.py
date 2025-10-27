@@ -40,6 +40,11 @@ class SindreMesh:
         """设置顶点labels,并自动渲染颜色"""
         self.vertex_labels=np.array(vertex_labels).reshape(-1,1)
         self.vertex_colors=labels2colors(self.vertex_labels)[...,:3]
+    def set_faces_labels(self,faces_labels):
+        """将面片labels转换为顶点labels,并自动渲染颜色"""
+        vertex_labels =face_labels_to_vertex_labels(self.vertices,self.faces,faces_labels)
+        self.vertex_labels=np.array(vertex_labels).reshape(-1,1)
+        self.vertex_colors=labels2colors(self.vertex_labels)[...,:3]
 
 
 
@@ -1034,26 +1039,26 @@ class SindreMesh:
         return num_degenerate
 
 
-    def get_normalize(self, method="std"):
-        """对顶点、曲率和颜色数据进行标准化处理
+    def get_normalize(self, method="ball"):
+        """对顶点、曲率和颜色数据进行归一化处理
 
-        该方法支持两种标准化方式，可将顶点坐标、曲率值和颜色值
+        该方法支持两种归一化方式，可将顶点坐标、曲率值和颜色值
         归一化到特定范围，便于后续处理和分析。
 
         Args:
-            method (str, optional): 标准化方法。可选值为"std"或其他。
-                "std"表示将顶点中心移至原点并缩放至单位球内；
-                其他值表示将顶点缩放到[0,1]范围。默认值为"std"。
+            method (str, optional): 归一化方法。可选值为"ball"或其他。
+                "ball"表示将顶点中心移至原点并缩放至单位球内；
+                其他值表示将顶点缩放到[0,1]范围。默认值为"ball"。
 
         Returns:
-            dict: 包含标准化后的数据字典，键值对如下：
-                - "vertices": 标准化后的顶点坐标数组（已转换method参数为范围）
+            dict: 包含归一化后的数据字典，键值对如下：
+                - "vertices":归一化后的顶点坐标数组（已转换method参数为范围）
                 - "normals": 法线（已转换为[-1,1]范围）
-                - "curvature": 标准化后的曲率值数组（已转换为[-1,1]范围）
-                - "colors": 标准化后的颜色值数组（已转换为[0,1]范围）
+                - "curvature": 归一化后的曲率值数组（已转换为[-1,1]范围）
+                - "colors": 归一化后的颜色值数组（已转换为[0,1]范围）
         """
         vertices = self.vertices
-        if method == "std":
+        if method == "ball":
             # 计算顶点中心并平移到原点
             centroid = np.mean(vertices, axis=0)
             vertices -= centroid
@@ -1068,11 +1073,12 @@ class SindreMesh:
 
         # 标准化曲率值到[0,1]范围（使用1%和99%分位数去除极端值）
         curvature = self.vertex_curvature
-        k_low = np.percentile(curvature, 1)
-        k_high = np.percentile(curvature, 99)
-        curvature = np.clip(curvature,k_low,k_high)
-        curvature = (curvature - k_low) / (k_high - k_low )
-        curvature =curvature*2-1
+        if sum(curvature)!=0:
+            k_low = np.percentile(curvature, 1)
+            k_high = np.percentile(curvature, 99)
+            curvature = np.clip(curvature,k_low,k_high)
+            curvature = (curvature - k_low) / (k_high - k_low )
+            curvature =curvature*2-1
 
         # 将颜色值从[0,255]范围转换到[0,1]
         colors = self.vertex_colors / 255

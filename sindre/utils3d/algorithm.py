@@ -26,6 +26,8 @@
 """
 __author__ = 'sindre'
 import json
+
+import trimesh
 import vedo
 import numpy as np
 from typing import *
@@ -157,6 +159,22 @@ def face_labels_to_vertex_labels(vertices: Union[np.array, list], faces: Union[n
 
 
 
+def face_probs_to_vertex_probs(faces, face_probs, n_vertices):
+    """将面片概率矩阵转换为顶点概率矩阵（使用max方法）"""
+    n_classes = face_probs.shape[1]
+    vertex_probs = np.zeros((n_vertices, n_classes))
+    # 初始化一个很小的值
+    vertex_probs.fill(1e-6)
+    for face_idx, face in enumerate(faces):
+        prob = face_probs[face_idx]
+        for vertex_id in face:
+            # 取每个类别的最大值
+            vertex_probs[vertex_id] = np.maximum(vertex_probs[vertex_id], prob)
+    # 归一化
+    row_sums = vertex_probs.sum(axis=1, keepdims=True)
+    row_sums[row_sums == 0] = 1  # 避免除零
+    vertex_probs /= row_sums
+    return vertex_probs
 
 def get_axis_rotation(axis: list, angle: float) -> np.array:
     """
@@ -1007,6 +1025,185 @@ class LabelUpsampler:
         return labels
 
 
+class GraphCutWithMesh:
+    import trimesh
+    def __init__(self, tri_mesh:trimesh.Trimesh, softmax_labels, smooth_factor=None, keep_label=True):
+        """
+        基于图切优化器,支持顶点/面片级别优化
+
+        Args:
+            tri_mesh (trimesh.Trimesh): trimesh.Trimesh格式的mesh
+            softmax_labels (np.ndarray):  softmax后的概率矩阵，形状为：
+                                        - 顶点模式：(Nv, class_num)
+                                        - 面片模式：(Nf, class_num)
+            smooth_factor (float, optional): 平滑强度系数，越大边界越平滑。默认值为 None，此时会自动计算。
+            keep_label (bool, optional): 是否保持优化前后标签类别一致性，默认值为 True。
+
+        """
+        # 初始化
+        self.smooth_factor = smooth_factor
+        self.keep_label=keep_label
+        self.labels = softmax_labels
+        self.labels_type=None
+        self.labels_classes=None
+        self.mesh = tri_mesh
+        self._preprocess()
+
+    def _preprocess(self):
+        """预处理"""
+        """检测输入类型并验证形状"""
+        n_vertices = self.mesh.vertices.shape[0]
+        n_faces = self.mesh.faces.shape[0]
+        labels_shape = self.labels.shape
+        self.mesh.fix_normals()
+
+        if labels_shape[0] == n_vertices:
+            if len(labels_shape)>1:
+                self.labels_type = 0
+                self.labels_classes = labels_shape[1]
+                log.info(f"检测到输入标签类型: 顶点标签的概率矩阵 (Nv, class_num),类别数:{self.labels_classes}")
+            else:
+                self.labels_type = 1
+
+                raise ValueError("只支持顶点标签的概率矩阵 (Nv, class_num")
+            # 提供顶点级信息
+            self.vertices=self.mesh.vertices
+            self.normals =self.mesh.vertex_normals
+            self.adj  = [np.array(list(adj)) for adj in self.mesh.vertex_neighbors]
+
+
+        elif labels_shape[0] == n_faces:
+            if len(labels_shape)>1:
+                self.labels_type = 2
+                self.labels_classes = labels_shape[1]
+                log.info(f"检测到输入标签类型: 面片标签的概率矩阵 (Nf, class_num),类别数:{self.labels_classes}")
+            else:
+                self.labels_type = 3
+                raise ValueError("只支持面片标签的概率矩阵 (Nf, class_num")
+
+
+            # 提供面片级信息
+            self.vertices=self.mesh.triangles_center
+            self.normals = self.mesh.face_normals
+            face_adjacency = self.mesh.face_adjacency
+            # 使用字典和集合来构建邻接关系(避免后续去重)
+            face_adj = [set() for _ in range(len(self.mesh.faces))]
+            # 批量添加邻接关系
+            for f1, f2 in face_adjacency:
+                face_adj[f1].add(f2)
+                face_adj[f2].add(f1)
+            self.adj = [np.sort(list(adj_set)) for adj_set in face_adj]
+        else:
+            raise ValueError("标签样本维度应与顶点数或面片数一致")
+
+
+
+        # 获取势能
+        self.unaries,  self.pairwise,  self.edges_weight = self.get_energy()
+
+        # 自动参数优化强度计算 #1.2s
+        if self.smooth_factor is None:
+            # 取中值作为根据
+            weights_raw = self.edges_weight[:, 2]
+            unary_median = np.median(np.abs(self.unaries))
+            weight_median = np.median(weights_raw) if weights_raw.size else 1.0
+            self.smooth_factor= min([unary_median / max(weight_median, 1e-6)*0.8 ,1e4])#经验值
+
+
+
+        log.info("Ready: "
+                 f"vertex={n_vertices} "
+                 f"face={n_faces} "
+                 f"type={self.labels_type} "
+                 f"n_class={self.labels_classes} "
+                 f"smooth_factor={self.smooth_factor:.2f} "
+                 f"keep_label={self.keep_label} ")
+
+
+
+    def get_weights(self):
+        # 获取边权
+        """计算顶点间边权"""
+        edges_weight = []
+        for i, neighbors in enumerate(self.adj):
+            for j in neighbors:
+                if j <= i:
+                    continue  # 避免重复
+
+                ni, nj = self.normals[i], self.normals[j]
+                if self.labels_type < 2:
+                    theta = np.arccos(np.clip(np.dot(ni, nj), -1.0, 1.0))
+                else:
+                    theta = np.arccos(np.clip(np.dot(ni, nj)/np.linalg.norm(ni)/np.linalg.norm(nj), -1.0, 1.0))
+                distance = np.linalg.norm(self.vertices[i] - self.vertices[j])
+
+
+                # 边权计算
+                theta = max(theta, 1e-6)  # 防止除零
+                weight = -np.log10(theta/np.pi) * distance
+                if theta < np.pi/2:
+                    weight = 10 * weight
+                # 按照点1,点2, 1与2的权重存储
+                edges_weight.append([i, j,weight])
+        return np.array(edges_weight, dtype=np.float32)
+
+    def get_energy(self):
+        # 获取一元势能和二元势能
+        # 计算一元势能（原始标签）
+        prob = self.labels
+        prob = np.clip(prob, 1e-6, 1.0)
+
+        unaries = (-100 * np.log10(prob)).astype(np.int32)
+
+        # 建立图结构邻接表
+        pairwise = (1 - np.eye(self.labels_classes, dtype=np.int32))
+
+        # 二元势能 (边权)
+        edges_weight = self.get_weights()
+        return unaries, pairwise, edges_weight
+
+
+    def refine(self):
+        """执行优化并返回优化后的标签索引"""
+        try:
+            from pygco import cut_from_graph
+            if self.keep_label:
+                optimized_labels = None
+                terminate_after_next = False  # 标记是否在下一次迭代后终止
+                max_iterations = 10
+                for i  in  range(max_iterations):
+                    # 强化边权
+                    new_edges_weight = self.edges_weight
+                    new_edges_weight[:, 2] = (self.edges_weight[:, 2] * self.smooth_factor)
+                    print("gco")
+                    refine_labels = cut_from_graph( new_edges_weight.astype(np.int32), self.unaries, self.pairwise)
+                    unique_count =len(np.unique(refine_labels))
+                    if optimized_labels is None:
+                        optimized_labels =refine_labels
+                    if terminate_after_next and unique_count== self.labels_classes:
+                        break  # 执行了额外的一次优化，终止循环
+                    if unique_count== self.labels_classes:
+                        optimized_labels =refine_labels
+                        self.smooth_factor*=1.5
+                        log.info(f"当前smooth_factor={self.smooth_factor},优化中({i+1}/10)....")
+                    elif unique_count== 1:
+                        self.smooth_factor*=0.6
+                        log.info(f"当前smooth_factor={self.smooth_factor},优化中({i+1}/10)....")
+                        terminate_after_next = True  # 标记下次迭代后终止
+                        optimized_labels = None
+                    else:
+                        # 优化结束
+                        break
+            else:
+                # 按照给定值优化一次
+                self.edges_weight[:, 2] = (self.edges_weight[:, 2] * self.smooth_factor)
+                optimized_labels = cut_from_graph(self.edges_weight.astype(np.int32), self.unaries, self.pairwise)
+        except Exception as e:
+            import traceback
+            traceback.print_exc()
+            raise RuntimeError(f"图切优化失败: {str(e)}") from e
+
+        return optimized_labels
 
 
 
@@ -1114,7 +1311,7 @@ class UnifiedLabelRefiner:
 
     
         from pygco import cut_from_graph
-        optimized_labels = self.labels
+        optimized_labels = None
         terminate_after_next = False  # 标记是否在下一次迭代后终止
         for i  in  range(10):
             # 计算边权重
@@ -1211,192 +1408,9 @@ class UnifiedLabelRefiner:
 
 
 
-    
-class GraphCutRefiner:
-    def __init__(self, vertices, faces, vertex_labels, smooth_factor=None,temperature=None, keep_label=True):
-        """
-        基于顶点的图切优化器
-
-        Args:
-            vertices (array-like): 顶点坐标数组，形状为 (n_vertices, 3)。
-            faces (array-like): 面片索引数组，形状为 (n_faces, 3)。
-            vertex_labels (array-like): 顶点初始标签数组，形状为 (n_vertices,)。
-            smooth_factor (float, optional): 平滑强度系数，越大边界越平滑。默认值为 None，此时会自动计算。范围通常在 0.1 到 0.6 之间。
-            temperature (float, optional): 温度参数，越大标签越平滑，处理速度越快。默认值为 None，此时会自动计算。典型值范围在 50 到 500 之间，会随网格复杂度自动调整。
-            keep_label (bool, optional): 是否保持优化前后标签类别一致性，默认值为 True。
-        """
-        import trimesh
-        self.mesh = trimesh.Trimesh(vertices, faces,process=False)
-        self._precompute_geometry()
-        self.smooth_factor = smooth_factor
-        self.keep_label=keep_label
-        vertex_labels = vertex_labels.reshape(-1)
-        
-        # 处理标签映射
-        self.unique_labels, mapped_labels = np.unique(vertex_labels, return_inverse=True)
-        if temperature is None:
-            self.temperature = self._compute_temperature(mapped_labels)
-        else:
-            self.temperature = temperature
-        self.prob_matrix = self._labels_to_prob(mapped_labels, self.unique_labels.size)
-        log.debug(f"prob_matrix : {self.prob_matrix.shape}")
-       
-
-    def _precompute_geometry(self):
-        """预计算顶点几何特征"""
-        self.mesh.fix_normals()
-        self.vertex_normals = self.mesh.vertex_normals.copy()  # 顶点法线
-        self.vertex_positions = self.mesh.vertices.copy()      # 顶点坐标
-        self.adjacency = self._compute_adjacency()             # 顶点邻接关系
-        
-        
-    def _compute_temperature(self, labels):
-        """根据邻域标签一致性计算温度参数"""
-        n = len(labels)
-        total_inconsistency = 0.0
-        for i in range(n):
-            neighbors = self.adjacency[i]
-            if not neighbors.size:
-                continue
-            # 计算邻域标签不一致性
-            same_count = np.sum(labels[neighbors] == labels[i])
-            inconsistency = 1.0 - same_count / len(neighbors)
-            total_inconsistency += inconsistency
-        
-        avg_inconsistency = total_inconsistency / n
-        # 温度公式: 基础0.1 + 平均不一致性系数
-        return 0.1 + avg_inconsistency * 0.5
-
-    def _compute_adjacency(self):
-        """计算顶点邻接关系"""
-        # 使用trimesh内置的顶点邻接查询
-        return [np.array(list(adj)) for adj in self.mesh.vertex_neighbors]
-
-    def refine_labels(self):
-        """
-        执行标签优化
-        :return: 优化后的顶点标签数组 (n_vertices,)
-        """
-        from pygco import cut_from_graph
-        # 数值稳定性处理
-        prob = np.clip(self.prob_matrix, 1e-6, 1.0)
-        prob /= prob.sum(axis=1, keepdims=True)
-
-        # 计算unary potential
-        unaries = (-100 * np.log10(prob)).astype(np.int32)
-        
-        # 自适应计算smooth_factor
-        if self.smooth_factor is None:
-            edges_raw = self._compute_edge_weights(scale=1.0)
-            weights_raw = edges_raw[:, 2]
-            unary_median = np.median(np.abs(unaries))
-            weight_median = np.median(weights_raw) if weights_raw.size else 1.0
-            self.smooth_factor = np.clip(unary_median / max(weight_median, 1e-6)*4,1e2,1e5) #经验值
-        
-       
-        # 构造pairwise potential
-        n_classes = self.prob_matrix.shape[-1]
-        pairwise = (1 - np.eye(n_classes, dtype=np.int32))
-        log.debug(f"smooth_factor:{self.smooth_factor} , n_class :{n_classes}")
-        
-        # 执行图切优化
-        try:
-            """
-            edges1 = np.array([[0,1,100], [1,2,100], [2,3,100], 
-                 [0,2,200], [1,3,200]], dtype=np.int32)
-            unaries1 = np.array([[5, 0], [0, 5], [5, 0], [5, 0]], dtype=np.int32)
-            pairwise1 = np.array([[0,1],[1,0]], dtype=np.int32)
-            
-            optimized = cut_from_graph(edges1, unaries1, pairwise1)
-            print("应输出[0,1,0,0]，实际输出:", optimized)
-            print("调用图切函数前参数检查:")
-            print("edges shape:", edges.shape, "dtype:", edges.dtype,edges,len(self.vertex_positions))
-            print("unaries shape:", unaries.shape, "dtype:", unaries.dtype,unaries)
-            print("pairwise shape:", pairwise.shape, "dtype:", pairwise.dtype,pairwise)
-            assert edges[:, :2].max() < len(self.vertex_positions), "边包含非法顶点索引"
-            assert not np.isinf(edges[:,2]).any(), "边权重包含无穷值"
-            assert (np.abs(edges[:,2]) < 2**30).all(), "边权重超过int32范围"
-            
-            """
-            
-            if self.keep_label:
-                optimized_labels = None
-                terminate_after_next = False  # 标记是否在下一次迭代后终止
-                for i  in  range(10):
-                    # 计算边权重
-                    edges = self._compute_edge_weights(self.smooth_factor)
-                    refine_labels = cut_from_graph(edges, unaries, pairwise)
-                    unique_count =len(np.unique(refine_labels))
-                    if optimized_labels is None:
-                        optimized_labels =refine_labels
-                    if terminate_after_next and unique_count== n_classes:
-                        break  # 执行了额外的一次优化，终止循环
-                    if unique_count== n_classes:
-                        optimized_labels =refine_labels
-                        self.smooth_factor*=1.5
-                        log.info(f"当前smooth_factor={self.smooth_factor},优化中({i+1}/10)....")
-                    elif unique_count== 1:
-                        self.smooth_factor*=0.6
-                        log.info(f"当前smooth_factor={self.smooth_factor},优化中({i+1}/10)....")
-                        terminate_after_next = True  # 标记下次迭代后终止
-                        optimized_labels = None
-                    else:
-                        # 优化结束
-                        break
-
-            else:
-                edges = self._compute_edge_weights(self.smooth_factor)
-                optimized_labels = cut_from_graph(edges, unaries, pairwise)
-                    
-            
-        except Exception as e:
-            import traceback
-            traceback.print_exc()
-            raise RuntimeError(f"图切优化失败: {str(e)}") from e
-
-        return self.unique_labels[optimized_labels]
 
 
-    def _compute_edge_weights(self,scale):
-        """计算边权重（基于顶点几何特征）"""
-        edges = []
-        
-        for i in range(len(self.adjacency)):
-            for j in self.adjacency[i]:
-                if j <= i:  # 避免重复计算边
-                    continue
-                
-                # 计算法线夹角
-                ni, nj = self.vertex_normals[i], self.vertex_normals[j]
-                cos_theta = np.dot(ni, nj)
-                theta = np.arccos(np.clip(cos_theta, -1.0, 1.0))
-                theta = np.maximum(theta, 1e-8)  # 防止θ为0导致对数溢出
-                
-                # 计算空间距离
-                pi, pj = self.vertex_positions[i], self.vertex_positions[j]
-                distance = np.linalg.norm(pi - pj)
-                
-                # 计算自适应权重
-                if theta > np.pi/2:
-                    weight = -np.log(theta/np.pi) * distance
-                else:
-                    weight = -10 * np.log(theta/np.pi) * distance  # 加强平滑区域约束
-    
-                
-                edges.append([i, j, int(weight * scale)])
-        
-        return np.array(edges, dtype=np.int32)
 
-    def _labels_to_prob(self, labels, n_classes):
-        """将标签转换为概率矩阵"""
-        one_hot = np.eye(n_classes)[labels]
-        prob = np.exp(one_hot/self.temperature)
-        return prob / prob.sum(axis=1, keepdims=True)
-    
-
-  
-  
-  
 @njit(nogil=True, fastmath=True, cache=True, parallel=True)
 def furthestsampling_jit(xyz: np.ndarray, offset: np.ndarray, new_offset: np.ndarray) -> np.ndarray:
     """使用并行批次处理的最远点采样算法实现

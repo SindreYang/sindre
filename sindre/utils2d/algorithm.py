@@ -208,7 +208,6 @@ if __name__ == "__main__":
         
         # 转换BGR为RGB (OpenCV默认以BGR模式读取)
         img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-        
         # 执行图像分割
         mask = detect_ellipses_with_cv2(img_rgb)
         
