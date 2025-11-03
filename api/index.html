@@ -16,7 +16,7 @@
       
       
       <link rel="icon" href="../assets/images/favicon.png">
-      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.6.22">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.6.23">
     
     
       
@@ -635,6 +635,15 @@
   <a href="#lmdb.pylmdb" class="md-nav__link">
     <span class="md-ellipsis">
       pylmdb
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#lmdb.pylmdb.Base" class="md-nav__link">
+    <span class="md-ellipsis">
+      Base
     </span>
   </a>
   
@@ -4179,6 +4188,15 @@
   <a href="#lmdb.pylmdb" class="md-nav__link">
     <span class="md-ellipsis">
       pylmdb
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#lmdb.pylmdb.Base" class="md-nav__link">
+    <span class="md-ellipsis">
+      Base
     </span>
   </a>
   
@@ -7742,6 +7760,51 @@
 
 
 
+<h2 id="lmdb.pylmdb.Base" class="doc doc-heading">
+            <code>Base</code>
+
+
+</h2>
+
+
+    <div class="doc doc-contents ">
+
+
+        <p>公共工具类</p>
+
+
+
+
+
+
+
+
+
+
+
+  <div class="doc doc-children">
+
+
+
+
+
+
+
+
+
+
+
+
+  </div>
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-class">
+
+
+
 <h2 id="lmdb.pylmdb.Reader" class="doc doc-heading">
             <code>Reader</code>
 
@@ -7750,6 +7813,8 @@
 
 
     <div class="doc doc-contents ">
+            <p class="doc doc-class-bases">
+              Bases: <code><a class="autorefs autorefs-internal" title="Base (lmdb.pylmdb.Base)" href="#lmdb.pylmdb.Base">Base</a></code></p>
 
 
         <p>用于读取包含张量(<code>numpy.ndarray</code>)数据集的对象。
@@ -9451,6 +9516,8 @@ Args:
 
 
     <div class="doc doc-contents ">
+            <p class="doc doc-class-bases">
+              Bases: <code><a class="autorefs autorefs-internal" title="Base (lmdb.pylmdb.Base)" href="#lmdb.pylmdb.Base">Base</a></code></p>
 
 
         <p>用于将数据集的对象 ('numpy.ndarray') 写入闪电内存映射数据库 (LMDB),并带有MessagePack压缩。</p>
@@ -9598,22 +9665,6 @@ db.close()</p>
             </td>
             <td>
                 <em>必需</em>
-            </td>
-          </tr>
-          <tr class="doc-section-item">
-            <td>
-                <code>multiprocessing</code>
-            </td>
-            <td>
-                  <code><span title="bool">bool</span></code>
-            </td>
-            <td>
-              <div class="doc-md-description">
-                <p>是否开启多进程。</p>
-              </div>
-            </td>
-            <td>
-                  <code>False</code>
             </td>
           </tr>
       </tbody>
@@ -24915,10 +24966,12 @@ Return:
     <div class="doc doc-contents ">
 
         <p>加载模型状态，可以支持部分参数加载</p>
-<p>加载策略:
-- strict==True: 只有名称和形状完全一致的参数才会被加载；
-- strict==False且check_shape==True: 仅加载名称存在且形状匹配的参数；
-- strict==False且check_shape==False: 加载所有名称匹配的参数，不检查形状；</p>
+<p>加载策略:</p>
+<ul>
+<li>strict==True: 只有名称和形状完全一致的参数才会被加载；</li>
+<li>strict==False且check_shape==True: 仅加载名称存在且形状匹配的参数；</li>
+<li>strict==False且check_shape==False: 加载所有名称匹配的参数，不检查形状；</li>
+</ul>
 
 
 <p><span class="doc-section-title">参数：</span></p>
@@ -25036,18 +25089,38 @@ Return:
     <table>
       <thead>
         <tr>
-          <th>类型</th>
+<th>名称</th>          <th>类型</th>
           <th>描述</th>
         </tr>
       </thead>
       <tbody>
           <tr class="doc-section-item">
-            <td>
-                  <code><span title="typing.Tuple">Tuple</span>[<span title="int">int</span>, <span title="float">float</span>, <span title="typing.Dict">Dict</span>]</code>
+<td><code>curr_iter</code></td>            <td>
+                  <code><span title="int">int</span></code>
             </td>
             <td>
               <div class="doc-md-description">
-                <p>加载了最后迭代次数、最后损失值、额外信息字典</p>
+                <p>加载了最后迭代次数;</p>
+              </div>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+<td><code>loss</code></td>            <td>
+                  <code><span title="float">float</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>最后损失值;</p>
+              </div>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+<td><code>extra_info</code></td>            <td>
+                  <code><span title="typing.Dict">Dict</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>额外信息字典;</p>
               </div>
             </td>
           </tr>
