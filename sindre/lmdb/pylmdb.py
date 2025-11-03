@@ -1,9 +1,13 @@
 # -*- coding: UTF-8 -*-
 import shutil
+import os
+import numpy as np
 import time
 import traceback
+import sys
 from tqdm import tqdm
-from sindre.lmdb.tools import *
+import pickle
+#from sindre.lmdb.tools import *
 import multiprocessing as mp
 try:
     import lmdb
@@ -11,16 +15,116 @@ try:
 except ImportError:
     raise ImportError(
         "Could not import the LMDB library `lmdb` or  `msgpack`. Please refer "
-        "to https://github.com/dw/py-lmdb/  or https://github.com/msgpack/msgpack-python for installation "
+        "to https://github.com/dw/py-lmdb/  or https://github.com/msgpack/msgpack-python or https://github.com/python-lz4/python-lz4 for installation "
         "instructions."
     )
 
 __all__ = ["Reader","ReaderList","ReaderSSDList","ReaderSSD", "Writer", "split_lmdb", "merge_lmdb","get_data_size", "fix_lmdb_windows_size","parallel_write"]
 
+class Base:
+    """
+    公共工具类
+    """
+    # 数据库标识
+    NB_DBS = 2
+    DATA_DB = b"data_db"
+    META_DB = b"meta_db"
+    # 内置常量
+    INTERNAL_KEYS=[b"__physical_keys__",
+                   b"__read_keys__",
+                   b"__deleted_keys__",
+                   b"__db_size__"
+                   b"nb_samples"]
+    # 支持的序列化类型
+    TYPES = {
+        "none": b"none",
+        "dict": b"dict",
+        "ndarray": b"ndarray",
+        "object": b"object",
+        "unknown": b"unknown",
+
+    }
+
+    @staticmethod
+    def decode_str(data):
+        return data.decode(encoding="utf-8", errors="strict")
+    @staticmethod
+    def encode_str(string):
+        return str(string).encode(encoding="utf-8", errors="strict")
+
+
+    @staticmethod
+    def encode_data(data):
+        if data is None:
+            return {b"type": Base.TYPES["none"],
+                    b"data": None}
+
+        elif isinstance(data, dict):
+            return {b"type": Base.TYPES["dict"],
+                    b"data": {k: Base.encode_data(v) for k, v in data.items()}}
+        elif isinstance(data, object):
+            return {b"type": Base.TYPES["object"],
+                    b"data": pickle.dumps(data)
+                    }
+
+        # 其他数据,先转换成numpy类型
+        if not isinstance(data, np.ndarray):
+            data = np.array(data)
+        if isinstance(data, np.ndarray):
+            if data.dtype == object:
+                return {b"type": Base.TYPES["object"],
+                        b"data": pickle.dumps(data)
+                        }
+            else:
+                return {
+                    b"type": Base.TYPES["ndarray"],
+                    b"dtype": data.dtype.str,
+                    b"shape": data.shape,
+                    b"data": data.tobytes()
+                }
+        print(f"不支持类型{type(data)}")
+        return {
+            b"type": Base.TYPES["unknown"],
+            b"data": pickle.dumps(data)
+        }
+
+
+    @staticmethod
+    def decode_data(encoded_data):
+        try:
+            data_type = encoded_data[b"type"]
+            if data_type == Base.TYPES["none"]:
+                return None
+            elif data_type == Base.TYPES["ndarray"]:
+                dtype = np.dtype(encoded_data[b"dtype"])
+                shape = encoded_data[b"shape"]
+                data_bytes = encoded_data[b"data"]
+                return np.frombuffer(data_bytes, dtype=dtype).reshape(shape)
+            elif data_type == Base.TYPES["object"]:
+                pickled_data = encoded_data[b"data"]
+                return pickle.loads(pickled_data)
+            elif data_type == Base.TYPES["dict"]:
+                encoded_dict = encoded_data[b"data"]
+                return {k: Base.decode_data(v) for k, v in encoded_dict.items()}
+            else:
+                return encoded_data
+        except (KeyError, ValueError, TypeError, pickle.UnpicklingError) as e:
+            print(f"数据解码失败: {e}")
+            return encoded_data  # 解码失败时返回原始数据，避免崩溃
 
 
 
-class Reader:
+
+
+
+
+
+
+
+
+
+
+class Reader(Base):
     """
     用于读取包含张量(`numpy.ndarray`)数据集的对象。
     这些张量是通过使用MessagePack从Lightning Memory-Mapped Database (LMDB)中读取的。
@@ -68,7 +172,6 @@ class Reader:
         self.read_keys = []          # 当前有效的读取键
         self.deleted_keys = set()    # 已删除的键
         self.nb_samples = 0          # 数据库大小
-        self.internal_keys=[b"__physical_keys__", b"__read_keys__", b"__deleted_keys__",encode_str("nb_samples")] #内部保留键
 
         # 以只读模式打开LMDB环境
         subdir_bool =False if  bool(os.path.splitext(dirpath)[1])  else True
@@ -76,20 +179,20 @@ class Reader:
             self._lmdb_env = lmdb.open(dirpath,
                     readonly=True, 
                     meminit=False,
-                    max_dbs=NB_DBS,
+                    max_dbs=Base.NB_DBS,
                     max_spare_txns=32,
                     subdir=subdir_bool, 
                     lock=False)
         else:
             self._lmdb_env = lmdb.open(dirpath,
                                        readonly=True,
-                                       max_dbs=NB_DBS,
+                                       max_dbs=Base.NB_DBS,
                                        subdir=subdir_bool, 
                                        lock=True)
 
         # 打开与环境关联的默认数据库
-        self.data_db = self._lmdb_env.open_db(DATA_DB)
-        self.meta_db = self._lmdb_env.open_db(META_DB)
+        self.data_db = self._lmdb_env.open_db(Base.DATA_DB)
+        self.meta_db = self._lmdb_env.open_db(Base.META_DB)
 
         # 加载键管理系统
         self._load_keys()
@@ -101,7 +204,7 @@ class Reader:
             physical_data = txn.get(b"__physical_keys__")
             read_data = txn.get(b"__read_keys__")
             deleted_data = txn.get(b"__deleted_keys__")
-            if physical_data and read_data:
+            if physical_data and read_data :
                 # 新版本数据库：使用键管理系统
                 self.physical_keys = msgpack.unpackb(physical_data)
                 self.read_keys = msgpack.unpackb(read_data)
@@ -116,10 +219,10 @@ class Reader:
                 # 旧版本数据库：从现有数据重建键管理系统
                 print("\033[93m检测到旧版本数据库，使用兼容模式...\033[0m")
                 # 从meta_db获取样本数
-                nb_samples_data = txn.get(encode_str("nb_samples"))
+                nb_samples_data = txn.get(b"nb_samples")
                 if nb_samples_data:
                     try:
-                        self.nb_samples = int(decode_str(nb_samples_data))
+                        self.nb_samples = int(nb_samples_data.decode(encoding="utf-8"))
                     except:
                         # 如果不是字符串，尝试用msgpack解码
                         self.nb_samples = msgpack.unpackb(nb_samples_data)
@@ -133,6 +236,7 @@ class Reader:
                 self.physical_keys = list(range(self.nb_samples))
                 self.read_keys = list(range(self.nb_samples))
                 self.deleted_keys = set()
+                self.compress_state=False
 
     def get_meta(self, key) :
         """
@@ -145,7 +249,7 @@ class Reader:
            存储的数据，如果不存在则返回None
        """
         if isinstance(key, str):
-            _key = encode_str(key)
+            _key = Base.encode_str(key)
         else:
             _key = key
 
@@ -154,7 +258,7 @@ class Reader:
             if data is None:
                 return None
             # 特殊处理键管理信息
-            if _key in self.internal_keys:
+            if _key in Base.INTERNAL_KEYS:
                 return msgpack.unpackb(data)
             try:
                 return msgpack.unpackb(data)
@@ -174,9 +278,9 @@ class Reader:
             # 遍历游标并获取键值对
             for key, value in cursor:
                 # 特殊处理键管理信息
-                if key in self.internal_keys:
+                if key in  Base.INTERNAL_KEYS:
                     continue
-                key_set.add(decode_str(key))
+                key_set.add(Base.decode_str(key))
         return key_set
 
 
@@ -224,11 +328,16 @@ class Reader:
         sample = self[i]
         for key in sample.keys():
             spec[key] = {}
-            try:
-                spec[key]["dtype"] = sample[key].dtype
-                spec[key]["shape"] = sample[key].shape
-            except KeyError:
-                raise KeyError("键不存在:{}".format(key))
+            data = sample[key]
+            if isinstance(data, np.ndarray):
+                spec[key]["dtype"] = data.dtype
+                spec[key]["shape"] = data.shape
+            elif isinstance(data, dict):
+                spec[key]["dtype"] = type(data).__name__
+                spec[key]["keys"] = list(data.keys())
+                spec[key]["shape"] = len(sample[key])
+            else:
+                spec[key]["dtype"] = type(data).__name__
         return spec
 
     def get_mapping(self, phy2log: bool = True):
@@ -262,20 +371,20 @@ class Reader:
         # 获取对应的物理键
         physical_key = self.read_keys[i]
         # 将物理键转换为带有尾随零的字符串
-        key = encode_str("{:010}".format(physical_key))
+        key = Base.encode_str("{:010}".format(physical_key))
         obj = {}
         with self._lmdb_env.begin(db=self.data_db) as txn:
-            # 从LMDB读取msgpack,并解码其中的每个值
             _obj = msgpack.unpackb(txn.get(key), raw=False, use_list=True)
             for k in _obj:
                 # 如果键存储为字节对象,则必须对其进行解码
                 if isinstance(k, bytes):
-                    _k = decode_str(k)
+                    _k = Base.decode_str(k)
                 else:
                     _k = str(k)
-                obj[_k] = msgpack.unpackb(
-                    _obj[_k], raw=False, use_list=False, object_hook=decode_data
-                )
+                obj[_k] = Base.decode_data(msgpack.unpackb(
+                    _obj[_k], raw=False, use_list=False
+                ))
+
         return obj
 
     def get_samples(self, keys: list) -> list:
@@ -301,17 +410,18 @@ class Reader:
                     print(f"检测到数据库不存在键{_i},跳过...")
                     continue
                 # 将样本编号转换为带有尾随零的字符串
-                key =  encode_str("{:010}".format(physical_key))
+                key =  Base.encode_str("{:010}".format(physical_key))
                 # 从LMDB读取msgpack,解码其中的每个值,并将其添加到检索到的样本集合中
                 obj = msgpack.unpackb(txn.get(key), raw=False, use_list=True)
                 for k in obj:
+                    print(k)
                     # 如果键存储为字节对象,则必须对其进行解码
                     if isinstance(k, bytes):
-                        _k = decode_str(k)
+                        _k = Base.decode_str(k)
                     else:
                         _k = str(k)
                     samples[_k] = msgpack.unpackb(
-                        obj[_k], raw=False, use_list=False, object_hook=decode_data
+                        obj[_k], raw=False, use_list=False, object_hook=Base.decode_data
                     )
                 samples_sum.append(samples)
 
@@ -339,7 +449,7 @@ class Reader:
             raise ValueError(f"物理键 {physical_key} 超出有效范围")
 
         # 将物理键转换为带有尾随零的字符串
-        key = encode_str("{:010}".format(physical_key))
+        key =  Base.encode_str("{:010}".format(physical_key))
         obj = {}
         with self._lmdb_env.begin(db=self.data_db) as txn:
             # 从LMDB读取msgpack,并解码其中的每个值
@@ -347,11 +457,11 @@ class Reader:
             for k in _obj:
                 # 如果键存储为字节对象,则必须对其进行解码
                 if isinstance(k, bytes):
-                    _k = decode_str(k)
+                    _k =  Base.decode_str(k)
                 else:
                     _k = str(k)
                 obj[_k] = msgpack.unpackb(
-                    _obj[_k], raw=False, use_list=False, object_hook=decode_data
+                    _obj[_k], raw=False, use_list=False, object_hook= Base.decode_data
                 )
         return obj
 
@@ -383,10 +493,13 @@ class Reader:
 
 
 
-        out += "数据键(第0个样本):"
+        out += "数据键(第0个样本):\n"
         spec = self.get_data_specification(0)
-        for key in self.get_data_keys(0):
-            out += f"\n\t'{key}' <- 数据类型: {spec[key]["dtype"]}, 形状: {spec[key]["shape"]}"
+        for key in spec:
+            out += f"\t键: '{key}'\n"
+            details = spec[key]
+            for detail_key, detail_val in details.items():
+                out += f"\t  {detail_key}:{detail_val}\n"
 
 
         out += "\n提示:\t使用 get_mapping() 查看逻辑索引与物理键的映射关系; "
@@ -397,9 +510,12 @@ class Reader:
 
     def close(self):
         self._lmdb_env.close()
+        lock_path = self.dirpath + "-lock"
+        if os.path.exists(lock_path):
+            os.remove(lock_path)
 
 
-class Writer:
+class Writer(Base):
     """
 
     用于将数据集的对象 ('numpy.ndarray') 写入闪电内存映射数据库 (LMDB),并带有MessagePack压缩。
@@ -435,7 +551,6 @@ class Writer:
         Args:
             dirpath:  应该写入LMDB的目录的路径。
             map_size_limit: LMDB的map大小,单位为MB。必须足够大以捕获打算存储在LMDB中所有数据。
-            multiprocessing: 是否开启多进程。
         """
         self.dirpath = dirpath
         self.map_size_limit = map_size_limit  # Megabytes (MB)
@@ -468,7 +583,7 @@ class Writer:
                 self._lmdb_env = lmdb.open(
                     dirpath,
                     map_size=map_size_limit,
-                    max_dbs=NB_DBS,
+                    max_dbs=Base.NB_DBS,
                     writemap=True,        # 启用写时内存映射
                     metasync=False,      # 关闭元数据同步
                     map_async=True,      # 异步内存映射刷新
@@ -480,14 +595,14 @@ class Writer:
             else:
                 self._lmdb_env = lmdb.open(dirpath,
                                         map_size=map_size_limit,
-                                        max_dbs=NB_DBS,
+                                        max_dbs=Base.NB_DBS,
                                         subdir=subdir_bool)
         except lmdb.Error as e :
-            raise ValueError(f"创建错误：{e} \t(map_size_limit设置创建 {map_size_limit >> 30} MB 数据库)")
+            raise ValueError(f"创建错误：{e} \t(map_size_limit设置创建 {map_size_limit >> 20} MB数据库(可能原因:数据库被其他程序占用中)")
         
         # 打开与环境关联的默认数据库
-        self.data_db = self._lmdb_env.open_db(DATA_DB) # 数据集
-        self.meta_db = self._lmdb_env.open_db(META_DB) # 数据信息
+        self.data_db = self._lmdb_env.open_db(Base.DATA_DB) # 数据集
+        self.meta_db = self._lmdb_env.open_db(Base.META_DB) # 数据信息
 
         # 加载键信息
         self._load_keys()
@@ -502,7 +617,8 @@ class Writer:
             physical_data = txn.get(b"__physical_keys__")
             read_data = txn.get(b"__read_keys__")
             deleted_data = txn.get(b"__deleted_keys__")
-            nb_samples_data = txn.get(encode_str("nb_samples"))
+            nb_samples_data = txn.get(b"nb_samples")
+
 
             if physical_data and read_data:
 
@@ -516,17 +632,17 @@ class Writer:
                 # nb_samples 与 read_keys 保持一致
                 self.nb_samples = len(self.read_keys)
                 self.stats = "update_stats"
-                print(f"\n\033[92m检测到{self.dirpath}数据库\033[93m<已有数据存在>,\033[92m数据库大小: {self.nb_samples}, 物理存储大小: {self.physical_size}\033[0m\n")
+                print(f"\n\033[92m检测到{self.dirpath}数据库\033[93m<已有数据存在>,\033[92m数据库大小: {self.nb_samples}, 物理存储大小: {self.physical_size} \033[0m\n")
 
             if not physical_data and nb_samples_data:
                 # 旧版本数据库：从现有数据重建键管理系统
                 print("\033[93m检测到旧版本数据库，正在重建键管理系统...\033[0m")
                 # 从meta_db获取样本数
                 with self._lmdb_env.begin(db=self.meta_db) as txn:
-                    nb_samples_data = txn.get(encode_str("nb_samples"))
+                    nb_samples_data = txn.get(b"nb_samples")
                     if nb_samples_data:
                         try:
-                            self.nb_samples = int(decode_str(nb_samples_data))
+                            self.nb_samples = int(Base.decode_str(nb_samples_data))
                         except:
                             # 如果不是字符串，尝试用msgpack解码
                             self.nb_samples = msgpack.unpackb(nb_samples_data)
@@ -562,7 +678,7 @@ class Writer:
         """
 
         if isinstance(key, str):
-            _key = encode_str(key)
+            _key = Base.encode_str(key)
         else:
             _key = key
         with self._lmdb_env.begin(write=True, db=self.meta_db) as txn:
@@ -575,24 +691,15 @@ class Writer:
             txn.put(b"__physical_keys__", msgpack.packb(self.physical_keys))
             txn.put(b"__read_keys__", msgpack.packb(self.read_keys))
             txn.put(b"__deleted_keys__", msgpack.packb(list(self.deleted_keys)))
-            txn.put(encode_str("nb_samples"), msgpack.packb(self.nb_samples))
+            txn.put(b"nb_samples", msgpack.packb(self.nb_samples))
     def _write_data(self,new_physical_key,sample):
         # 存储样本数据
         with self._lmdb_env.begin(write=True, db=self.data_db) as txn:
             msg_pkgs = {}
             for key in sample:
-                obj = sample[key]
-                if not isinstance(obj, np.ndarray):
-                    obj = np.array(obj)
-                    try:
-                        # 检查是否存在 NaN 或 Inf
-                        if np.isnan(obj).any() or np.isinf(obj).any() or obj.dtype==np.object_:
-                            raise ValueError("\033[91m 数据中包含 NaN 或 Inf 或 obj,请检查数据.\033[0m\n")
-                    except Exception as e:
-                        # 不支持校验
-                        pass
-                msg_pkgs[key] = msgpack.packb(obj, use_bin_type=True, default=encode_data)
-            physical_key_str = encode_str("{:010}".format(new_physical_key))
+                obj = Base.encode_data(sample[key])
+                msg_pkgs[key] = msgpack.packb(obj, use_bin_type=True)
+            physical_key_str = Base.encode_str("{:010}".format(new_physical_key))
             pkg = msgpack.packb(msg_pkgs, use_bin_type=True)
             txn.put(physical_key_str, pkg)
     @property
@@ -778,7 +885,10 @@ class Writer:
         self._save_keys()
         self._lmdb_env.close()
         if sys.platform.startswith('win') and not self.multiprocessing:
-            print(f"检测到windows系统, 请运行  fix_lmdb_windows_size({self.dirpath}) 修复文件大小问题")
+            print(f"检测到windows系统, 请运行  fix_lmdb_windows_size('{self.dirpath}') 修复文件大小问题")
+        lock_path = self.dirpath + "-lock"
+        if os.path.exists(lock_path):
+            os.remove(lock_path)
 
 
 
@@ -827,9 +937,11 @@ def fix_lmdb_windows_size(dirpath: str):
     Returns:
 
     """
-
-    db = Writer(dirpath=dirpath, map_size_limit=1)
-    db.close()
+    try:
+        db = Writer(dirpath=dirpath, map_size_limit=1)
+        db.close()
+    except Exception as e:
+        print(f"修复完成,",e)
 
 
 
@@ -1378,190 +1490,3 @@ class ReaderSSDList:
         return first_db_idx + real_idx
 
 
-
-
-if __name__ == '__main__':
-    db_path="test.db"
-    # 测试1: 创建数据库并写入数据
-    print("\n1. 测试数据写入功能")
-    print("-" * 40)
-
-    with Writer(dirpath=db_path, map_size_limit=1024) as writer:
-        print(writer)
-
-        # 创建测试数据
-        sample1 = {
-            "image": np.random.rand(32, 32, 3).astype(np.float32),
-            "label": np.array([1, 0, 0]),
-            "metadata": np.array([100, 200])
-        }
-
-        sample2 = {
-            "image": np.random.rand(32, 32, 3).astype(np.float32),
-            "label": np.array([0, 1, 0]),
-            "metadata": np.array([150, 250])
-        }
-
-        sample3 = {
-            "image": np.random.rand(32, 32, 3).astype(np.float32),
-            "label": np.array([0, 0, 1]),
-            "metadata": np.array([200, 300])
-        }
-
-        # 测试 put_sample 方法
-        print("添加样本1...")
-        writer.put_sample(sample1)
-
-        print("添加样本2...")
-        writer.put_sample(sample2)
-
-        print("添加样本3...")
-        writer.put_sample(sample3)
-
-        # 测试元数据存储
-        writer.put_meta("dataset_info", {
-            "name": "测试数据集",
-            "version": "1.0",
-            "created_by": "test_script"
-        })
-
-        writer.put_meta("description", "这是一个测试数据集")
-
-    print(f"写入完成，数据库大小: {writer.size}")
-    print(writer)
-
-    # 测试2: 读取数据
-    print("\n2. 测试数据读取功能")
-    print("-" * 40)
-
-    with Reader(dirpath=db_path) as reader:
-        print(reader)
-
-        # 测试基本读取
-        print("\n读取单个样本:")
-        sample_0 = reader[0]
-        print(f"样本0的键: {list(sample_0.keys())}")
-        print(f"样本0的图像形状: {sample_0['image'].shape}")
-        print(f"样本0的标签: {sample_0['label']}")
-
-        # 测试 get_sample 方法
-        sample_1 = reader.get_sample(1)
-        print(f"样本1的标签: {sample_1['label']}")
-
-        # 测试 get_samples 方法
-        samples = reader.get_samples([0, 2])
-        print(f"批量读取样本数量: {len(samples)}")
-
-        # 测试元数据读取
-        dataset_info = reader.get_meta("dataset_info")
-        print(f"数据集信息: {dataset_info}")
-
-        description = reader.get_meta("description")
-        print(f"数据集描述: {description}")
-
-        # 测试数据规范
-        spec = reader.get_data_specification(0)
-        print(f"数据规范: {spec}")
-
-        # 测试映射关系
-        mapping = reader.get_mapping()
-        print(f"物理键到逻辑索引映射 (前3个): {dict(list(mapping.items())[:3])}")
-
-    # 测试3: 修改、插入和删除操作
-    print("\n3. 测试修改、插入和删除功能")
-    print("-" * 40)
-
-    with Writer(dirpath=db_path, map_size_limit=1024) as writer:
-        print(f"重新打开数据库，当前大小: {writer.size}")
-
-        # 测试修改样本
-        modified_sample = {
-            "image": np.ones((32, 32, 3), dtype=np.float32),
-            "label": np.array([1, 1, 1]),
-            "metadata": np.array([999, 999])
-        }
-
-        print("修改索引1的样本...")
-        writer.change_sample(1, modified_sample, safe_model=False)
-
-        # 测试插入样本
-        new_sample = {
-            "image": np.zeros((32, 32, 3), dtype=np.float32),
-            "label": np.array([0, 0, 0]),
-            "metadata": np.array([0, 0])
-        }
-
-        print("在索引1位置插入新样本...")
-        writer.insert_sample(1, new_sample, safe_model=False)
-
-        print(f"插入后数据库大小: {writer.size}")
-
-        # 测试删除样本
-        print("删除索引2的样本...")
-        writer.delete_sample(2)
-
-        print(f"删除后数据库大小: {writer.size}")
-
-        # 添加更多样本用于测试删除功能
-        for i in range(2):
-            extra_sample = {
-                "image": np.random.rand(32, 32, 3).astype(np.float32),
-                "label": np.array([i, i, i]),
-                "metadata": np.array([i * 100, i * 200])
-            }
-            writer.put_sample(extra_sample)
-
-        print(f"添加额外样本后数据库大小: {writer.size}")
-
-    # 测试4: 读取修改后的数据
-    print("\n4. 测试读取修改后的数据")
-    print("-" * 40)
-
-    with Reader(dirpath=db_path) as reader:
-        print(reader)
-
-        # 验证修改的样本
-        sample_1 = reader[1]
-        print(f"修改后的样本1标签: {sample_1['label']}")
-        print(f"修改后的样本1元数据: {sample_1['metadata']}")
-
-        # 验证插入的样本
-        sample_2 = reader[2]
-        print(f"插入的样本2标签: {sample_2['label']}")
-
-        # 测试读取已删除的样本
-        print("\n5. 测试读取已删除的样本")
-        print("-" * 40)
-
-        deleted_physical_keys = reader.deleted_keys
-        print(deleted_physical_keys)
-        if deleted_physical_keys:
-            print(f"发现 {len(deleted_physical_keys)} 个已删除的样本")
-
-            # 读取第一个已删除的样本
-            deleted_physical_key = list(deleted_physical_keys)[0]
-            try:
-                deleted_sample = reader.get_delete_sample(deleted_physical_key)
-                print(f"已删除样本(物理键{deleted_physical_key})的标签: {deleted_sample['label']}")
-            except Exception as e:
-                print(f"读取已删除样本失败: {e}")
-        else:
-            print("没有找到已删除的样本")
-
-        # 测试边界情况
-        print("\n6. 测试边界情况")
-        print("-" * 40)
-
-        try:
-            invalid_sample = reader[1000]  # 不存在的索引
-        except IndexError as e:
-            print(f"边界测试 - 捕获预期的IndexError: {e}")
-
-        try:
-            invalid_value = reader.get_data_value(0, "nonexistent_key")
-        except KeyError as e:
-            print(f"边界测试 - 捕获预期的KeyError: {e}")
-
-    print("\n" + "=" * 60)
-    print("所有测试完成！")
-    print("=" * 60)

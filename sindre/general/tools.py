@@ -168,7 +168,7 @@ def load(path):
             data = vedo.load(path)
         return data
     except Exception as e:
-        log.error(f"Error loading .pts file: {e}")
+        log.error(f"Error loading  file: {e}")
         return None
 
 

@@ -1,0 +1,783 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>数据监控系统</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdn.jsdelivr.net/npm/font-awesome@4.7.0/css/font-awesome.min.css" rel="stylesheet">
+    <script src="https://unpkg.com/es-module-shims@1.7.0/dist/es-module-shims.js"></script>
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://cdn.jsdelivr.net/npm/three@0.168.0/build/three.module.js",
+                "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.168.0/examples/jsm/"
+            }
+        }
+    </script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        primary: '#165DFF',
+                        secondary: '#36CFC9',
+                        accent: '#722ED1',
+                    },
+                }
+            }
+        }
+    </script>
+
+    <style type="text/tailwindcss">
+        @layer utilities {
+            .content-auto {
+                content-visibility: auto;
+            }
+            .scrollbar-thin {
+                scrollbar-width: thin;
+            }
+            .scrollbar-thin::-webkit-scrollbar {
+                width: 4px;
+            }
+            .scrollbar-thin::-webkit-scrollbar-thumb {
+                background-color: rgba(156, 163, 175, 0.5);
+                border-radius: 2px;
+            }
+        }
+    </style>
+</head>
+<body class="bg-gray-50 font-sans">
+<!-- 顶部导航 -->
+<header class="bg-white shadow-sm fixed top-0 left-0 right-0 z-50">
+    <div class="container mx-auto px-4 py-3 flex justify-between items-center">
+        <div class="flex items-center space-x-2">
+            <div class="w-10 h-10 rounded-lg bg-primary flex items-center justify-center">
+                <i class="fa fa-database text-white text-xl"></i>
+            </div>
+            <h1 class="text-xl font-bold">数据监控系统</h1>
+        </div>
+        <div class="text-sm text-gray-500">
+            数据目录: <span id="data-root" class="font-medium">./datasets</span>
+        </div>
+    </div>
+</header>
+
+<!-- 主内容区 -->
+<main class="container mx-auto px-4 pt-20 pb-16">
+    <!-- 搜索和筛选区 -->
+    <div class="bg-white rounded-xl shadow-sm p-4 mb-6">
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <!-- 搜索框 -->
+            <div class="relative">
+                <input type="text" id="search-input"
+                       placeholder="搜索数据库名称或标签..."
+                       class="w-full pl-10 pr-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-primary/30 focus:border-primary outline-none transition-all">
+                <div class="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400">
+                    <i class="fa fa-search"></i>
+                </div>
+            </div>
+
+            <!-- 类型筛选 -->
+            <div>
+                <select id="type-filter" class="w-full px-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-primary/30 focus:border-primary outline-none appearance-none bg-white">
+                    <option value="">所有数据类型</option>
+                    <option value="point_cloud">点云</option>
+                    <option value="mesh">网格</option>
+                    <option value="image">图像</option>
+                </select>
+            </div>
+
+            <!-- 标签筛选 -->
+            <div>
+                <select id="tag-filter" class="w-full px-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-primary/30 focus:border-primary outline-none appearance-none bg-white">
+                    <option value="">所有标签</option>
+                    <!-- 标签将通过JavaScript动态加载 -->
+                </select>
+            </div>
+        </div>
+    </div>
+
+    <!-- 数据库列表 -->
+    <div class="bg-white rounded-xl shadow-sm p-4 mb-6">
+        <div class="flex justify-between items-center mb-4">
+            <h2 class="text-lg font-bold">数据库列表</h2>
+            <span id="db-count" class="text-sm bg-gray-100 px-2 py-1 rounded-full">0 个数据库</span>
+        </div>
+
+        <div class="overflow-y-auto max-h-[calc(100vh-200px)] scrollbar-thin">
+            <div id="db-list" class="space-y-2">
+                <!-- 数据库列表将通过JavaScript动态加载 -->
+                <div class="text-center text-gray-500 py-8">
+                    <i class="fa fa-spinner fa-spin text-2xl mb-2"></i>
+                    <p>加载数据库列表中...</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</main>
+
+<!-- 信息弹窗 -->
+<div id="info-modal" class="fixed inset-0 bg-black bg-opacity-50 z-50 hidden items-center justify-center p-4">
+    <div class="bg-white rounded-xl shadow-lg w-full max-w-3xl max-h-[90vh] overflow-hidden flex flex-col">
+        <div class="p-4 border-b flex justify-between items-center">
+            <h3 class="text-lg font-bold" id="info-modal-title">数据库信息</h3>
+            <button id="close-info-modal" class="text-gray-500 hover:text-gray-700">
+                <i class="fa fa-times text-xl"></i>
+            </button>
+        </div>
+
+        <div class="p-4 overflow-y-auto flex-grow">
+            <input type="hidden" id="info-db-id">
+
+            <div class="grid grid-cols-2 gap-4 mb-6">
+                <div>
+                    <p class="text-sm text-gray-500">名称</p>
+                    <p id="info-name" class="font-medium"></p>
+                </div>
+                <div>
+                    <p class="text-sm text-gray-500">类型</p>
+                    <p id="info-type" class="font-medium"></p>
+                </div>
+                <div>
+                    <p class="text-sm text-gray-500">大小</p>
+                    <p id="info-size" class="font-medium"></p>
+                </div>
+                <div>
+                    <p class="text-sm text-gray-500">修改时间</p>
+                    <p id="info-modified" class="font-medium"></p>
+                </div>
+                <div>
+                    <p class="text-sm text-gray-500">数据量</p>
+                    <p id="info-length" class="font-medium"></p>
+                </div>
+            </div>
+
+            <div class="mb-6">
+                <p class="text-sm font-medium mb-2">标签</p>
+                <div id="info-tags" class="flex flex-wrap gap-2"></div>
+            </div>
+
+            <div>
+                <p class="text-sm font-medium mb-2">数据键信息</p>
+                <div class="overflow-x-auto">
+                    <table class="min-w-full divide-y divide-gray-200">
+                        <thead>
+                        <tr>
+                            <th class="px-3 py-2 bg-gray-50 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">键名</th>
+                            <th class="px-3 py-2 bg-gray-50 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">数据类型</th>
+                            <th class="px-3 py-2 bg-gray-50 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">形状</th>
+                        </tr>
+                        </thead>
+                        <tbody id="info-keys-table" class="bg-white divide-y divide-gray-200">
+                        <!-- 键信息将动态填充 -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <div class="p-4 border-t flex justify-end space-x-3">
+            <button id="download-db-btn" class="px-4 py-2 bg-secondary text-white rounded-lg text-sm hover:bg-secondary/90 transition-colors">
+                <i class="fa fa-download mr-1"></i> 下载数据库
+            </button>
+            <button id="close-info-btn" class="px-4 py-2 bg-primary text-white rounded-lg text-sm hover:bg-primary/90 transition-colors">
+                关闭
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- 编辑弹窗 -->
+<div id="edit-modal" class="fixed inset-0 bg-black bg-opacity-50 z-50 hidden items-center justify-center p-4">
+    <div class="bg-white rounded-xl shadow-lg w-full max-w-md overflow-hidden flex flex-col">
+        <div class="p-4 border-b flex justify-between items-center">
+            <h3 class="text-lg font-bold">编辑数据库信息</h3>
+            <button id="close-edit-modal" class="text-gray-500 hover:text-gray-700">
+                <i class="fa fa-times text-xl"></i>
+            </button>
+        </div>
+
+        <div class="p-4 overflow-y-auto flex-grow">
+            <input type="hidden" id="edit-db-id">
+
+            <div class="mb-4">
+                <label class="block text-sm font-medium text-gray-700 mb-1">数据库类型</label>
+                <select id="edit-db-type" class="w-full px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-primary/30 focus:border-primary outline-none">
+                    <option value="">请选择类型</option>
+                    <option value="point_cloud">点云</option>
+                    <option value="mesh">网格</option>
+                    <option value="image">图像</option>
+                </select>
+            </div>
+
+            <div class="mb-4">
+                <label class="block text-sm font-medium text-gray-700 mb-1">标签 (用逗号分隔)</label>
+                <input type="text" id="edit-db-tags"
+                       placeholder="例如: 训练集, 室内, 2023"
+                       class="w-full px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-primary/30 focus:border-primary outline-none">
+            </div>
+        </div>
+
+        <div class="p-4 border-t flex justify-end space-x-3">
+            <button id="cancel-edit-btn" class="px-4 py-2 border border-gray-200 rounded-lg text-sm hover:bg-gray-50 transition-colors">
+                取消
+            </button>
+            <button id="save-edit-btn" class="px-4 py-2 bg-primary text-white rounded-lg text-sm hover:bg-primary/90 transition-colors">
+                保存
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- 预览配置弹窗 -->
+<div id="preview-modal" class="fixed inset-0 bg-black bg-opacity-50 z-50 hidden items-center justify-center p-4">
+    <div class="bg-white rounded-xl shadow-lg w-full max-w-3xl max-h-[90vh] overflow-hidden flex flex-col">
+        <div class="p-4 border-b flex justify-between items-center">
+            <h3 class="text-lg font-bold" id="modal-title">预览配置</h3>
+            <button id="close-modal" class="text-gray-500 hover:text-gray-700">
+                <i class="fa fa-times text-xl"></i>
+            </button>
+        </div>
+
+        <div class="p-4 overflow-y-auto flex-grow">
+            <input type="hidden" id="current-db-id">
+            <input type="hidden" id="current-db-path">
+            <input type="hidden" id="current-db-type">
+
+            <!-- 渲染选项区域 -->
+            <div class="mb-6">
+                <h4 class="text-base font-medium text-gray-800 mb-3">渲染选项</h4>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <!-- 预览类型 -->
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">预览类型</label>
+                        <select id="preview-type-select" class="w-full px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-primary/30 focus:border-primary outline-none">
+                            <!-- 动态填充 -->
+                        </select>
+                    </div>
+
+                    <!-- 数据索引 -->
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">索引</label>
+                        <input type="number" id="data-index" value="0" min="0"
+                               class="w-full px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-primary/30 focus:border-primary outline-none">
+                    </div>
+                </div>
+            </div>
+
+            <!-- 渲染键选择 -->
+            <div class="mb-6">
+                <label class="block text-sm font-medium text-gray-700 mb-1">渲染键（选择要可视化的数据键）</label>
+                <select id="key-select" class="w-full px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-primary/30 focus:border-primary outline-none">
+                    <!-- 动态填充 -->
+                </select>
+            </div>
+
+            <!-- 基础选项区域（按数据类型显示） -->
+            <div>
+                <h4 class="text-base font-medium text-gray-800 mb-3">基础选项</h4>
+
+                <!-- 网格专属选项 -->
+                <div id="mesh-specific-options" class="mb-0 hidden">
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">顶点（选择顶点数据键）</label>
+                            <select id="mesh-vertex-key-select" class="w-full px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-primary/30 focus:border-primary outline-none">
+                                <!-- 动态填充 -->
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">面片（选择面片数据键）</label>
+                            <select id="mesh-face-key-select" class="w-full px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-primary/30 focus:border-primary outline-none">
+                                <!-- 动态填充 -->
+                            </select>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 点云专属选项 -->
+                <div id="point-cloud-specific-options" class="mb-0 hidden">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">顶点（选择顶点数据键）</label>
+                        <select id="vertex-key-select" class="w-full px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-primary/30 focus:border-primary outline-none">
+                            <!-- 动态填充 -->
+                        </select>
+                    </div>
+                </div>
+
+                <!-- 图片专属选项 -->
+                <div id="image-specific-options" class="mb-0 hidden">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">图片（选择图片数据键）</label>
+                        <select id="image-key-select" class="w-full px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-primary/30 focus:border-primary outline-none">
+                            <!-- 动态填充 -->
+                        </select>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="p-4 border-t flex justify-end space-x-3">
+            <button id="cancel-preview" class="px-4 py-2 border border-gray-200 rounded-lg text-sm hover:bg-gray-50 transition-colors">
+                取消
+            </button>
+            <button id="show-preview" class="px-4 py-2 bg-primary text-white rounded-lg text-sm hover:bg-primary/90 transition-colors">
+                显示预览
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- 预览弹窗 -->
+<div id="preview-window" class="fixed inset-0 bg-black bg-opacity-80 z-50 hidden items-center justify-center p-4">
+    <div class="bg-white rounded-xl shadow-lg w-full max-w-5xl max-h-[90vh] overflow-hidden flex flex-col">
+        <div class="p-4 border-b flex justify-between items-center">
+            <h3 class="text-lg font-bold" id="preview-window-title">数据预览</h3>
+            <button id="close-preview" class="text-gray-500 hover:text-gray-700">
+                <i class="fa fa-times text-xl"></i>
+            </button>
+        </div>
+
+        <div class="p-4 flex-grow overflow-hidden flex justify-center items-center">
+            <div id="preview-content" class="w-full h-full">
+                <!-- 预览内容将在这里显示 -->
+                <div class="text-center text-gray-500 py-8">
+                    <i class="fa fa-spinner fa-spin text-2xl mb-2"></i>
+                    <p>加载预览中...</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+
+
+<script type="module"  src="/static/tools.js"></script>
+<script>
+    // 全局变量
+    let currentDBInfo = null;
+
+    // 初始化
+    const init = () => {
+        // 加载数据库列表
+        tools.fetchDatabases();
+
+        // 加载标签
+        tools.fetchTags();
+
+        // 设置事件监听
+        setupEventListeners();
+
+    };
+
+    // 事件监听
+    const setupEventListeners = () => {
+        // 搜索和筛选
+        const searchInput = document.getElementById('search-input');
+        const typeFilter = document.getElementById('type-filter');
+        const tagFilter = document.getElementById('tag-filter');
+
+        const applyFilters = () => {
+            tools.fetchDatabases({
+                search: searchInput.value.trim(),
+                type: typeFilter.value,
+                tag: tagFilter.value
+            });
+        };
+
+        searchInput.addEventListener('input', applyFilters);
+        typeFilter.addEventListener('change', applyFilters);
+        tagFilter.addEventListener('change', applyFilters);
+
+
+        // 信息弹窗控制
+        document.getElementById('close-info-modal').addEventListener('click', closeInfoModal);
+        document.getElementById('close-info-btn').addEventListener('click', closeInfoModal);
+
+        // 编辑弹窗控制
+        document.getElementById('close-edit-modal').addEventListener('click', closeEditModal);
+        document.getElementById('cancel-edit-btn').addEventListener('click', closeEditModal);
+        document.getElementById('save-edit-btn').addEventListener('click', saveDatabaseInfo);
+
+        // 预览配置弹窗控制
+        document.getElementById('close-modal').addEventListener('click', closePreviewModal);
+        document.getElementById('cancel-preview').addEventListener('click', closePreviewModal);
+        // 预览类型变化时控制渲染键显示
+        document.getElementById('preview-type-select').addEventListener('change', function() {
+        const renderKeyContainer = document.querySelector('#key-select').closest('div');
+            const shouldHideKey = this.value === '' || this.value === 'original';
+
+            if (shouldHideKey) {
+                // 隐藏渲染键选项
+                renderKeyContainer.classList.add('hidden');
+            } else {
+                // 显示渲染键选项
+                renderKeyContainer.classList.remove('hidden');
+            }
+        });
+
+
+        // 数据库类型变化时更新预览类型选项
+        document.getElementById('current-db-type').addEventListener('change', updatePreviewTypeOptions);
+
+        // 显示预览
+        document.getElementById('show-preview').addEventListener('click', showDataPreview);
+
+        // 关闭预览窗口
+        document.getElementById('close-preview').addEventListener('click', () => {
+            document.getElementById('preview-window').classList.add('hidden');
+            document.getElementById('preview-window').classList.remove('flex');
+            tools.clearThreeScene();
+        });
+    };
+
+    // 关闭信息弹窗
+    const closeInfoModal = () => {
+        document.getElementById('info-modal').classList.add('hidden');
+        document.getElementById('info-modal').classList.remove('flex');
+    };
+
+    // 关闭编辑弹窗
+    const closeEditModal = () => {
+        document.getElementById('edit-modal').classList.add('hidden');
+        document.getElementById('edit-modal').classList.remove('flex');
+    };
+
+    // 关闭预览配置弹窗
+    const closePreviewModal = () => {
+        document.getElementById('preview-modal').classList.add('hidden');
+        document.getElementById('preview-modal').classList.remove('flex');
+    };
+
+    // 保存数据库信息
+    const saveDatabaseInfo = () => {
+        const dbId = document.getElementById('edit-db-id').value;
+        const dbType = document.getElementById('edit-db-type').value;
+        const dbTags = document.getElementById('edit-db-tags').value.split(',').map(tag => tag.trim()).filter(Boolean);
+
+        if (!dbType) {
+            alert('请选择数据库类型');
+            return;
+        }
+
+        // 调用工具函数保存信息
+        tools.saveDatabaseInfo(dbId, dbType, dbTags)
+            .then(() => {
+                // 保存成功后刷新列表
+                tools.fetchDatabases();
+                closeEditModal();
+                alert('信息保存成功');
+            })
+            .catch(error => {
+                alert('保存失败: ' + error.message);
+            });
+    };
+
+    // 根据数据库类型更新预览类型选项
+    const updatePreviewTypeOptions = () => {
+        const dbType = document.getElementById('current-db-type').value;
+        const previewTypeSelect = document.getElementById('preview-type-select');
+
+        // 隐藏所有特定选项
+        document.getElementById('image-specific-options').classList.add('hidden');
+        document.getElementById('point-cloud-specific-options').classList.add('hidden');
+        document.getElementById('mesh-specific-options').classList.add('hidden');
+
+        // 清空现有选项
+        previewTypeSelect.innerHTML = '';
+
+        // 根据数据库类型添加预览类型
+        if (dbType === 'image') {
+            document.getElementById('image-specific-options').classList.remove('hidden');
+
+            const options = [
+                { value: 'original', text: '无' },
+                { value: 'keypoint', text: '关键点' },
+                { value: 'bbox', text: '边界框' },
+                { value: 'segmentation', text: '分割' }
+            ];
+
+            options.forEach(option => {
+                const opt = document.createElement('option');
+                opt.value = option.value;
+                opt.textContent = option.text;
+                previewTypeSelect.appendChild(opt);
+            });
+        }
+        else if (dbType === 'point_cloud') {
+            document.getElementById('point-cloud-specific-options').classList.remove('hidden');
+
+            const options = [
+                { value: 'original', text: '无' },
+                { value: 'vertex_labels', text: '顶点标签' },
+                { value: 'vertex_colors', text: '顶点颜色' }
+            ];
+
+            options.forEach(option => {
+                const opt = document.createElement('option');
+                opt.value = option.value;
+                opt.textContent = option.text;
+                previewTypeSelect.appendChild(opt);
+            });
+        }
+        else if (dbType === 'mesh') {
+            document.getElementById('mesh-specific-options').classList.remove('hidden');
+
+            const options = [
+                { value: 'original', text: '无' },
+                { value: 'vertex_labels', text: '顶点标签' },
+                { value: 'vertex_colors', text: '顶点颜色' },
+                { value: 'faces_labels', text: '面片标签' },
+                { value: 'faces_colors', text: '面片颜色' }
+            ];
+
+            options.forEach(option => {
+                const opt = document.createElement('option');
+                opt.value = option.value;
+                opt.textContent = option.text;
+                previewTypeSelect.appendChild(opt);
+            });
+        }
+
+        // 初始化完成后触发一次change事件，确保渲染键状态正确
+        previewTypeSelect.dispatchEvent(new Event('change'));
+    };
+
+    // 显示数据预览
+    const showDataPreview = async() => {
+        const dbId = document.getElementById('current-db-id').value;
+        const dbPath = document.getElementById('current-db-path').value;
+        const dbType = document.getElementById('current-db-type').value;
+        const dataIndex = document.getElementById('data-index').value;
+        //const selectedKey = document.getElementById('key-select').value;
+        const previewType = document.getElementById('preview-type-select').value;
+        const selectedKey = previewType === 'original' ? '' : document.getElementById('key-select').value;
+
+        // 收集特定类型的信息
+        let specificDataInfo = {};
+        if (dbType === 'image') {
+            specificDataInfo.image = document.getElementById('image-key-select').value;
+        } else if (dbType === 'point_cloud') {
+            specificDataInfo.vertices = document.getElementById('vertex-key-select').value;
+        } else if (dbType === 'mesh') {
+            specificDataInfo.vertices = document.getElementById('mesh-vertex-key-select').value;
+            specificDataInfo.faces = document.getElementById('mesh-face-key-select').value;
+        }
+        if (previewType !== 'original') {
+            // 验证必要参数
+            if (!specificDataInfo.vertices && (dbType === 'point_cloud' || dbType === 'mesh')) {
+                alert('请选择顶点数据键');
+                return;
+            }
+
+            if (dbType === 'mesh' && !specificDataInfo.faces) {
+                alert('请选择面片数据键');
+                return;
+            }
+
+            if (dbType === 'image' && !specificDataInfo.image) {
+                alert('请选择图像数据键');
+                return;
+            }
+        }
+
+
+
+        // 更新预览窗口标题
+        document.getElementById('preview-window-title').textContent =
+            `数据预览: ${document.getElementById('modal-title').textContent.split(' - ')[1]}`;
+
+        // 显示预览窗口
+        document.getElementById('preview-window').classList.remove('hidden');
+        document.getElementById('preview-window').classList.add('flex');
+
+        // 隐藏配置窗口
+        document.getElementById('preview-modal').classList.add('hidden');
+        document.getElementById('preview-modal').classList.remove('flex');
+
+        // 调用工具函数加载预览
+        await window.tools.loadDataPreview(
+            dbPath,
+            dbType,
+            specificDataInfo,
+            previewType,
+            selectedKey,
+            dataIndex
+        );
+    };
+
+    // 打开信息弹窗
+    window.openInfoModal = function(dbInfo) {
+        currentDBInfo = dbInfo;
+
+        document.getElementById('info-db-id').value = dbInfo.id;
+        document.getElementById('info-modal-title').textContent = `数据库信息: ${dbInfo.name}`;
+        document.getElementById('info-name').textContent = dbInfo.name;
+        document.getElementById('info-type').textContent = dbInfo.type || '未设置';
+        document.getElementById('info-size').textContent = tools.formatFileSize(dbInfo.size);
+        document.getElementById('info-modified').textContent = tools.formatTimestamp(dbInfo.modified_time);
+        document.getElementById('info-length').textContent = dbInfo.length || '读取失败';
+        // 填充标签
+        const tagsContainer = document.getElementById('info-tags');
+        tagsContainer.innerHTML = '';
+        if (dbInfo.tags && dbInfo.tags.length > 0) {
+            dbInfo.tags.forEach(tag => {
+                const tagEl = document.createElement('span');
+                tagEl.className = 'bg-gray-100 px-2 py-1 rounded text-sm';
+                tagEl.textContent = tag;
+                tagsContainer.appendChild(tagEl);
+            });
+        } else {
+            tagsContainer.innerHTML = '<p class="text-gray-500 text-sm">无标签</p>';
+        }
+
+        // 填充键信息表格
+        const keysTable = document.getElementById('info-keys-table');
+        keysTable.innerHTML = '';
+
+        if (dbInfo.data_keys && dbInfo.data_keys.length > 0) {
+            dbInfo.data_keys.forEach((key, index) => {
+                const row = document.createElement('tr');
+                row.innerHTML = `
+                        <td class="px-3 py-2 whitespace-nowrap">${key}</td>
+                        <td class="px-3 py-2 whitespace-nowrap text-sm text-gray-500">${dbInfo.data_dtype[index] || '未知'}</td>
+                        <td class="px-3 py-2 whitespace-nowrap text-sm text-gray-500">${dbInfo.data_shape[index] || '未知'}</td>
+                    `;
+                keysTable.appendChild(row);
+            });
+        } else {
+            const row = document.createElement('tr');
+            row.innerHTML = `
+                    <td colspan="3" class="px-3 py-4 text-center text-gray-500">
+                        无数据键信息
+                    </td>
+                `;
+            keysTable.appendChild(row);
+        }
+
+        document.getElementById('download-db-btn').addEventListener('click', () => {
+            if (currentDBInfo) {
+                // 调用后端下载接口
+                window.location.href = `/api/databases/${currentDBInfo.id}/download`;
+            }
+        });
+
+        // 显示信息弹窗
+        document.getElementById('info-modal').classList.remove('hidden');
+        document.getElementById('info-modal').classList.add('flex');
+    };
+
+    // 打开编辑弹窗
+    window.openEditModal = function(dbInfo) {
+        currentDBInfo = dbInfo;
+
+        document.getElementById('edit-db-id').value = dbInfo.id;
+        document.getElementById('edit-db-type').value = dbInfo.type || '';
+        document.getElementById('edit-db-tags').value = dbInfo.tags ? dbInfo.tags.join(', ') : '';
+
+        // 显示编辑弹窗
+        document.getElementById('edit-modal').classList.remove('hidden');
+        document.getElementById('edit-modal').classList.add('flex');
+    };
+
+    // 打开预览配置弹窗
+    window.openPreviewModal = function(dbInfo) {
+        currentDBInfo = dbInfo;
+
+        // 检查是否有数据库类型
+        if (!dbInfo.type || dbInfo.type === 'unknown' || dbInfo.type === '') {
+            // 没有类型，先打开编辑弹窗
+            alert('请先设置数据库类型');
+            window.openEditModal(dbInfo);
+            return;
+        }
+
+        // 填充模态框数据
+        document.getElementById('current-db-id').value = dbInfo.id;
+        document.getElementById('current-db-path').value = dbInfo.path;
+        document.getElementById('current-db-type').value = dbInfo.type;
+        document.getElementById('modal-title').textContent = `预览配置 - ${dbInfo.name}`;
+
+        // 填充数据键选择
+        const keySelect = document.getElementById('key-select');
+        keySelect.innerHTML = '';
+        if (dbInfo.data_keys && dbInfo.data_keys.length > 0) {
+            dbInfo.data_keys.forEach(key => {
+                const option = document.createElement('option');
+                option.value = key;
+                option.textContent = key;
+                keySelect.appendChild(option);
+            });
+        }
+
+        // 根据数据库类型填充特定选项
+        if (dbInfo.type === 'image') {
+            const imageKeySelect = document.getElementById('image-key-select');
+            imageKeySelect.innerHTML = '';
+            if (dbInfo.data_keys && dbInfo.data_keys.length > 0) {
+                dbInfo.data_keys.forEach(key => {
+                    const option = document.createElement('option');
+                    option.value = key;
+                    option.textContent = key;
+                    imageKeySelect.appendChild(option);
+                });
+            }
+        } else if (dbInfo.type === 'point_cloud') {
+            const vertexKeySelect = document.getElementById('vertex-key-select');
+            vertexKeySelect.innerHTML = '';
+            if (dbInfo.data_keys && dbInfo.data_keys.length > 0) {
+                dbInfo.data_keys.forEach(key => {
+                    const option = document.createElement('option');
+                    option.value = key;
+                    option.textContent = key;
+                    vertexKeySelect.appendChild(option);
+                });
+            }
+        } else if (dbInfo.type === 'mesh') {
+            const meshVertexKeySelect = document.getElementById('mesh-vertex-key-select');
+            const meshFaceKeySelect = document.getElementById('mesh-face-key-select');
+
+            meshVertexKeySelect.innerHTML = '';
+            meshFaceKeySelect.innerHTML = '';
+
+            if (dbInfo.data_keys && dbInfo.data_keys.length > 0) {
+                dbInfo.data_keys.forEach(key => {
+                    const vertexOption = document.createElement('option');
+                    vertexOption.value = key;
+                    vertexOption.textContent = key;
+                    meshVertexKeySelect.appendChild(vertexOption);
+
+                    const faceOption = document.createElement('option');
+                    faceOption.value = key;
+                    faceOption.textContent = key;
+                    meshFaceKeySelect.appendChild(faceOption);
+                });
+            }
+        }
+
+        // 更新预览类型选项
+        updatePreviewTypeOptions();
+
+        // 显示模态框
+        document.getElementById('preview-modal').classList.remove('hidden');
+        document.getElementById('preview-modal').classList.add('flex');
+    };
+
+    // 页面加载完成后初始化
+    document.addEventListener('DOMContentLoaded', init);
+</script>
+
+
+
+<!-- 规范化的页脚声明 -->
+<footer class="mt-16 py-6 border-t border-gray-200 bg-gray-50">
+    <div class="container mx-auto px-4">
+        <div class="text-center text-sm text-gray-600">
+            <p>© 版权所有 <a href="https://github.com/sindreyang" class="text-primary hover:underline font-medium" target="_blank" rel="noopener noreferrer">https://github.com/sindreyang</a></p>
+            <p class="mt-1">本资源仅供学习交流使用，未经授权不得用于商业用途，转载请注明原作者及出处</p>
+        </div>
+    </div>
+</footer>
+</body>
+</html>

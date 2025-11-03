@@ -138,18 +138,22 @@ class LMDB_Viewer(QtWidgets.QWidget):
             self.save_config()
         
         # 从配置加载数据设置
-        self.data_config = {
-            "data_type": self.config_parser.get('DATA_CONFIG', 'data_type'),
-            "vertex_key": self.config_parser.get('DATA_CONFIG', 'vertex_key'),
-            "vertex_label_key": self.config_parser.get('DATA_CONFIG', 'vertex_label_key'),
-            "face_key": self.config_parser.get('DATA_CONFIG', 'face_key'),
-            "face_label_key": self.config_parser.get('DATA_CONFIG', 'face_label_key'),
-            "name_key": self.config_parser.get('DATA_CONFIG', 'name_key'),
-            "image_key": self.config_parser.get('DATA_CONFIG', 'image_key'),
-            "bbox_key": self.config_parser.get('DATA_CONFIG', 'bbox_key'),
-            "keypoints_key": self.config_parser.get('DATA_CONFIG', 'keypoints_key'),
-            "segmentation_key": self.config_parser.get('DATA_CONFIG', 'segmentation_key'),
-        }
+        try:
+            self.data_config = {
+                "data_type": self.config_parser.get('DATA_CONFIG', 'data_type'),
+                "vertex_key": self.config_parser.get('DATA_CONFIG', 'vertex_key'),
+                "vertex_label_key": self.config_parser.get('DATA_CONFIG', 'vertex_label_key'),
+                "face_key": self.config_parser.get('DATA_CONFIG', 'face_key'),
+                "face_label_key": self.config_parser.get('DATA_CONFIG', 'face_label_key'),
+                "name_key": self.config_parser.get('DATA_CONFIG', 'name_key'),
+                "image_key": self.config_parser.get('DATA_CONFIG', 'image_key'),
+                "bbox_key": self.config_parser.get('DATA_CONFIG', 'bbox_key'),
+                "keypoints_key": self.config_parser.get('DATA_CONFIG', 'keypoints_key'),
+                "segmentation_key": self.config_parser.get('DATA_CONFIG', 'segmentation_key'),
+            }
+        except:
+            QMessageBox.warning(self,"配置文件不兼容",f"{self.config_file}配置不兼容,请修复或删除!")
+            return
 
         # 信息视图
         self.app_ui.treeWidget.setHeaderLabels(["键名", "类型", "大小"])

@@ -1,3 +1,4 @@
+import logging
 from functools import cached_property,lru_cache
 import numpy as np
 from sindre.utils3d.algorithm import *
@@ -48,14 +49,22 @@ class SindreMesh:
 
 
 
-    def update_vertex(self,vertex_mask):
+    def update_vertex(self,vertex_mask,rebuild=True):
         # 更新顶点属性
-        self.vertices = self.vertices[vertex_mask]
-        self.vertex_colors = self.vertex_colors[vertex_mask]
-        self.vertex_normals = self.vertex_normals[vertex_mask]
-        self.vertex_curvature = self.vertex_curvature[vertex_mask]
-        self.vertex_labels = self.vertex_labels[vertex_mask]
-        self.vertex_kdtree = KDTree(self.vertices)
+        if rebuild:
+            log.warning("警告: 面片索引被破坏,开始重建......")
+            self.update_geometry(self.vertices[vertex_mask],new_faces=None)
+        else:
+            self.vertices = self.vertices[vertex_mask]
+            self.vertex_colors = self.vertex_colors[vertex_mask]
+            self.vertex_normals = self.vertex_normals[vertex_mask]
+            self.vertex_curvature = self.vertex_curvature[vertex_mask]
+            self.vertex_labels = self.vertex_labels[vertex_mask]
+            self.vertex_kdtree = KDTree(self.vertices)
+            log.warning("警告: 面片索引被破坏,只能调用顶点属性,请开启rebuild=True")
+
+
+
 
     def update_faces(self,faces_mask):
         # 更新面片属性

@@ -68,6 +68,7 @@ def encode_data(obj):
         }
     
     else:
+        print("obj.....")
         # 对于其他类型的对象，假设用户知道自己在做什么，按原样返回对象
         return obj
 

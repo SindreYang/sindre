@@ -114,7 +114,7 @@ def load_checkpoint(
     """
     加载模型状态，可以支持部分参数加载
 
-    加载策略:
+    加载策略:\n
     - strict==True: 只有名称和形状完全一致的参数才会被加载；
     - strict==False且check_shape==True: 仅加载名称存在且形状匹配的参数；
     - strict==False且check_shape==False: 加载所有名称匹配的参数，不检查形状；
@@ -128,12 +128,15 @@ def load_checkpoint(
         map_location: 指定设备映射，例如"cpu"或"cuda:0"
 
     Returns:
-        加载了最后迭代次数、最后损失值、额外信息字典
+        curr_iter:加载了最后迭代次数;
+        loss: 最后损失值;
+        extra_info: 额外信息字典;
+
     """
     try:
         # 检查模型文件是否存在
         if not os.path.exists(path):
-            log.error(f"模型文件不存在: {path}")
+            log.warning(f"模型文件不存在: {path}")
             return 0,float("inf"),{}
 
         # 加载模型数据

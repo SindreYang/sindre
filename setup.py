@@ -21,8 +21,11 @@ setup(
         'tqdm',
         'scipy',
         'numba',
+
     ],
-    extras_require={"full": ["pymeshlab","meshlib","libigl>=2.6.1","Cython",'nvitop', 'scikit-learn','Cython','trimesh',"open3d","pymeshlab","pyqt5","qdarkstyle"],
+    extras_require={"full": ["pymeshlab","meshlib","libigl>=2.6.1","Cython",'nvitop',
+                             'scikit-learn','Cython','trimesh',"open3d","pymeshlab",
+                             "pyqt5","qdarkstyle"],
                     "2d":["opencv-contrib-python","opencv-python","scikit-image"]},
     
     #data_files=find_files("sindre\Resources"),
@@ -39,6 +42,7 @@ setup(
         'console_scripts': [
             'LmdbViewer = sindre.lmdb.Viewer.App:main',
             'GpuViewer = nvitop.cli:main',
+            'LmdbWebViewer = sindre.lmdb.WebViewer.App:main'
         ],
     }
 

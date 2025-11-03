@@ -147,12 +147,12 @@ class Scale_np:
 
 
 class RotateAxis_np:
-    def __init__(self, axis=[0.0, 0.0, 0.0]):
+    def __init__(self, axis=[0.0, 0.0, 1.0]):
         """
         初始化 RotateAxis 类，用于绕指定轴随机旋转点云数据。
 
         Args:
-            axis (np.ndarray): 旋转轴，形状为 (3,),默认为 [0.0, 0.0, 0.0]（z 轴）。
+            axis (list): 旋转轴，形状为 (3,),默认为 [0.0, 0.0, 0.0]（z 轴）。
         """
         self.axis = np.array(axis)
 
