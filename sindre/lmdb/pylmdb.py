@@ -572,9 +572,6 @@ class Reader(Base):
 
     def close(self):
         self._lmdb_env.close()
-        lock_path = self.dirpath + "-lock"
-        if os.path.exists(lock_path):
-            os.remove(lock_path)
 
 
 class Writer(Base):
@@ -948,9 +945,7 @@ class Writer(Base):
         self._lmdb_env.close()
         if sys.platform.startswith('win') and not self.multiprocessing:
             print(f"检测到windows系统, 请运行  fix_lmdb_windows_size('{self.dirpath}') 修复文件大小问题")
-        lock_path = self.dirpath + "-lock"
-        if os.path.exists(lock_path):
-            os.remove(lock_path)
+
 
 
 

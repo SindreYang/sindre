@@ -252,6 +252,7 @@ class LMDB_Viewer(QtWidgets.QWidget):
                 QMessageBox.information(self, "删除成功", f"已删除当前数据库索引：{self.count},重新加载生效!")
         except Exception as e:
             QMessageBox.critical(self, "删除错误", f"出错:\n{str(e)}")
+            traceback.print_exc()
     def ExportMesh(self):
         """导出当前视图中的网格为PLY文件"""
         try:
@@ -281,6 +282,7 @@ class LMDB_Viewer(QtWidgets.QWidget):
             # 捕获并显示任何错误
             error_msg = f"导出网格时出错:\n{str(e)}"
             QMessageBox.critical(self, "导出错误", error_msg)
+            traceback.print_exc()
         
     def change_state_bt_color(self, color=QColor(255, 0, 0)):
         palette = self.app_ui.state_bt.palette()
@@ -583,14 +585,21 @@ class LMDB_Viewer(QtWidgets.QWidget):
 
 
         except KeyError as e:
-            QMessageBox.critical(self, "键名错误", f"未找到配置的键名: {str(e)}")
+            QMessageBox.warning(self, "键名错误", f"键名: {str(e)}未在{self.count}数据中找到,请重新配置...")
+            with Reader(self.db_path) as db:
+                keys =db.get_data_keys(self.count)
+            dialog = DataConfigDialog(keys,self.data_config, self)
+            if dialog.exec_() == QDialog.Accepted:
+                self.data_config = dialog.get_config()
+                self.UpdateDisplay()
         except Exception as e:
             QMessageBox.critical(self, "渲染错误", f"渲染数据时出错: {str(e)}")
+            traceback.print_exc()
         
         with Reader(self.db_path) as db:
             #spec = db.get_data_specification(0)
-            keys = db.get_data_keys(0)
-            data = db[0]
+            keys = db.get_data_keys(self.count)
+            data = db[self.count]
 
         for key in keys:
             k = str(key)
@@ -646,9 +655,9 @@ class LMDB_Viewer(QtWidgets.QWidget):
             self.app_ui.path_label.setText(self.fileName)
             try:
                 with Reader(self.db_path) as db:
-                    data = db[0]
+                    #data = db[0]
                     len_db = len(db)
-                    keys =db.get_data_keys(0) #list(data.keys())
+                    keys =db.get_data_keys(self.count) #list(data.keys())
 
                 dialog = DataConfigDialog(keys,self.data_config, self)
                 if dialog.exec_() == QDialog.Accepted:
