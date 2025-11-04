@@ -678,6 +678,15 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#lmdb.pylmdb.Reader.get_data_size" class="md-nav__link">
+    <span class="md-ellipsis">
+      get_data_size
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#lmdb.pylmdb.Reader.get_data_specification" class="md-nav__link">
     <span class="md-ellipsis">
       get_data_specification
@@ -699,6 +708,15 @@
   <a href="#lmdb.pylmdb.Reader.get_delete_sample" class="md-nav__link">
     <span class="md-ellipsis">
       get_delete_sample
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#lmdb.pylmdb.Reader.get_dict_keys" class="md-nav__link">
+    <span class="md-ellipsis">
+      get_dict_keys
     </span>
   </a>
   
@@ -1061,6 +1079,15 @@
   <a href="#lmdb.pylmdb.get_data_size" class="md-nav__link">
     <span class="md-ellipsis">
       get_data_size
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#lmdb.pylmdb.get_data_value" class="md-nav__link">
+    <span class="md-ellipsis">
+      get_data_value
     </span>
   </a>
   
@@ -4231,6 +4258,15 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#lmdb.pylmdb.Reader.get_data_size" class="md-nav__link">
+    <span class="md-ellipsis">
+      get_data_size
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#lmdb.pylmdb.Reader.get_data_specification" class="md-nav__link">
     <span class="md-ellipsis">
       get_data_specification
@@ -4252,6 +4288,15 @@
   <a href="#lmdb.pylmdb.Reader.get_delete_sample" class="md-nav__link">
     <span class="md-ellipsis">
       get_delete_sample
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#lmdb.pylmdb.Reader.get_dict_keys" class="md-nav__link">
+    <span class="md-ellipsis">
+      get_dict_keys
     </span>
   </a>
   
@@ -4614,6 +4659,15 @@
   <a href="#lmdb.pylmdb.get_data_size" class="md-nav__link">
     <span class="md-ellipsis">
       get_data_size
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#lmdb.pylmdb.get_data_value" class="md-nav__link">
+    <span class="md-ellipsis">
+      get_data_value
     </span>
   </a>
   
@@ -7974,6 +8028,26 @@ Args:
 <div class="doc doc-object doc-function">
 
 
+<h3 id="lmdb.pylmdb.Reader.get_data_size" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">get_data_size</span><span class="p">(</span><span class="n">i</span><span class="p">)</span></code>
+
+</h3>
+
+
+    <div class="doc doc-contents ">
+
+        <p>计算LMDB中单个样本的存储大小（MB）
+:param i: 索引
+:return: 存储大小（MB）</p>
+
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
 <h3 id="lmdb.pylmdb.Reader.get_data_specification" class="doc doc-heading">
             <code class="highlight language-python"><span class="n">get_data_specification</span><span class="p">(</span><span class="n">i</span><span class="p">)</span></code>
 
@@ -8010,9 +8084,11 @@ Returns:
 因为每个样本都存储在一个msgpack中,所以在返回值之前,我们需要先读取整个msgpack。
 Args:
     i: 索引
-    key: 该索引的键
+    key: 该索引的键（支持多层路径，如"mesh.v"）
 Returns:
-    对应的值</p>
+    对应的值
+Raises:
+    KeyError: 键不存在或路径无效时抛出</p>
 
 
     </div>
@@ -8108,6 +8184,28 @@ Returns:
           </tr>
       </tbody>
     </table>
+
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h3 id="lmdb.pylmdb.Reader.get_dict_keys" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">get_dict_keys</span><span class="p">(</span><span class="n">nested_dict</span><span class="p">,</span> <span class="n">parent_key</span><span class="o">=</span><span class="s1">&#39;&#39;</span><span class="p">,</span> <span class="n">sep</span><span class="o">=</span><span class="s1">&#39;.&#39;</span><span class="p">)</span></code>
+
+</h3>
+
+
+    <div class="doc doc-contents ">
+
+        <p>提取嵌套字典中所有层级键，用分隔符连接后返回列表</p>
+<p>:param nested_dict: 输入的嵌套字典
+:param parent_key: 父级键（递归时使用，外部调用无需传参）
+:param sep: 键的分隔符，默认 "."
+:return: 扁平键列表（如 ['mesh.v', 'mesh.f']）</p>
 
 
     </div>
@@ -10222,6 +10320,57 @@ Args:
   <summary>Return</summary>
   <p>gb_required : 字典大小(GB)</p>
 </details>
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h2 id="lmdb.pylmdb.get_data_value" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">get_data_value</span><span class="p">(</span><span class="n">current</span><span class="p">,</span> <span class="n">key</span><span class="p">)</span></code>
+
+</h2>
+
+
+    <div class="doc doc-contents ">
+
+
+
+<p><span class="doc-section-title">参数：</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>名称</th>
+          <th>类型</th>
+          <th>描述</th>
+          <th>默认</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                <code>key</code>
+            </td>
+            <td>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>该索引的键（支持多层路径，如"mesh.v"）</p>
+              </div>
+            </td>
+            <td>
+                <em>必需</em>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+        <p>Returns:
+    对应的值
+Raises:
+    KeyError: 键不存在或路径无效时抛出</p>
+
 
     </div>
 
