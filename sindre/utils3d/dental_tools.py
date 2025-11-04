@@ -177,20 +177,31 @@ def cut_mesh_point_loop_crow(mesh,pts,error_show=True,invert=True):
 
     c1 = cut_mesh_point_loop(mesh,pts,invert=not invert)
     c2 = cut_mesh_point_loop(mesh,pts,invert=invert)
-
+   
 
 
     # 可能存在网格错误造成的洞,默认执行补洞
     c1_num = len(c1.fill_holes().split()[0].boundaries().split())
     c2_num = len(c2.fill_holes().split()[0].boundaries().split())
-
     
     
-    # 牙冠只能有一个开口
-    if c1_num==1:
+   
+    
+    if c1_num==1 and c2_num==1:
+         # 通过距离线中心的距离判断
+        line_center = pts.center_of_mass()
+        c1_dist=np.linalg.norm( c1.center_of_mass()-line_center)
+        c2_dist =np.linalg.norm( c2.center_of_mass()-line_center)
+        if c1_dist>c2_dist:
+            cut_mesh=c1
+        else:
+            cut_mesh=c2
+    elif c1_num==1:
+        # 牙冠只能有一个开口
         cut_mesh=c1
     elif  c2_num==1:
         cut_mesh=c2
+            
     else:
         print("裁剪失败,请检查分割线,尝试pts[::3]进行采样输入")
         if error_show:

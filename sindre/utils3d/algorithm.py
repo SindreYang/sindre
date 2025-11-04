@@ -2772,6 +2772,8 @@ def cut_mesh_with_meshlib(v: np.ndarray, f: np.ndarray, loop_points,
                                   fillContourLeftByGraphCut, Mesh, Vector3f,
                                   findProjection, convertMeshTriPointsToClosedContour,
                                   cutMesh)
+    from importlib.metadata import version
+    assert version("meshlib")=='3.0.6.229'
     # 验证输入数组格式
     if v.ndim != 2 or v.shape[1] != 3:
         raise ValueError("顶点数组必须是 (N, 3) 的形状")
