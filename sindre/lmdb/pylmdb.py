@@ -19,7 +19,7 @@ except ImportError:
         "instructions."
     )
 
-__all__ = ["Reader","ReaderList","ReaderSSDList","ReaderSSD", "Writer", "split_lmdb", "merge_lmdb","get_data_size", "fix_lmdb_windows_size","parallel_write"]
+__all__ = ["get_data_value","get_data_size" , "Reader","ReaderList","ReaderSSDList","ReaderSSD", "Writer", "split_lmdb", "merge_lmdb","get_data_size", "fix_lmdb_windows_size","parallel_write"]
 
 class Base:
     """
@@ -106,19 +106,22 @@ class Base:
             elif data_type == Base.TYPES["dict"]:
                 encoded_dict = encoded_data[b"data"]
                 return {k: Base.decode_data(v) for k, v in encoded_dict.items()}
+
+            # 兼容老数据库
+            elif data_type == 2:
+                dtype = np.dtype(encoded_data[b"dtype"])
+                shape = encoded_data[b"shape"]
+                data_bytes = encoded_data[b"data"]
+                return np.frombuffer(data_bytes, dtype=dtype).reshape(shape)
+            # 兼容老数据库
+            elif data_type == 1:
+                return encoded_data[b"data"]
+
             else:
                 return encoded_data
         except (KeyError, ValueError, TypeError, pickle.UnpicklingError) as e:
             print(f"数据解码失败: {e}")
             return encoded_data  # 解码失败时返回原始数据，避免崩溃
-
-
-
-
-
-
-
-
 
 
 
@@ -283,7 +286,43 @@ class Reader(Base):
                 key_set.add(Base.decode_str(key))
         return key_set
 
+    def get_dict_keys(self,nested_dict, parent_key="", sep="."):
+        """
+        提取嵌套字典中所有层级键，用分隔符连接后返回列表
 
+        :param nested_dict: 输入的嵌套字典
+        :param parent_key: 父级键（递归时使用，外部调用无需传参）
+        :param sep: 键的分隔符，默认 "."
+        :return: 扁平键列表（如 ['mesh.v', 'mesh.f']）
+        """
+        keys = []
+        for key, value in nested_dict.items():
+            # 拼接当前键与父级键（若有）
+            new_key = f"{parent_key}{sep}{key}" if parent_key else key
+            # 如果值是字典，继续递归提取子键；否则当前键为最终键
+            if isinstance(value, dict):
+                # 递归获取子键并合并到列表
+                keys.extend(self.get_dict_keys(value, new_key, sep=sep))
+            else:
+                keys.append(new_key)
+        return keys
+
+
+    def get_data_size(self,i: int) -> float:
+        """
+        计算LMDB中单个样本的存储大小（MB）
+        :param i: 索引
+        :return: 存储大小（MB）
+        """
+        # 获取对应的物理键
+        physical_key = self.read_keys[i]
+        # 将物理键转换为带有尾随零的字符串
+        key = Base.encode_str("{:010}".format(physical_key))
+        with self._lmdb_env.begin(db=self.data_db) as txn:
+            value = txn.get(key)  # 读取序列化后的value（bytes）
+            if value is None:
+                raise KeyError(f"键 {key} 不存在")
+            return len(value) / (1024 ** 2)  # 字节转MB
 
     def get_data_keys(self, i) -> list:
         """
@@ -294,24 +333,46 @@ class Reader(Base):
         Returns:
             list: 数据键名列表
         """
-        return list(self[i].keys())
 
-    def get_data_value(self, i: int, key):
+        #return list(self[i].keys())
+        return self.get_dict_keys(self[i])
+
+
+    def get_data_value(self, i, key):
         """
         返回第i个样本对应于输入键的值。
         该值从`data_db`中检索。
         因为每个样本都存储在一个msgpack中,所以在返回值之前,我们需要先读取整个msgpack。
         Args:
             i: 索引
-            key: 该索引的键
+            key: 该索引的键（支持多层路径，如"mesh.v"）
         Returns:
             对应的值
-
+        Raises:
+            KeyError: 键不存在或路径无效时抛出
         """
         try:
-            return self[i][key]
-        except KeyError:
-            raise KeyError("键不存在:{}".format(key))
+            if isinstance(i, int):
+                # 获取第i个样本的数据
+                data = self[i]
+            else:
+                data= i
+            # 拆分键路径（如"mesh.v" → ["mesh", "v"]）
+            keys = key.split(".")
+            # 初始化当前层级为data
+            current = data
+            # 逐层访问嵌套结构
+            for sub_key in keys:
+                # 检查当前层级是否为字典，且子键存在
+                if not isinstance(current, dict) or sub_key not in current:
+                    raise KeyError(f"路径无效：'{key}'（子键 '{sub_key}' 不存在或中间值非字典）")
+                # 进入下一层级
+                current = current[sub_key]
+            # 返回最终值
+            return current
+        except KeyError as e:
+            # 保留原始错误信息并抛出
+            raise KeyError(f"键或路径不存在: {key}（详情：{str(e)}）")
 
 
 
@@ -489,6 +550,7 @@ class Reader(Base):
         out += "物理存储大小:\t{}\n".format(len(self.physical_keys))
         out += "已删除样本:\t{}\n".format(len(self.deleted_keys))
         out += f"第一个数据所有键:\n\t{self.get_data_keys(0)}\n"
+        out += f"第一个数据大小:\n\t{self.get_data_size(0):5f} MB\n"
         out += f"元数据键:\n\t{self.get_meta_keys()}\n"
 
 
@@ -1490,3 +1552,25 @@ class ReaderSSDList:
         return first_db_idx + real_idx
 
 
+
+
+def get_data_value(current, key):
+    """
+    Args:
+        key: 该索引的键（支持多层路径，如"mesh.v"）
+    Returns:
+        对应的值
+    Raises:
+        KeyError: 键不存在或路径无效时抛出
+    """
+    # 拆分键路径（如"mesh.v" → ["mesh", "v"]）
+    keys = key.split(".")
+    # 逐层访问嵌套结构
+    for sub_key in keys:
+        # 检查当前层级是否为字典，且子键存在
+        if not isinstance(current, dict) or sub_key not in current:
+            raise KeyError(f"路径无效：'{key}'（子键 '{sub_key}' 不存在或中间值非字典）")
+        # 进入下一层级
+        current = current[sub_key]
+    # 返回最终值
+    return current

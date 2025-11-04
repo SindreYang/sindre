@@ -25,6 +25,8 @@
 """
 __author__ = 'sindre'
 
+import traceback
+
 import numpy as np
 # You may need to uncomment these lines on some systems:
 import vtk.qt
@@ -33,6 +35,7 @@ from PyQt5.QtGui import QPalette, QColor
 from PyQt5.QtWidgets import (QFileDialog, QInputDialog, QMessageBox, QLineEdit, 
                             QDialog, QVBoxLayout, QComboBox, QLabel, QPushButton,
                             QDialogButtonBox, QGroupBox)
+from sindre.lmdb.pylmdb import get_data_value
 
 vtk.qt.QVTKRWIBase = "QGLWidget"
 import vtk
@@ -74,10 +77,15 @@ class config_thread(QtCore.QThread):
                 data = db[i]
             k = str(i)
             v =data.get(self.name_key, "unknown")
-            if np.issubdtype(v.dtype,np.str_) or isinstance(v,str) :
-                v = str(v)
+            if isinstance(v,np.ndarray):
+                if np.issubdtype(v.dtype,np.str_):
+                    v = str(v)
+                    if len(v)>34:
+                        v=f"*{v[-34:]}"
+            elif isinstance(v,str):
                 if len(v)>34:
                     v=f"*{v[-34:]}"
+
             else:
                 v = f"numpy_{k}_{v.shape}"
             
@@ -507,18 +515,18 @@ class LMDB_Viewer(QtWidgets.QWidget):
         
         try:
             if self.data_config["data_type"] == "网格(Mesh)":
-                vertices = np.array(data[self.data_config["vertex_key"]][...,:3])
-                faces = np.array(data[self.data_config["face_key"]][...,:3])
+                vertices = np.array(get_data_value(data,self.data_config["vertex_key"]))[...,:3]
+                faces = np.array(get_data_value(data,self.data_config["face_key"]))[...,:3]
                 mesh = vedo.Mesh([vertices, faces])
                 fss = []
                 
-                if self.data_config["vertex_label_key"] and self.data_config["vertex_label_key"] in data:
-                    labels =data[self.data_config["vertex_label_key"]].ravel()
+                if self.data_config["vertex_label_key"]:
+                    labels =get_data_value(data,self.data_config["vertex_label_key"]).ravel()
                     fss = self._labels_flag(mesh, labels,is_points=True)
                     mesh.pointcolors = labels2colors(labels)
                 
-                if self.data_config["face_label_key"] and self.data_config["face_label_key"] in data:
-                    labels = data[self.data_config["face_label_key"]].ravel()
+                if self.data_config["face_label_key"] :
+                    labels = get_data_value(data,self.data_config["face_label_key"]).ravel()
                     fss = self._labels_flag(mesh, labels,is_points=False)
                     mesh.cellcolors = labels2colors(labels)
                     
@@ -526,12 +534,12 @@ class LMDB_Viewer(QtWidgets.QWidget):
                 self.vp.show(fss, axes=3)
                 self.current_mesh = mesh
             elif self.data_config["data_type"] == "点云(Point Cloud)":
-                points = np.array(data[self.data_config["vertex_key"]][...,:3])
+                points = np.array(get_data_value(data,self.data_config["vertex_key"])[...,:3])
                 pc = Points(points)
                 fss = []
                 
-                if self.data_config["vertex_label_key"] and self.data_config["vertex_label_key"] in data:
-                    labels =data[self.data_config["vertex_label_key"]].ravel()
+                if self.data_config["vertex_label_key"]:
+                    labels =get_data_value(data,self.data_config["vertex_label_key"]).ravel()
                     pc.pointcolors = labels2colors(labels)
                     fss = self._labels_flag(pc,labels,is_points=True)
                 fss.append(pc)
@@ -540,7 +548,7 @@ class LMDB_Viewer(QtWidgets.QWidget):
 
 
             elif self.data_config["data_type"] == "图片(Image)":
-                image = data[self.data_config["image_key"]]
+                image = get_data_value(data,self.data_config["image_key"])
                 if image.dtype != np.uint8:
                     if image.max() <= 1.0:
                         image = (image * 255).astype(np.uint8)
@@ -559,12 +567,12 @@ class LMDB_Viewer(QtWidgets.QWidget):
                 bboxes = None
                 keypoints = None
                 segmentation = None
-                if self.data_config.get("bbox_key") and self.data_config["bbox_key"] in data:
-                    bboxes = data[self.data_config["bbox_key"]]
-                if self.data_config.get("keypoints_key") and self.data_config["keypoints_key"] in data:
-                    keypoints = data[self.data_config["keypoints_key"]]
-                if self.data_config.get("segmentation_key") and self.data_config["segmentation_key"] in data:
-                    segmentation = data[self.data_config["segmentation_key"]]
+                if self.data_config.get("bbox_key"):
+                    bboxes = get_data_value(data,self.data_config["bbox_key"])
+                if self.data_config.get("keypoints_key"):
+                    keypoints = get_data_value(data,self.data_config["keypoints_key"])
+                if self.data_config.get("segmentation_key"):
+                    segmentation = get_data_value(data,self.data_config["segmentation_key"])
                 annotated_image = self.draw_image_annotations(image, bboxes, keypoints, segmentation)
                 # 创建vedo图片对象并显示
                 vedo_image = vedo.Image(annotated_image)
@@ -580,16 +588,27 @@ class LMDB_Viewer(QtWidgets.QWidget):
             QMessageBox.critical(self, "渲染错误", f"渲染数据时出错: {str(e)}")
         
         with Reader(self.db_path) as db:
-            spec = db.get_data_specification(0)
+            #spec = db.get_data_specification(0)
             keys = db.get_data_keys(0)
+            data = db[0]
 
         for key in keys:
             k = str(key)
-            t = str(spec[key]["dtype"])
-            s = str(spec[key]["shape"])
-            if "<U" in t or "str" in t or "bool" in t:
-                s = str(data[key])
+            current = get_data_value(data,key)
+            if isinstance(current, np.ndarray):
+                t= f"{current.dtype}"
+                s= f"{current.shape}"
+                if "<U" in t or "str" in t or "bool" in t:
+                    s = str(current)
+            elif isinstance(current, dict):
+                t= type(current).__name__
+                s = f"{len(current)}"
+            else:
+                t= type(current).__name__
+                s=str(current)[:40]
+
             QtWidgets.QTreeWidgetItem(self.app_ui.treeWidget, [k, t, s])
+
 
         self.app_ui.NowNumber.display(str(self.count))
         self.app_ui.MaxNumber.display(str(self.max_count))
@@ -629,7 +648,7 @@ class LMDB_Viewer(QtWidgets.QWidget):
                 with Reader(self.db_path) as db:
                     data = db[0]
                     len_db = len(db)
-                keys = list(data.keys())
+                    keys =db.get_data_keys(0) #list(data.keys())
 
                 dialog = DataConfigDialog(keys,self.data_config, self)
                 if dialog.exec_() == QDialog.Accepted:
@@ -661,6 +680,7 @@ class LMDB_Viewer(QtWidgets.QWidget):
 
             except Exception as e:
                 QMessageBox.critical(self, "错误", f"打开数据库失败:{e}")
+                traceback.print_exc()
 
 
         else:

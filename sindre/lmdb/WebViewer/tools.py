@@ -14,6 +14,26 @@ from sindre.lmdb import Reader, Writer
 from sindre.lmdb.WebViewer.config import DBInfo, DBContent
 
 
+def get_data_value(current, key):
+    """
+    Args:
+        key: 该索引的键（支持多层路径，如"mesh.v"）
+    Returns:
+        对应的值
+    Raises:
+        KeyError: 键不存在或路径无效时抛出
+    """
+    # 拆分键路径（如"mesh.v" → ["mesh", "v"]）
+    keys = key.split(".")
+    # 逐层访问嵌套结构
+    for sub_key in keys:
+        # 检查当前层级是否为字典，且子键存在
+        if not isinstance(current, dict) or sub_key not in current:
+            raise KeyError(f"路径无效：'{key}'（子键 '{sub_key}' 不存在或中间值非字典）")
+        # 进入下一层级
+        current = current[sub_key]
+    # 返回最终值
+    return current
 def get_file_size(path: str) -> int:
     """获取文件大小(KB)"""
     return int(os.path.getsize(path) / 1024)
@@ -32,7 +52,7 @@ def scan_directories(root: str) -> List[DBInfo]:
             continue
 
         ext = os.path.splitext(file)[1].lower()
-        if ext not in ["db","lmdb","yx"]:
+        if ext not in [".db",".lmdb",".yx"]:
             continue
 
         file_size = get_file_size(path)
@@ -54,13 +74,16 @@ def scan_directories(root: str) -> List[DBInfo]:
                 # 尝试获取数据信息
                 if len(reader) > 0:
                     sample = reader[0]
-                    key_info = []
+                    key_info = reader.get_data_keys(0)
                     shape_info = []
                     dtype_info = []
-                    for key in sample.keys():
-                        key_info.append(key)
-                        dtype_info.append(str(sample[key].dtype))
-                        shape_info.append(str(sample[key].shape))
+                    for key in key_info:
+                        data =reader.get_data_value(sample,key)
+                        if isinstance(data, np.ndarray):
+                            dtype_info.append(str(data.dtype))
+                            shape_info.append(str(data.shape))
+                        else:
+                            dtype_info.append(str(type(data).__name__))
                 else:
                     key_info = []
                     shape_info = []
@@ -128,11 +151,6 @@ def get_data_preview(db_path: str, db_type: str, specific_info: Dict,
 
             data = reader[data_index]
 
-            # 检查选中的键是否存在
-            if selected_key:
-                if selected_key not in data :
-                    return {"error": f"数据库中不存在键: {selected_key}"}
-
             # 根据数据类型处理
             if db_type == "image":
                 return process_image_preview(data, specific_info, preview_type, selected_key)
@@ -148,10 +166,10 @@ def get_data_preview(db_path: str, db_type: str, specific_info: Dict,
 def process_image_preview(data: Dict, specific_info: Dict, preview_type: str, selected_key: str) -> Dict:
     """处理图像预览"""
     # 获取图像数据
-    if "image" not in specific_info or specific_info["image"] not in data:
+    if "image" not in specific_info:
         return {"error": "未找到有效的图像数据键"}
 
-    image = data[specific_info["image"]]
+    image = get_data_value(data,specific_info["image"])
     if len(image.shape) != 3 or image.shape[-1] not in [3, 4]:
         return {"error": "图像数据格式无效"}
 
@@ -162,7 +180,7 @@ def process_image_preview(data: Dict, specific_info: Dict, preview_type: str, se
     # 根据预览类型绘制标注
     if preview_type == "keypoint":
         kps_list = []
-        for kp in data[selected_key]:
+        for kp in get_data_value(data,selected_key):
             if len(kp) >= 2:
                 kps_list.append(Keypoint(x=kp[0], y=kp[1]))
 
@@ -171,7 +189,7 @@ def process_image_preview(data: Dict, specific_info: Dict, preview_type: str, se
 
     elif preview_type == "bbox":
         bbs_list = []
-        for bbox in data[selected_key]:
+        for bbox in get_data_value(data,selected_key):
             if len(bbox) >= 4:
                 bbs_list.append(BoundingBox(x1=bbox[0], y1=bbox[1], x2=bbox[2], y2=bbox[3]))
 
@@ -179,7 +197,7 @@ def process_image_preview(data: Dict, specific_info: Dict, preview_type: str, se
         image = bbs.draw_on_image(image, color=(255, 0, 0), alpha=0.5)
 
     elif preview_type == "segmentation":
-        segmap = data[selected_key]
+        segmap = get_data_value(data,selected_key)
         H, W = image.shape[:2]
         if segmap.shape != (H, W):
             # 调整分割图大小以匹配图像
@@ -200,10 +218,10 @@ def process_image_preview(data: Dict, specific_info: Dict, preview_type: str, se
 
 def process_point_cloud_preview(data: Dict, specific_info: Dict, preview_type: str, selected_key: str) -> Dict:
     """处理点云预览"""
-    if "vertices" not in specific_info or specific_info["vertices"] not in data:
+    if "vertices" not in specific_info :
         return {"error": "未找到有效的顶点数据键"}
 
-    vertices = data[specific_info["vertices"]]
+    vertices = get_data_value(data,specific_info["vertices"])
     if vertices.ndim != 2 or vertices.shape[1] != 3:
         return {"error": "顶点数据格式无效"}
 
@@ -211,13 +229,13 @@ def process_point_cloud_preview(data: Dict, specific_info: Dict, preview_type: s
     colors = None
     if preview_type == "vertex_labels":
         # 标签转颜色
-        labels = data[selected_key]
+        labels = get_data_value(data,selected_key)
         if len(labels) != len(vertices):
             return {"error": "标签数量与顶点数量不匹配"}
         colors = labels2colors(labels)
     elif preview_type == "vertex_colors":
         # 直接使用颜色数据
-        colors = data[selected_key]
+        colors = get_data_value(data,selected_key)
         if colors.ndim != 2 or colors.shape[1] not in [3, 4]:
             return {"error": "颜色数据格式无效"}
 
@@ -234,13 +252,13 @@ def process_point_cloud_preview(data: Dict, specific_info: Dict, preview_type: s
 
 def process_mesh_preview(data: Dict, specific_info: Dict, preview_type: str, selected_key: str) -> Dict:
     """处理网格预览"""
-    if "vertices" not in specific_info or specific_info["vertices"] not in data:
+    if "vertices" not in specific_info :
         return {"error": "未找到有效的顶点数据键"}
-    if "faces" not in specific_info or specific_info["faces"] not in data:
+    if "faces" not in specific_info:
         return {"error": "未找到有效的面数据键"}
 
-    vertices = data[specific_info["vertices"]]
-    faces = data[specific_info["faces"]]
+    vertices = get_data_value(data,specific_info["vertices"])
+    faces = get_data_value(data,specific_info["faces"])
 
     if vertices.ndim != 2 or vertices.shape[1] != 3:
         return {"error": "顶点数据格式无效"}
@@ -255,13 +273,13 @@ def process_mesh_preview(data: Dict, specific_info: Dict, preview_type: str, sel
         color_type = "vertex"
         if preview_type == "vertex_labels":
             # 标签转颜色
-            labels = data[selected_key]
+            labels = get_data_value(data,selected_key)
             if len(labels) != len(vertices):
                 return {"error": "标签数量与顶点数量不匹配"}
             colors = labels2colors(labels)
         else:
             # 直接使用颜色数据
-            colors = data[selected_key]
+            colors = get_data_value(data,selected_key)
             if colors.ndim != 2 or colors.shape[1] not in [3, 4]:
                 return {"error": "顶点颜色数据格式无效"}
 
@@ -270,13 +288,13 @@ def process_mesh_preview(data: Dict, specific_info: Dict, preview_type: str, sel
         color_type = "face"
         if preview_type == "faces_labels":
             # 标签转颜色
-            labels = data[selected_key]
+            labels = get_data_value(data,selected_key)
             if len(labels) != len(faces):
                 return {"error": "标签数量与面数量不匹配"}
             colors = labels2colors(labels)
         else:
             # 直接使用颜色数据
-            colors = data[selected_key]
+            colors = get_data_value(data,selected_key)
             if colors.ndim != 2 or colors.shape[1] not in [3, 4]:
                 return {"error": "面颜色数据格式无效"}
 
