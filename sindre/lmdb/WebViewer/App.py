@@ -9,7 +9,7 @@ from fastapi.middleware.cors import CORSMiddleware
 DATA_ROOT =r"./datasets"
 
 
-
+os.chdir(os.path.dirname(os.path.abspath(__file__)))
 app = FastAPI(title="3D/2D数据监控系统")
 # 前端静态文件服务
 app.mount("/static", StaticFiles(directory="static"), name="static")
