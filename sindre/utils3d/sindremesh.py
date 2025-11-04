@@ -932,6 +932,25 @@ class SindreMesh:
 
         return resample_mesh(vertices=self.vertices,faces=self.faces,density=density,num_samples=num_samples)
 
+    def cut_mesh(self,loop_points,get_bigger_part: bool = False,smooth_boundary: bool = False):
+        """
+        将输入的3D点环投影到网格表面，根据参数决定是生成新的切割边还是仅提取投影轮廓。
+
+        Args:
+            loop_points (iterable): 3D点列表/数组，定义要投影到网格上的环状路径。
+            get_bigger_part (bool): 选择面积大的mesh；
+            smooth_boundary(bool): 优化边界;
+
+        Returns:
+            sindremesh:裁剪后的sindremesh
+        """
+
+        loop_points=np.array(loop_points).reshape(-1,3)
+        v,f,_,_=cut_mesh_with_meshlib(self.vertices,self.faces, loop_points,get_bigger_part, smooth_boundary)
+        sm_clone = self.clone()
+        sm_clone.update_geometry(v,f)
+        return sm_clone
+
 
     def decimate(self,n=10000,method=0):
 
