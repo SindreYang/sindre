@@ -82,14 +82,14 @@ class config_thread(QtCore.QThread):
                     v = str(v)
                     if len(v)>34:
                         v=f"*{v[-34:]}"
+                else:
+                    v = f"numpy_{k}_{v.shape}"
             elif isinstance(v,str):
                 if len(v)>34:
                     v=f"*{v[-34:]}"
 
-            else:
-                v = f"numpy_{k}_{v.shape}"
-            
-            # 使用configparser存储映射
+
+        # 使用configparser存储映射
             self.config_parser.set('INDEX_MAPPING', k, v)
             self.config_parser.set('INDEX_MAPPING', v, k)
             
@@ -514,36 +514,57 @@ class LMDB_Viewer(QtWidgets.QWidget):
         with Reader(self.db_path) as db:
             data = db[self.count]
             self.max_count = len(db) - 1
-        
+
         try:
             if self.data_config["data_type"] == "网格(Mesh)":
                 vertices = np.array(get_data_value(data,self.data_config["vertex_key"]))[...,:3]
                 faces = np.array(get_data_value(data,self.data_config["face_key"]))[...,:3]
                 mesh = vedo.Mesh([vertices, faces])
                 fss = []
-                
+
                 if self.data_config["vertex_label_key"]:
-                    labels =get_data_value(data,self.data_config["vertex_label_key"]).ravel()
-                    fss = self._labels_flag(mesh, labels,is_points=True)
-                    mesh.pointcolors = labels2colors(labels)
-                
+                    vertex_data = get_data_value(data,self.data_config["vertex_label_key"])
+                    if vertex_data.shape[1]==3:
+                        # 传入为颜色
+                        mesh.pointcolors = vertex_data
+                    else:
+                        # 传入为标签
+                        labels=vertex_data.ravel()
+                        mesh.pointcolors = labels2colors(labels)
+                        fss = self._labels_flag(mesh,labels,is_points=True)
+
                 if self.data_config["face_label_key"] :
-                    labels = get_data_value(data,self.data_config["face_label_key"]).ravel()
-                    fss = self._labels_flag(mesh, labels,is_points=False)
-                    mesh.cellcolors = labels2colors(labels)
-                    
+                    face_data = get_data_value(data,self.data_config["face_label_key"])
+                    if face_data.shape[1]==3:
+                        # 传入为颜色
+                        mesh.cellcolors = face_data
+                    else:
+                        # 传入为标签
+                        labels=face_data.ravel()
+                        mesh.cellcolors = labels2colors(labels)
+                        fss = self._labels_flag(mesh,labels,is_points=False)
+
                 fss.append(mesh)
                 self.vp.show(fss, axes=3)
                 self.current_mesh = mesh
+
+
             elif self.data_config["data_type"] == "点云(Point Cloud)":
                 points = np.array(get_data_value(data,self.data_config["vertex_key"])[...,:3])
                 pc = Points(points)
                 fss = []
-                
+
                 if self.data_config["vertex_label_key"]:
-                    labels =get_data_value(data,self.data_config["vertex_label_key"]).ravel()
-                    pc.pointcolors = labels2colors(labels)
-                    fss = self._labels_flag(pc,labels,is_points=True)
+                    vertex_data = get_data_value(data,self.data_config["vertex_label_key"])
+                    if vertex_data.shape[1]==3:
+                        # 传入为颜色
+                        pc.pointcolors = vertex_data
+                    else:
+                        # 传入为标签
+                        labels=vertex_data.ravel()
+                        pc.pointcolors = labels2colors(labels)
+                        fss = self._labels_flag(pc,labels,is_points=True)
+
                 fss.append(pc)
                 self.vp.show(fss, axes=3)
                 self.current_mesh = pc
