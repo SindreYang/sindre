@@ -58,24 +58,23 @@ class Base:
         if data is None:
             return {b"type": Base.TYPES["none"],
                     b"data": None}
-
         elif isinstance(data, dict):
             return {b"type": Base.TYPES["dict"],
                     b"data": {k: Base.encode_data(v) for k, v in data.items()}}
-        elif isinstance(data, object):
-            return {b"type": Base.TYPES["object"],
-                    b"data": pickle.dumps(data)
-                    }
-
         # 其他数据,先转换成numpy类型
         if not isinstance(data, np.ndarray):
             data = np.array(data)
         if isinstance(data, np.ndarray):
             if data.dtype == object:
+                data = data.item()
                 return {b"type": Base.TYPES["object"],
                         b"data": pickle.dumps(data)
                         }
             else:
+                if np.issubdtype(data.dtype, np.float64):
+                    data = data.astype(np.float32)
+                elif np.issubdtype(data.dtype, np.int64):
+                    data = data.astype(np.int32)
                 return {
                     b"type": Base.TYPES["ndarray"],
                     b"dtype": data.dtype.str,

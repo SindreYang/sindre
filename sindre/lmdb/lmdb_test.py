@@ -208,8 +208,6 @@ if __name__ == '__main__':
 
             # 在现有数据基础上进行修改操作
             if writer.size > 0:
-                # 使用之前保存的样本进行修改
-                modified_nested_sample = saved_sample_0
 
                 if modified_nested_sample:
                     modified_nested_sample["new_nested_field"] = {
