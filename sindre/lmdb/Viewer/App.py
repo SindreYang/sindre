@@ -50,7 +50,8 @@ from vedo import Plotter, Points
 from UI.View_UI import Ui_Form,DataConfigDialog
 import qdarkstyle
 from sindre.lmdb import Reader,Writer
-from sindre.utils3d  import labels2colors
+from sindre.utils3d import labels2colors, SindreMesh
+from sindre.utils3d.algorithm import face_labels_to_vertex_labels
 import configparser
 
 class config_thread(QtCore.QThread):
@@ -115,6 +116,7 @@ class LMDB_Viewer(QtWidgets.QWidget):
         self.fileName = None
         self.page_size = 15
         self.current_page = 1
+        self.vertex_labels =None
         
         # 使用configparser作为缓存
         self.config_parser = configparser.ConfigParser()
@@ -258,25 +260,43 @@ class LMDB_Viewer(QtWidgets.QWidget):
         try:
             # 确保有可导出的对象
             if self.current_mesh is None:
-                QMessageBox.warning(self, "导出失败", "没有可导出的网格对象！")
+                QMessageBox.warning(self, "导出失败", "没有可导出的对象！")
                 return
+            if isinstance(self.current_mesh,vedo.Image):
+                # 图片
+                file_path, _ = QFileDialog.getSaveFileName(
+                    self,
+                    "保存图片文件",
+                    os.path.join(os.path.expanduser("~"), "Desktop", f"Img_{self.count}.png"),  # 默认保存到桌面
+                )
+                # 如果用户取消选择，则返回
+                if not file_path:
+                    return
+                # 使用vedo导出网格
+                self.current_mesh.write(file_path)
+
+            else:
+                # 网格/点云
+                # 弹出文件保存对话框
+                file_path, _ = QFileDialog.getSaveFileName(
+                    self,
+                    "保存网格文件",
+                    os.path.join(os.path.expanduser("~"), "Desktop", f"mesh_{self.count}.sm"),  # 默认保存到桌面
+                )
+                # 如果用户取消选择，则返回
+                if not file_path:
+                    return
+                sm = SindreMesh(self.current_mesh)
+                if self.vertex_labels is not None:
+                    sm.set_vertex_labels(self.vertex_labels)
+                sm.save(file_path)
+                QMessageBox.information(self, "导出成功", f"已成功导出到:\n{file_path}")
+
+
+
+
                 
-            # 弹出文件保存对话框
-            file_path, _ = QFileDialog.getSaveFileName(
-                self, 
-                "保存网格文件",
-                os.path.join(os.path.expanduser("~"), "Desktop", f"mesh_{self.count}.ply"),  # 默认保存到桌面
-                "PLY文件 (*.ply);;所有文件 (*)"
-            )
-            # 如果用户取消选择，则返回
-            if not file_path:
-                return
-            # 确保文件有正确的扩展名
-            if not file_path.lower().endswith('.ply'):
-                file_path += '.ply'
-            # 使用vedo导出网格
-            vedo.write(self.current_mesh, file_path)
-            QMessageBox.information(self, "导出成功", f"网格已成功导出到:\n{file_path}")
+
             
         except Exception as e:
             # 捕获并显示任何错误
@@ -524,23 +544,25 @@ class LMDB_Viewer(QtWidgets.QWidget):
 
                 if self.data_config["vertex_label_key"]:
                     vertex_data = get_data_value(data,self.data_config["vertex_label_key"])
-                    if vertex_data.shape[1]==3:
+                    if  len(vertex_data.shape) >= 2  and vertex_data.shape[1]==3:
                         # 传入为颜色
                         mesh.pointcolors = vertex_data
                     else:
                         # 传入为标签
                         labels=vertex_data.ravel()
+                        self.vertex_labels=labels
                         mesh.pointcolors = labels2colors(labels)
                         fss = self._labels_flag(mesh,labels,is_points=True)
 
                 if self.data_config["face_label_key"] :
                     face_data = get_data_value(data,self.data_config["face_label_key"])
-                    if face_data.shape[1]==3:
+                    if len(face_data.shape) >= 2 and face_data.shape[1]==3:
                         # 传入为颜色
                         mesh.cellcolors = face_data
                     else:
                         # 传入为标签
                         labels=face_data.ravel()
+                        self.vertex_labels=face_labels_to_vertex_labels(np.array(mesh.vertices),np.array(mesh.cells), labels)
                         mesh.cellcolors = labels2colors(labels)
                         fss = self._labels_flag(mesh,labels,is_points=False)
 
@@ -556,12 +578,13 @@ class LMDB_Viewer(QtWidgets.QWidget):
 
                 if self.data_config["vertex_label_key"]:
                     vertex_data = get_data_value(data,self.data_config["vertex_label_key"])
-                    if vertex_data.shape[1]==3:
+                    if len(vertex_data.shape) >= 2 and vertex_data.shape[1]==3:
                         # 传入为颜色
                         pc.pointcolors = vertex_data
                     else:
                         # 传入为标签
                         labels=vertex_data.ravel()
+                        self.vertex_labels=labels
                         pc.pointcolors = labels2colors(labels)
                         fss = self._labels_flag(pc,labels,is_points=True)
 
@@ -626,9 +649,9 @@ class LMDB_Viewer(QtWidgets.QWidget):
             k = str(key)
             current = get_data_value(data,key)
             if isinstance(current, np.ndarray):
-                t= f"{current.dtype}"
+                t= f"np_{current.dtype}"
                 s= f"{current.shape}"
-                if "<U" in t or "str" in t or "bool" in t:
+                if current.size<20:
                     s = str(current)
             elif isinstance(current, dict):
                 t= type(current).__name__
