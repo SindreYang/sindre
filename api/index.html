@@ -2003,6 +2003,15 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#utils3d.dental_tools.labels2colors_freeze" class="md-nav__link">
+    <span class="md-ellipsis">
+      labels2colors_freeze
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#utils3d.dental_tools.subdivide_with_pts" class="md-nav__link">
     <span class="md-ellipsis">
       subdivide_with_pts
@@ -2259,6 +2268,15 @@
   <a href="#utils3d.sindremesh.SindreMesh.compute_normals" class="md-nav__link">
     <span class="md-ellipsis">
       compute_normals
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#utils3d.sindremesh.SindreMesh.cut_mesh" class="md-nav__link">
+    <span class="md-ellipsis">
+      cut_mesh
     </span>
   </a>
   
@@ -5583,6 +5601,15 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#utils3d.dental_tools.labels2colors_freeze" class="md-nav__link">
+    <span class="md-ellipsis">
+      labels2colors_freeze
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#utils3d.dental_tools.subdivide_with_pts" class="md-nav__link">
     <span class="md-ellipsis">
       subdivide_with_pts
@@ -5839,6 +5866,15 @@
   <a href="#utils3d.sindremesh.SindreMesh.compute_normals" class="md-nav__link">
     <span class="md-ellipsis">
       compute_normals
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#utils3d.sindremesh.SindreMesh.cut_mesh" class="md-nav__link">
+    <span class="md-ellipsis">
+      cut_mesh
     </span>
   </a>
   
@@ -17263,6 +17299,24 @@ show(result_mesh, axes=1).close()
 <div class="doc doc-object doc-function">
 
 
+<h2 id="utils3d.dental_tools.labels2colors_freeze" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">labels2colors_freeze</span><span class="p">(</span><span class="n">labels</span><span class="p">)</span></code>
+
+</h2>
+
+
+    <div class="doc doc-contents ">
+
+        <p>点云标签的颜色映射；</p>
+
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
 <h2 id="utils3d.dental_tools.subdivide_with_pts" class="doc doc-heading">
             <code class="highlight language-python"><span class="n">subdivide_with_pts</span><span class="p">(</span><span class="n">v</span><span class="p">,</span> <span class="n">f</span><span class="p">,</span> <span class="n">line_pts</span><span class="p">,</span> <span class="n">r</span><span class="o">=</span><span class="mf">0.15</span><span class="p">,</span> <span class="n">iterations</span><span class="o">=</span><span class="mi">3</span><span class="p">,</span> <span class="n">method</span><span class="o">=</span><span class="s1">&#39;mid&#39;</span><span class="p">)</span></code>
 
@@ -18145,6 +18199,109 @@ show([(Mesh([new_vertices, new_face]).c(&quot;green&quot;), Line(pts, lw = 2, c 
     <div class="doc doc-contents ">
 
         <p>计算顶点法线及面片法线.force代表是否强制重新计算</p>
+
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h3 id="utils3d.sindremesh.SindreMesh.cut_mesh" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">cut_mesh</span><span class="p">(</span><span class="n">loop_points</span><span class="p">,</span> <span class="n">get_bigger_part</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">smooth_boundary</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span></code>
+
+</h3>
+
+
+    <div class="doc doc-contents ">
+
+        <p>将输入的3D点环投影到网格表面，根据参数决定是生成新的切割边还是仅提取投影轮廓。</p>
+
+
+<p><span class="doc-section-title">参数：</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>名称</th>
+          <th>类型</th>
+          <th>描述</th>
+          <th>默认</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                <code>loop_points</code>
+            </td>
+            <td>
+                  <code><span title="iterable">iterable</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>3D点列表/数组，定义要投影到网格上的环状路径。</p>
+              </div>
+            </td>
+            <td>
+                <em>必需</em>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>get_bigger_part</code>
+            </td>
+            <td>
+                  <code><span title="bool">bool</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>选择面积大的mesh；</p>
+              </div>
+            </td>
+            <td>
+                  <code>False</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>smooth_boundary</code>
+            </td>
+            <td>
+                  <code><span title="bool">bool</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>优化边界;</p>
+              </div>
+            </td>
+            <td>
+                  <code>False</code>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+    <p><span class="doc-section-title">返回：</span></p>
+    <table>
+      <thead>
+        <tr>
+<th>名称</th>          <th>类型</th>
+          <th>描述</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+<td><code>sindremesh</code></td>            <td>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>裁剪后的sindremesh</p>
+              </div>
+            </td>
+          </tr>
+      </tbody>
+    </table>
 
 
     </div>
