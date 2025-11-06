@@ -14,6 +14,44 @@ except ImportError:
     pass
 from sindre.utils3d.algorithm import apply_transform,cut_mesh_point_loop,  subdivide_loop_by_trimesh
 
+
+def labels2colors_freeze(labels):
+    """
+    点云标签的颜色映射；
+    """
+    labels = labels.reshape(-1)
+    colormap = [
+        [0, 9, 255, 255],  # 纯蓝
+        [60, 180, 75, 255],  # 翠绿
+        [255, 225, 25, 255],  # 明黄
+        [67, 99, 216, 255],  # 钴蓝
+        [66, 212, 244, 255],  # 天蓝
+        [70, 153, 144, 255],  # 蓝绿
+        [220, 190, 255, 255],  # 薰衣草紫
+        [154, 99, 36, 255],  # 棕褐
+        [255, 250, 200, 255],  # 乳白
+        [170, 255, 195, 255],  # 薄荷绿
+        [0, 0, 117, 255],  # 深海军蓝
+        [169, 169, 169, 255],  # 中灰
+        [255, 255, 255, 255],  # 纯白
+        [0, 255, 10, 255],  # 荧光绿
+        [147, 112, 219, 255],  # 新增-紫罗兰（补充色相）
+        [0, 128, 128, 255],  # 新增-青色（补充冷色）
+        [255, 165, 0, 255]  # 新增-橙色（暖色补充）
+    ]
+
+    color_labels = np.zeros((len(labels), 4))
+    for i in np.unique(labels):
+        if i == 0:
+            color = [230, 25, 75, 255]
+        else:
+            color = colormap[int(i) % len(colormap)]
+        idx_i = np.argwhere(labels == i).reshape(-1)
+        color_labels[idx_i] = color
+
+    return color_labels
+
+
 def convert_fdi2idx(labels):
     """
     
