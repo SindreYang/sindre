@@ -2003,6 +2003,15 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#utils3d.dental_tools.get_mesh_side_area" class="md-nav__link">
+    <span class="md-ellipsis">
+      get_mesh_side_area
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#utils3d.dental_tools.labels2colors_freeze" class="md-nav__link">
     <span class="md-ellipsis">
       labels2colors_freeze
@@ -5595,6 +5604,15 @@
   <a href="#utils3d.dental_tools.deform_and_merge_mesh" class="md-nav__link">
     <span class="md-ellipsis">
       deform_and_merge_mesh
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#utils3d.dental_tools.get_mesh_side_area" class="md-nav__link">
+    <span class="md-ellipsis">
+      get_mesh_side_area
     </span>
   </a>
   
@@ -17290,6 +17308,122 @@ show(result_mesh, axes=1).close()
         <p>Returns:</p>
 <pre><code>vedo.Mesh: 合并并清理后的网格
 </code></pre>
+
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h2 id="utils3d.dental_tools.get_mesh_side_area" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">get_mesh_side_area</span><span class="p">(</span><span class="n">target_mesh</span><span class="p">,</span> <span class="n">template_center</span><span class="p">)</span></code>
+
+</h2>
+
+
+    <div class="doc doc-contents ">
+
+        <p>获取邻牙网格中面向模板一侧的所有面片，并计算其总面积
+（注：面向模板的面片指面片法向量与"邻牙中心指向模板中心"的方向夹角小于60°的面片）</p>
+
+
+<p><span class="doc-section-title">参数：</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>名称</th>
+          <th>类型</th>
+          <th>描述</th>
+          <th>默认</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                <code>target_mesh</code>
+            </td>
+            <td>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>(tirmesh) 邻牙的网格模型（包含面片信息、法向量等属性）</p>
+              </div>
+            </td>
+            <td>
+                <em>必需</em>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>template_center</code>
+            </td>
+            <td>
+                  <code><span title="numpy.ndarray">ndarray</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>生成模板的三维中心坐标</p>
+              </div>
+            </td>
+            <td>
+                <em>必需</em>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+    <p><span class="doc-section-title">返回：</span></p>
+    <table>
+      <thead>
+        <tr>
+<th>名称</th>          <th>类型</th>
+          <th>描述</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+<td><code>area</code></td>            <td>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>面向模板一侧的所有面片总面积</p>
+              </div>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+<td><code>mask</code></td>            <td>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>布尔数组，标记哪些面片属于面向模板的一侧（True表示是）</p>
+              </div>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+<td><code>face_indices</code></td>            <td>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>面向模板一侧的面片索引列表</p>
+              </div>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+<p><span class="doc-section-title">示例：</span></p>
+    <p>collision_side_area, collision_side_faces, collision_side_faces = get_collision_side_faces(mesh1, center_mass)
+sub_mesh = mesh1.submesh([collision_side_faces])[0]
+mesh1.visual.face_colors = [100, 100, 100, 100]  # 灰色半透明
+mesh1.visual.face_colors[collision_side_faces] = [255, 0, 0, 255]  # 红色不透明
+scene = trimesh.Scene()
+scene.add_geometry(mesh1)
+scene.add_geometry(sub_mesh)
+scene.show()</p>
 
 
     </div>
