@@ -77,17 +77,25 @@ class config_thread(QtCore.QThread):
             with Reader(self.db_path) as db:
                 data = db[i]
             k = str(i)
-            v =data.get(self.name_key, "unknown")
+            try:
+                v =get_data_value(data,self.name_key)
+            except Exception as e:
+                v = f"{k}_unknown"
+            #v =data.get(self.name_key, "unknown")
             if isinstance(v,np.ndarray):
                 if np.issubdtype(v.dtype,np.str_):
                     v = str(v)
                     if len(v)>34:
                         v=f"*{v[-34:]}"
                 else:
-                    v = f"numpy_{k}_{v.shape}"
+                    v = f"np_{k}_{v.shape}"
             elif isinstance(v,str):
-                if len(v)>34:
-                    v=f"*{v[-34:]}"
+                if len(v)>30:
+                    v=f"{k}**{v[-30:]}"
+                else:
+                    v=f"{k}_{v}"
+            else:
+                v = f"{k}_{v}"
 
 
         # 使用configparser存储映射

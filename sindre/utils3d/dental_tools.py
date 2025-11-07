@@ -5,6 +5,7 @@
 
 """
 __author__ = 'sindre'
+
 import vedo
 import numpy as np
 from typing import *
@@ -611,3 +612,50 @@ def cut_crown_with_meshlib(mesh: vedo.Mesh, margin_points: np.ndarray) -> Tuple[
     other_mesh = merge(other_components + [remove_mesh])
 
     return keep_mesh, other_mesh
+
+
+def get_mesh_side_area(target_mesh, template_center:np.ndarray):
+    """
+    获取邻牙网格中面向模板一侧的所有面片，并计算其总面积
+    （注：面向模板的面片指面片法向量与"邻牙中心指向模板中心"的方向夹角小于60°的面片）
+
+    Args:
+        target_mesh: (tirmesh) 邻牙的网格模型（包含面片信息、法向量等属性）
+        template_center: 生成模板的三维中心坐标
+
+    Returns:
+        area: 面向模板一侧的所有面片总面积
+        mask: 布尔数组，标记哪些面片属于面向模板的一侧（True表示是）
+        face_indices: 面向模板一侧的面片索引列表
+
+    Examples:
+        collision_side_area, collision_side_faces, collision_side_faces = get_collision_side_faces(mesh1, center_mass)
+        sub_mesh = mesh1.submesh([collision_side_faces])[0]
+        mesh1.visual.face_colors = [100, 100, 100, 100]  # 灰色半透明
+        mesh1.visual.face_colors[collision_side_faces] = [255, 0, 0, 255]  # 红色不透明
+        scene = trimesh.Scene()
+        scene.add_geometry(mesh1)
+        scene.add_geometry(sub_mesh)
+        scene.show()
+    """
+    # 计算邻牙中心指向模板中心的单位方向向量
+    target_center = target_mesh.center_mass  # 邻牙的质心坐标
+    direction_vec = template_center - target_center  # 从邻牙中心到模板中心的向量
+    direction_vec_normalized = direction_vec / np.linalg.norm(direction_vec)  # 归一化方向向量
+
+    # 获取邻牙每个面片的法向量（已归一化）
+    face_normals = target_mesh.face_normals
+
+    # 计算每个面片是否面向模板方向：通过法向量与方向向量的点积判断
+    # 点积 > 0.5 对应夹角 < 60°（cos(60°)=0.5），认为面片朝向模板
+    normal_dir_dot = np.sum(face_normals * direction_vec_normalized, axis=1)
+    mask = normal_dir_dot > 0.5  # 布尔掩码：标记面向模板的面片
+
+    # 计算面向模板一侧的总面积
+    face_areas = target_mesh.area_faces  # 每个面片的面积
+    area = np.sum(face_areas[mask])
+
+    # 获取面向模板的面片索引（便于后续定位具体面片）
+    face_indices = np.where(mask)[0]
+
+    return area, mask, face_indices

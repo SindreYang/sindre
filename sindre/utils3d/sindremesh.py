@@ -349,6 +349,8 @@ class SindreMesh:
             self.face_normals =self.any_mesh.cell_normals
             if self.any_mesh.pointdata["PointsRGBA"] is not  None:
                 self.vertex_colors = np.asarray(self.any_mesh.pointdata["PointsRGBA"][...,:3], dtype=np.uint8)
+            if self.any_mesh.pointdata["RGB"] is not  None:
+                self.vertex_colors = np.asarray(self.any_mesh.pointdata["RGB"][...,:3], dtype=np.uint8)
 
 
 
@@ -1661,9 +1663,9 @@ class SindreMesh:
             f"\033[94m面片数:             {len(self.faces) if self.faces is not None else 0}\033[0m",
             f"\033[94m顶点范围:           {self.vertices.min():.2f} ~ {self.vertices.max():.2f} \033[0m",
             f"\033[94m曲率范围:           {self.vertex_curvature.min():.2f} ~ {self.vertex_curvature.max():.2f}\033[0m",
-            f"\033[94m标签类别:           {', ' .join([f"{label}" for label in np.unique(self.vertex_labels)])}\033[0m",
+            f"\033[94m标签类别:           {', ' .join([f'{label}' for label in np.unique(self.vertex_labels)])}\033[0m",
             f"\033[94m最大半径:           {self.radius:.2f}\033[0m",
-            f"\033[94m几何中心:           {', '.join(f"{x:.3f}" for x in self.center)}\033[0m",
+            f"\033[94m几何中心:           {', '.join(f'{x:.3f}' for x in self.center)}\033[0m",
             f"\033[94m曲率大小:           {self.vertex_curvature.min():.2f} ~ {self.vertex_curvature.max():.2f}\033[0m",
             f"\033[94m网格水密(闭合):     {self._is_watertight()}\033[0m",
             f"\033[94m连通体数量:         {self._count_connected_components()[0]}\033[0m",
@@ -1694,9 +1696,9 @@ class SindreMesh:
             f"\033[94m面片数:             {len(self.faces) if self.faces is not None else 0}\033[0m",
             f"\033[94m顶点范围:           {self.vertices.min():.2f} ~ {self.vertices.max():.2f} \033[0m",
             f"\033[94m曲率范围:           {self.vertex_curvature.min():.2f} ~ {self.vertex_curvature.max():.2f}\033[0m",
-            f"\033[94m标签类别:           {', '.join([f"{label}" for label in np.unique(self.vertex_labels)])}\033[0m",
+            f"\033[94m标签类别:           {', '.join([f'{label}' for label in np.unique(self.vertex_labels)])}\033[0m",
             f"\033[94m最大半径:           {self.radius:.2f}\033[0m",
-            f"\033[94m几何中心:           {', '.join(f"{x:.3f}" for x in self.center)}\033[0m",
+            f"\033[94m几何中心:           {', '.join(f'{x:.3f}' for x in self.center)}\033[0m",
             f"\033[94m网格水密(闭合):     {self._is_watertight()}\033[0m",
             f"\033[94m连通体数量:         {self._count_connected_components()[0]}\033[0m",
             f"\033[94m未使用顶点:         {self._count_unused_vertices()}\033[0m",
