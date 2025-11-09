@@ -17,15 +17,16 @@ setup(
         "lmdb>=1.6.2",
         "msgpack>=1.1.0",
         'vedo>=2025.5.3',
+        'numpy<2.0.0'
         'loguru',
         'tqdm',
         'scipy',
         'numba',
 
     ],
-    extras_require={"full": ["pymeshlab","meshlib","libigl>=2.6.1","Cython",'nvitop',
+    extras_require={"full": ["pymeshlab","meshlib==3.0.6.229","libigl>=2.6.1","Cython",'nvitop',
                              'scikit-learn','Cython','trimesh',"open3d","pymeshlab",
-                             "pyqt5","qdarkstyle"],
+                             "pyqt5","qdarkstyle","fastapi","imgaug"],
                     "2d":["opencv-contrib-python","opencv-python","scikit-image"]},
     
     #data_files=find_files("sindre\Resources"),
