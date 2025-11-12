@@ -661,6 +661,8 @@ class SindreMesh:
             o3d.visualization.draw(show_list,title='SindreMesh',show_ui=True)
         else:
             mesh_vd=self.to_vedo
+            if labels is None and self.vertex_labels is not None and sum(self.vertex_labels) > 0:
+                labels=self.vertex_labels
             if labels is not None:
                 labels = labels.reshape(-1)
                 fss =self._labels_flag(mesh_vd,labels,exclude_list=exclude_list)
@@ -721,7 +723,7 @@ class SindreMesh:
             if int(i) not in exclude_list:
                 v_i = mesh_vd.vertices[labels == i]
                 cent = np.mean(v_i, axis=0)
-                fs = mesh_vd.flagpost(f"{i}", cent)
+                fs = mesh_vd.flagpost(f"{i}",point=cent)
                 fss.append(fs)
         return fss
 
@@ -753,7 +755,7 @@ class SindreMesh:
         return len(self.get_edges) == 2*len(unique_edges)
 
 
-    def split_component(self):
+    def split_component(self,return_largest=True):
         """
 
         将网格按照连通分量分割,并返回最大和其余连通分量的顶点索引
@@ -770,6 +772,10 @@ class SindreMesh:
         largest_component_label =np.argmax(np.bincount(labels))
         # 提取最大连通分量的节点索引
         largest_component_indices = np.where(labels == largest_component_label)[0]
+        if return_largest:
+            new_sm = self.clone()
+            new_sm.update_geometry(self.vertices[largest_component_indices])
+            return new_sm
         # 通过取反而得到剩余部分的节点索引
         remaining_indices = np.where(labels != largest_component_label)[0]
         # 返回最大连通体索引和最小连通索引
