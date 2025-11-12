@@ -40,6 +40,36 @@ log = CustomLogger(logger_name="algorithm").get_logger()
 
 
 
+def get_gaussian_heatmap(points, keypoints, sigma=0.5, normalize=False):
+    """
+    生成高斯热图（仅支持单样本点云和关键点）
+
+    参数:
+        points: 点云坐标，形状为 (N, 3)
+        keypoints: 关键点坐标，形状为 (K, 3)
+        sigma: 高斯标准差，控制热图扩散范围，小则精确定位，大则抗干扰强
+        normalize: 是否归一化每个关键点的热图（最大值为1）
+
+    返回:
+        heatmap: 热图数组，形状为 (N, K)
+    """
+    points = points[...,:3]
+    # 计算每个点到每个关键点的距离 (N, K)
+    dist = np.linalg.norm(
+        points[:, np.newaxis, :] - keypoints[np.newaxis, :, :],  # 广播为 (N, K, 3)
+        axis=-1
+    )
+
+    # 高斯热图
+    heatmap = np.exp(-(dist **2) / (2 * sigma** 2))
+
+    # 可选归一化
+    if normalize:
+        max_vals = heatmap.max(axis=0, keepdims=True)  # 每个关键点的最大值 (1, K)
+        heatmap = np.where(max_vals > 1e-6, heatmap / max_vals, heatmap)
+
+    return heatmap
+
 def labels2colors(labels:np.array):
     """
     将labels转换成颜色标签
