@@ -66,7 +66,9 @@ class Base:
             data = np.array(data)
         if isinstance(data, np.ndarray):
             if data.dtype == object:
-                data = data.item()
+                # 修复用户用list包裹多个对象问题;
+                if data.size==1:
+                    data = data.item()
                 return {b"type": Base.TYPES["object"],
                         b"data": pickle.dumps(data)
                         }
@@ -218,8 +220,9 @@ class Reader(Base):
                 # nb_samples 与 read_keys 保持一致
                 self.nb_samples = len(self.read_keys)
             else:
-                # 旧版本数据库：从现有数据重建键管理系统
-                print("\033[93m检测到旧版本数据库，使用兼容模式...\033[0m")
+                if not self.multiprocessing:
+                    # 旧版本数据库：从现有数据重建键管理系统
+                    print("\033[93m检测到旧版本数据库，使用兼容模式...\033[0m")
                 # 从meta_db获取样本数
                 nb_samples_data = txn.get(b"nb_samples")
                 if nb_samples_data:

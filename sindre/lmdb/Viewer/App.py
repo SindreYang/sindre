@@ -25,6 +25,7 @@
 """
 __author__ = 'sindre'
 
+import json
 import traceback
 
 import numpy as np
@@ -86,7 +87,9 @@ class config_thread(QtCore.QThread):
                 if np.issubdtype(v.dtype,np.str_):
                     v = str(v)
                     if len(v)>34:
-                        v=f"*{v[-34:]}"
+                        v=f"{k}*_{v[-34:]}"
+                    else:
+                        v=f"{k}_{v}"
                 else:
                     v = f"np_{k}_{v.shape}"
             elif isinstance(v,str):
@@ -196,14 +199,24 @@ class LMDB_Viewer(QtWidgets.QWidget):
         sub_layout = QtWidgets.QHBoxLayout(self.sub_functionButton)
         sub_layout.setContentsMargins(2, 2, 2, 2)  # 减小边距，紧凑显示
         # 导出按钮（绑定fun1：ExportMesh）
-        self.export_btn = QPushButton("导出")
+        self.append_btn = QPushButton("添加渲染")
+        self.append_btn.clicked.connect(self.AppendMesh)  # 绑定删除功能
+        self.append_btn.clicked.connect(self.sub_functionButton.hide)  # 点击后隐藏子窗
+        self.cache_btn = QPushButton("缓存索引")
+        self.cache_btn.clicked.connect(self.CacheIndex)  # 绑定删除功能
+        self.cache_btn.clicked.connect(self.sub_functionButton.hide)  # 点击后隐藏子窗
+        self.export_btn = QPushButton("导出当前")
         self.export_btn.clicked.connect(self.ExportMesh)  # 绑定导出功能
         self.export_btn.clicked.connect(self.sub_functionButton.hide)  # 点击后隐藏子窗口
         # 删除按钮（绑定fun2：比如DeleteMesh）
-        self.delete_btn = QPushButton("删除")
+        self.delete_btn = QPushButton("删除当前")
         self.delete_btn.clicked.connect(self.DeleteMesh)  # 绑定删除功能
         self.delete_btn.clicked.connect(self.sub_functionButton.hide)  # 点击后隐藏子窗
+
+
         # 添加子按钮到布局
+        sub_layout.addWidget(self.append_btn)
+        sub_layout.addWidget(self.cache_btn)
         sub_layout.addWidget(self.export_btn)
         sub_layout.addWidget(self.delete_btn)
         # 初始隐藏子按钮容器
@@ -247,6 +260,46 @@ class LMDB_Viewer(QtWidgets.QWidget):
             self.sub_functionButton.show()
         else:
             self.sub_functionButton.hide()
+
+
+    def AppendMesh(self):
+        # 添加 mesh
+        with Reader(self.db_path) as db:
+            data = db[self.count]
+            keys =db.get_data_keys(self.count)
+        dialog = DataConfigDialog(keys,self.data_config, self)
+        if dialog.exec_() == QDialog.Accepted:
+            data_config = dialog.get_config()
+            show_obj,current_obj =self._get_display_obj(data,data_config)
+            self.vp.add(show_obj)
+
+
+
+
+
+
+    def CacheIndex(self):
+        # 缓存索引
+        start_index = 0
+        end_index = self.max_count+1
+
+        # 防止用户快速点击视图按钮
+        self.app_ui.Next_view_Button.setEnabled(False)
+        self.app_ui.Pre_view_Button.setEnabled(False)
+
+        # 启动写入配置线程
+        self.write_thread = config_thread(
+            self.db_path,
+            self.config_parser,
+            self.data_config["name_key"],
+            start_index,
+            end_index
+        )
+        self.write_thread.progress_int.connect(self.app_ui.fun_progressBar.setValue)
+        self.write_thread.finished.connect(self.update_view_data)
+        self.write_thread.start()
+
+
     def DeleteMesh(self):
         try:
             # 确保有可删除的对象
@@ -270,35 +323,60 @@ class LMDB_Viewer(QtWidgets.QWidget):
             if self.current_mesh is None:
                 QMessageBox.warning(self, "导出失败", "没有可导出的对象！")
                 return
-            if isinstance(self.current_mesh,vedo.Image):
-                # 图片
-                file_path, _ = QFileDialog.getSaveFileName(
-                    self,
-                    "保存图片文件",
-                    os.path.join(os.path.expanduser("~"), "Desktop", f"Img_{self.count}.png"),  # 默认保存到桌面
-                )
-                # 如果用户取消选择，则返回
-                if not file_path:
-                    return
-                # 使用vedo导出网格
-                self.current_mesh.write(file_path)
 
-            else:
-                # 网格/点云
-                # 弹出文件保存对话框
+
+                # 是否导入json
+            ok_ = QMessageBox.question(self, "是否将所有信息导出到json",f"确认导出到json数据库索引：{self.count}",
+                                       QMessageBox.Yes | QMessageBox.No)
+            if ok_ == QMessageBox.Yes:
                 file_path, _ = QFileDialog.getSaveFileName(
                     self,
-                    "保存网格文件",
-                    os.path.join(os.path.expanduser("~"), "Desktop", f"mesh_{self.count}.sm"),  # 默认保存到桌面
+                    "保存json文件",
+                    os.path.join(os.path.expanduser("~"), "Desktop", f"Json_{self.count}.json"),  # 默认保存到桌面
                 )
                 # 如果用户取消选择，则返回
                 if not file_path:
                     return
-                sm = SindreMesh(self.current_mesh)
-                if self.vertex_labels is not None:
-                    sm.set_vertex_labels(self.vertex_labels)
-                sm.save(file_path)
+                with Reader(self.db_path) as reader:
+                    data = reader[self.count]
+                from sindre.utils3d.algorithm import save_np_json
+                save_np_json(file_path,data)
+
                 QMessageBox.information(self, "导出成功", f"已成功导出到:\n{file_path}")
+                return
+            else:
+                if isinstance(self.current_mesh,vedo.Image):
+                    # 图片
+                    file_path, _ = QFileDialog.getSaveFileName(
+                        self,
+                        "保存图片文件",
+                        os.path.join(os.path.expanduser("~"), "Desktop", f"Img_{self.count}.png"),  # 默认保存到桌面
+                    )
+                    # 如果用户取消选择，则返回
+                    if not file_path:
+                        return
+                    # 使用vedo导出网格
+                    self.current_mesh.write(file_path)
+                    QMessageBox.information(self, "导出成功", f"已成功导出到:\n{file_path}")
+                    return
+
+                else:
+                    # 网格/点云
+                    # 弹出文件保存对话框
+                    file_path, _ = QFileDialog.getSaveFileName(
+                        self,
+                        "保存网格文件",
+                        os.path.join(os.path.expanduser("~"), "Desktop", f"mesh_{self.count}.sm"),  # 默认保存到桌面
+                    )
+                    # 如果用户取消选择，则返回
+                    if not file_path:
+                        return
+                    sm = SindreMesh(self.current_mesh)
+                    if self.vertex_labels is not None:
+                        sm.set_vertex_labels(self.vertex_labels)
+                    sm.save(file_path)
+                    QMessageBox.information(self, "导出成功", f"已成功导出到:\n{file_path}")
+                    return
 
 
 
@@ -531,6 +609,105 @@ class LMDB_Viewer(QtWidgets.QWidget):
                 fss.append(fs)
         return fss
 
+    def _get_display_obj(self,data,data_config):
+        show_obj = None
+        current_obj = None
+        if data_config["data_type"] == "网格(Mesh)":
+            vertices = np.array(get_data_value(data,data_config["vertex_key"]))[...,:3]
+            faces = np.array(get_data_value(data,data_config["face_key"]))[...,:3]
+            mesh = vedo.Mesh([vertices, faces])
+            fss = []
+
+            if data_config["vertex_label_key"]:
+                vertex_data = get_data_value(data,data_config["vertex_label_key"])
+                if  len(vertex_data.shape) >= 2  and vertex_data.shape[1]==3:
+                    # 传入为颜色
+                    mesh.pointcolors = vertex_data
+                else:
+                    # 传入为标签
+                    labels=vertex_data.ravel()
+                    self.vertex_labels=labels
+                    mesh.pointcolors = labels2colors(labels)
+                    fss = self._labels_flag(mesh,labels,is_points=True)
+
+            if data_config["face_label_key"] :
+                face_data = get_data_value(data,data_config["face_label_key"])
+                if len(face_data.shape) >= 2 and face_data.shape[1]==3:
+                    # 传入为颜色
+                    mesh.cellcolors = face_data
+                else:
+                    # 传入为标签
+                    labels=face_data.ravel()
+                    self.vertex_labels=face_labels_to_vertex_labels(np.array(mesh.vertices),np.array(mesh.cells), labels)
+                    mesh.cellcolors = labels2colors(labels)
+                    fss = self._labels_flag(mesh,labels,is_points=False)
+
+            fss.append(mesh)
+            # self.vp.show(fss, axes=3)
+            # self.current_mesh = mesh
+            current_obj=mesh
+            show_obj=fss
+
+
+        elif data_config["data_type"] == "点云(Point Cloud)":
+            points = np.array(get_data_value(data,data_config["vertex_key"])[...,:3])
+            pc = Points(points)
+            fss = []
+
+            if data_config["vertex_label_key"]:
+                vertex_data = get_data_value(data,data_config["vertex_label_key"])
+                if len(vertex_data.shape) >= 2 and vertex_data.shape[1]==3:
+                    # 传入为颜色
+                    pc.pointcolors = vertex_data
+                else:
+                    # 传入为标签
+                    labels=vertex_data.ravel()
+                    self.vertex_labels=labels
+                    pc.pointcolors = labels2colors(labels)
+                    fss = self._labels_flag(pc,labels,is_points=True)
+
+            fss.append(pc)
+            # self.vp.show(fss, axes=3)
+            # self.current_mesh = pc
+            current_obj=pc
+            show_obj=fss
+
+
+        elif data_config["data_type"] == "图片(Image)":
+            image = get_data_value(data,data_config["image_key"])
+            if image.dtype != np.uint8:
+                if image.max() <= 1.0:
+                    image = (image * 255).astype(np.uint8)
+                else:
+                    image = image.astype(np.uint8)
+            # 处理多通道图片
+            if len(image.shape) == 3 and image.shape[0] in [1, 3]:  # CHW格式
+                image = image.transpose(1, 2, 0)
+            if len(image.shape) == 3 and image.shape[2] == 1:  # 单通道转RGB
+                image = np.repeat(image, 3, axis=2)
+            if len(image.shape) == 2:  # 灰度图转RGB
+                image = np.stack([image] * 3, axis=2)
+
+
+            # 绘制标注
+            bboxes = None
+            keypoints = None
+            segmentation = None
+            if data_config.get("bbox_key"):
+                bboxes = get_data_value(data,data_config["bbox_key"])
+            if data_config.get("keypoints_key"):
+                keypoints = get_data_value(data,data_config["keypoints_key"])
+            if data_config.get("segmentation_key"):
+                segmentation = get_data_value(data,data_config["segmentation_key"])
+            annotated_image = self.draw_image_annotations(image, bboxes, keypoints, segmentation)
+            # 创建vedo图片对象并显示
+            vedo_image = vedo.Image(annotated_image)
+            # self.current_mesh = vedo_image
+            # self.vp.show(vedo_image)
+            current_obj=vedo_image
+            show_obj=vedo_image
+        return show_obj,current_obj
+
     def UpdateDisplay(self):
         self.ShowState()
         self.app_ui.treeWidget.clear()
@@ -544,96 +721,9 @@ class LMDB_Viewer(QtWidgets.QWidget):
             self.max_count = len(db) - 1
 
         try:
-            if self.data_config["data_type"] == "网格(Mesh)":
-                vertices = np.array(get_data_value(data,self.data_config["vertex_key"]))[...,:3]
-                faces = np.array(get_data_value(data,self.data_config["face_key"]))[...,:3]
-                mesh = vedo.Mesh([vertices, faces])
-                fss = []
-
-                if self.data_config["vertex_label_key"]:
-                    vertex_data = get_data_value(data,self.data_config["vertex_label_key"])
-                    if  len(vertex_data.shape) >= 2  and vertex_data.shape[1]==3:
-                        # 传入为颜色
-                        mesh.pointcolors = vertex_data
-                    else:
-                        # 传入为标签
-                        labels=vertex_data.ravel()
-                        self.vertex_labels=labels
-                        mesh.pointcolors = labels2colors(labels)
-                        fss = self._labels_flag(mesh,labels,is_points=True)
-
-                if self.data_config["face_label_key"] :
-                    face_data = get_data_value(data,self.data_config["face_label_key"])
-                    if len(face_data.shape) >= 2 and face_data.shape[1]==3:
-                        # 传入为颜色
-                        mesh.cellcolors = face_data
-                    else:
-                        # 传入为标签
-                        labels=face_data.ravel()
-                        self.vertex_labels=face_labels_to_vertex_labels(np.array(mesh.vertices),np.array(mesh.cells), labels)
-                        mesh.cellcolors = labels2colors(labels)
-                        fss = self._labels_flag(mesh,labels,is_points=False)
-
-                fss.append(mesh)
-                self.vp.show(fss, axes=3)
-                self.current_mesh = mesh
-
-
-            elif self.data_config["data_type"] == "点云(Point Cloud)":
-                points = np.array(get_data_value(data,self.data_config["vertex_key"])[...,:3])
-                pc = Points(points)
-                fss = []
-
-                if self.data_config["vertex_label_key"]:
-                    vertex_data = get_data_value(data,self.data_config["vertex_label_key"])
-                    if len(vertex_data.shape) >= 2 and vertex_data.shape[1]==3:
-                        # 传入为颜色
-                        pc.pointcolors = vertex_data
-                    else:
-                        # 传入为标签
-                        labels=vertex_data.ravel()
-                        self.vertex_labels=labels
-                        pc.pointcolors = labels2colors(labels)
-                        fss = self._labels_flag(pc,labels,is_points=True)
-
-                fss.append(pc)
-                self.vp.show(fss, axes=3)
-                self.current_mesh = pc
-
-
-            elif self.data_config["data_type"] == "图片(Image)":
-                image = get_data_value(data,self.data_config["image_key"])
-                if image.dtype != np.uint8:
-                    if image.max() <= 1.0:
-                        image = (image * 255).astype(np.uint8)
-                    else:
-                        image = image.astype(np.uint8)
-                # 处理多通道图片
-                if len(image.shape) == 3 and image.shape[0] in [1, 3]:  # CHW格式
-                    image = image.transpose(1, 2, 0)
-                if len(image.shape) == 3 and image.shape[2] == 1:  # 单通道转RGB
-                    image = np.repeat(image, 3, axis=2)
-                if len(image.shape) == 2:  # 灰度图转RGB
-                    image = np.stack([image] * 3, axis=2)
-
-
-                # 绘制标注
-                bboxes = None
-                keypoints = None
-                segmentation = None
-                if self.data_config.get("bbox_key"):
-                    bboxes = get_data_value(data,self.data_config["bbox_key"])
-                if self.data_config.get("keypoints_key"):
-                    keypoints = get_data_value(data,self.data_config["keypoints_key"])
-                if self.data_config.get("segmentation_key"):
-                    segmentation = get_data_value(data,self.data_config["segmentation_key"])
-                annotated_image = self.draw_image_annotations(image, bboxes, keypoints, segmentation)
-                # 创建vedo图片对象并显示
-                vedo_image = vedo.Image(annotated_image)
-                self.current_mesh = vedo_image
-                self.vp.show(vedo_image)
-
-
+            show_obj,current_obj =self._get_display_obj(data,self.data_config)
+            self.current_mesh = current_obj
+            self.vp.show(show_obj, axes=3)
 
 
         except KeyError as e:

@@ -9,6 +9,7 @@ __pycache__/
 *.engine.cache
 *.db
 *.db-lock
+.idea
 
 
 

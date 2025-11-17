@@ -1,8 +1,4 @@
 import numpy  as np
-try:
-    import torch
-except ImportError:
-    pass
 
 class ElasticDistortion(object):
     """弹性畸变（通过高斯噪声 + 卷积平滑，模拟非刚性变形"""
@@ -147,17 +143,21 @@ class Scale_np:
 
 
 class RotateAxis_np:
-    def __init__(self, axis=[0.0, 0.0, 1.0]):
+    def __init__(self, axis:list=[0.0, 0.0, 1.0], angle:list=[0,360]):
         """
         初始化 RotateAxis 类，用于绕指定轴随机旋转点云数据。
 
         Args:
-            axis (list): 旋转轴，形状为 (3,),默认为 [0.0, 0.0, 0.0]（z 轴）。
+            axis (list): 旋转轴，形状为 (3,),默认为 [0.0, 0.0, 1.0]（z 轴）。
+            angle (list):在 [min, max] 范围内随机生成角度（单位：度）,默认为 [0, 360],
         """
         self.axis = np.array(axis)
+        self.angle =angle
 
     def __call__(self, points):
-        rotation_angle = np.random.uniform() * 2 * np.pi
+        min_angle, max_angle = self.angle
+        rotation_angle = np.radians(np.random.uniform(min_angle, max_angle)) # 角度转弧度
+
         rotation_matrix = angle_axis_np(rotation_angle, self.axis)
 
 
@@ -266,7 +266,7 @@ class RandomDropout_np(object):
         self.max_dropout_ratio = max_dropout_ratio
         self.return_idx = return_idx
 
-    def __call__(self, pc,):
+    def __call__(self, pc):
         dropout_ratio = np.random.random() * self.max_dropout_ratio  
         ran = np.random.random(pc.shape[0])
         # 找出需要保留的点的索引
@@ -312,354 +312,7 @@ class Normalize_np:
             return self.vmax,self.vmin
 
 
-
-
-
-
-def angle_axis(angle, axis):
-    """
-    计算绕给定轴旋转指定角度的旋转矩阵（PyTorch版本）。
-
-    Args:
-        angle (float): 旋转角度（弧度）。
-        axis (torch.Tensor): 旋转轴，形状为 (3,) 的Tensor。
-
-    Returns:
-        torch.Tensor: 3x3 的旋转矩阵，数据类型为 torch.float32。
-    """
-    u = axis / torch.norm(axis)
-    cosval = torch.cos(angle)
-    sinval = torch.sin(angle)
-    
-    # 构建叉乘矩阵
-    cross_prod_mat = torch.tensor([
-        [0.0, -u[2], u[1]],
-        [u[2], 0.0, -u[0]],
-        [-u[1], u[0], 0.0]
-    ], device=axis.device, dtype=torch.float32)
-    
-    R = (
-        cosval * torch.eye(3, device=axis.device) +
-        sinval * cross_prod_mat +
-        (1.0 - cosval) * torch.outer(u, u)
-    )
-    return R
-
-class Flip:
-    """对点云数据进行随机翻转增强。
-
-    Attributes:
-        axis_x (bool): 是否启用X轴翻转，默认为True
-        axis_y (bool): 是否启用Y轴翻转，默认为True
-        axis_z (bool): 是否启用Z轴翻转，默认为True
-    """
-
-    def __init__(self, axis_x=True, axis_y=True, axis_z=True):
-        """
-        初始化翻转增强器。
-
-        Args:
-            axis_x (bool, optional): 是否沿X轴翻转. Defaults to True.
-            axis_y (bool, optional): 是否沿Y轴翻转. Defaults to True.
-            axis_z (bool, optional): 是否沿Z轴翻转. Defaults to True.
-        """
-        self.axis_x = axis_x
-        self.axis_y = axis_y
-        self.axis_z = axis_z
-
-    def __call__(self, points):
-        """
-        对输入点云应用随机翻转变换。
-
-        Args:
-            points (torch.Tensor): 输入点云数据，形状为 (N, 3) 或 (N, 6)（包含法线）
-
-        Returns:
-            torch.Tensor: 变换后的点云数据
-        """
-        flip_factors = torch.ones(3, device=points.device)
-        
-        if self.axis_x:
-            flip_factors[0] = 1 if torch.rand(1, device=points.device) < 0.5 else -1
-        if self.axis_y:
-            flip_factors[1] = 1 if torch.rand(1, device=points.device) < 0.5 else -1
-        if self.axis_z:
-            flip_factors[2] = 1 if torch.rand(1, device=points.device) < 0.5 else -1
-
-        normals = points.size(1) > 3
-        points[:,0:3] *= flip_factors
-        if normals:
-            points[:, 3:6] *= flip_factors
-        return points
-
-class Scale:
-    """对点云数据进行随机缩放增强。"""
-
-    def __init__(self, lo=0.8, hi=1.25):
-        """
-        初始化缩放增强器。
-
-        Args:
-            lo (float, optional): 缩放下限. Defaults to 0.8.
-            hi (float, optional): 缩放上限. Defaults to 1.25.
-        """
-        self.lo = lo
-        self.hi = hi
-
-    def __call__(self, points):
-        """
-        对输入点云应用随机缩放变换。
-
-        Args:
-            points (torch.Tensor): 输入点云数据，形状为 (N, 3) 或 (N, 6)
-
-        Returns:
-            torch.Tensor: 变换后的点云数据
-        """
-        scaler = torch.empty(1, device=points.device).uniform_(self.lo, self.hi)
-        points[:, 0:3] *= scaler
-        return points
-
-class RotateAxis:
-    """绕指定轴随机旋转点云。"""
-
-    def __init__(self, axis=[0.0, 0.0, 1.0]):
-        """
-        初始化旋转增强器。
-
-        Args:
-            axis (torch.Tensor, optional): 旋转轴向量，形状为 (3,). Defaults to Z轴.
-        """
-        self.axis = torch.tensor(axis)
-
-    def __call__(self, points):
-        """
-        应用绕轴随机旋转变换。
-
-        Args:
-            points (torch.Tensor): 输入点云数据，形状为 (N, 3) 或 (N, 6)
-
-        Returns:
-            torch.Tensor: 变换后的点云数据
-        """
-        rotation_angle = torch.empty(1).uniform_(0, 2*torch.pi).to(points.device)
-        rotation_matrix = angle_axis(rotation_angle, self.axis.to(dtype=torch.float32, device=points.device))
-        self.R= rotation_matrix
-
-        normals = points.size(1) > 3
-        points[:, 0:3] = torch.mm(points[:, 0:3], rotation_matrix.t())
-        if normals:
-            points[:, 3:6] = torch.mm(points[:, 3:6], rotation_matrix.t())
-        return points
-
-    def get_R(self):
-        return self.R
-
-class RotateXYZ:
-    """绕XYZ轴应用随机欧拉角旋转。"""
-
-    def __init__(self, angle_sigma=2, angle_clip=torch.pi):
-        """
-        初始化旋转增强器。
-
-        Args:
-            angle_sigma (float, optional): 旋转角度的标准差. Defaults to 2.
-            angle_clip (float, optional): 旋转角度的截断范围. Defaults to torch.pi.
-        """
-        self.angle_sigma = angle_sigma
-        self.angle_clip = angle_clip
-
-    def __call__(self, points):
-        """
-        应用三维随机旋转变换。
-
-        Args:
-            points (torch.Tensor): 输入点云数据，形状为 (N, 3) 或 (N, 6)
-
-        Returns:
-            torch.Tensor: 变换后的点云数据
-        """
-        angles = torch.clamp(
-            self.angle_sigma * torch.randn(3, device=points.device),
-            -self.angle_clip, self.angle_clip
-        )
-        
-        Rx = angle_axis(angles[0], torch.tensor([1.0, 0.0, 0.0], device=points.device))
-        Ry = angle_axis(angles[1], torch.tensor([0.0, 1.0, 0.0], device=points.device))
-        Rz = angle_axis(angles[2], torch.tensor([0.0, 0.0, 1.0], device=points.device))
-        
-        rotation_matrix = torch.mm(torch.mm(Rz, Ry), Rx)
-        self.R=rotation_matrix
-        
-        normals = points.size(1) > 3
-        points[:, 0:3] = torch.mm(points[:, 0:3], rotation_matrix.t())
-        if normals:
-            points[:, 3:6] = torch.mm(points[:, 3:6], rotation_matrix.t())
-        return points
-    def get_R(self):
-        return self.R
-
-class Jitter:
-    """对点云坐标添加随机噪声。"""
-
-    def __init__(self, std=0.01, clip=0.05):
-        """
-        初始化噪声增强器。
-
-        Args:
-            std (float, optional): 噪声标准差. Defaults to 0.01.
-            clip (float, optional): 噪声截断范围. Defaults to 0.05.
-        """
-        self.std = std
-        self.clip = clip
-
-    def __call__(self, points):
-        """
-        应用噪声扰动。
-
-        Args:
-            points (torch.Tensor): 输入点云数据，形状为 (N, 3) 或 (N, 6)
-
-        Returns:
-            torch.Tensor: 变换后的点云数据
-        """
-        jitter = torch.clamp(
-            torch.randn(points[:, 0:3].shape, device=points.device) * self.std,
-            -self.clip, self.clip
-        )
-        points[:, 0:3] += jitter
-        return points
-
-class Translate:
-    """对点云应用随机平移变换。"""
-
-    def __init__(self, translate_range=0.1):
-        """
-        初始化平移增强器。
-
-        Args:
-            translate_range (float, optional): 平移范围. Defaults to 0.1.
-        """
-        self.translate_range = translate_range
-
-    def __call__(self, points):
-        """
-        应用平移变换。
-
-        Args:
-            points (torch.Tensor): 输入点云数据，形状为 (N, 3) 或 (N, 6)
-
-        Returns:
-            torch.Tensor: 变换后的点云数据
-        """
-        translation = torch.empty(3, device=points.device).uniform_(
-            -self.translate_range, self.translate_range
-        )
-        points[:, 0:3] += translation
-        return points
-
-class RandomDropout:
-    """随机丢弃部分点云数据。"""
-
-    def __init__(self, max_dropout_ratio=0.2):
-        """
-        初始化丢弃增强器。
-
-        Args:
-            max_dropout_ratio (float, optional): 最大丢弃比例. Defaults to 0.2.
-        """
-        self.max_dropout_ratio = max_dropout_ratio
-
-    def __call__(self, pc):
-        """
-        应用随机丢弃。
-
-        Args:
-            pc (torch.Tensor): 输入点云数据，形状为 (N, C)
-
-        Returns:
-            torch.Tensor: 丢弃后的点云数据
-        """
-        dropout_ratio = torch.rand(1).item() * self.max_dropout_ratio
-        mask = torch.rand(pc.size(0), device=pc.device) > dropout_ratio
-        
-        if mask.any():
-            pc = pc[mask]
-        return pc
-
-class Normalize:
-    """对点云进行归一化处理。"""
-
-    def __init__(self, method="ball", v_range=[0, 1]):
-        """
-        初始化归一化处理器。
-
-        Args:
-            method (str, optional): 归一化方法，可选"ball"（标准化）或其他（最大最小归一化）.
-                                    Defaults to "std".
-            v_range (list, optional): 当使用最大最小归一化时的目标范围. Defaults to [0, 1].
-        """
-        self.method = method
-        self.v_range = v_range
-
-    def __call__(self, points):
-        """
-        应用归一化处理。
-
-        Args:
-            points (torch.Tensor): 输入点云数据，形状为 (N, C)
-
-        Returns:
-            torch.Tensor: 归一化后的点云数据
-        """
-        vertices = points[:, 0:3]
-        if self.method == "ball":
-            self.centroid = torch.mean(vertices, dim=0)
-            vertices -= self.centroid
-            self.m = torch.max(torch.norm(vertices, dim=1))
-            vertices /= self.m
-        else:
-            self.vmin = torch.min(vertices, dim=0)[0]
-            self.vmax = torch.max(vertices, dim=0)[0]
-            vertices = (vertices - self.vmin) / (self.vmax - self.vmin).max()
-            vertices = vertices * (self.v_range[1] - self.v_range[0]) + self.v_range[0]
-        points[:, 0:3] = vertices
-        return points
-    
-    def get_info(self):
-        if self.method =="ball":
-            return self.centroid,self.m
-        else:
-            return self.vmax,self.vmin
-
-class ToTensor:
-    """将输入数据转换为torch.Tensor格式。"""
-
-    def __init__(self, device="cpu"):
-        """
-        初始化转换器。
-
-        Args:
-            device (str, optional): 目标设备. Defaults to "cpu".
-        """
-        self.device = device
-
-    def __call__(self, points):
-        """
-        执行数据类型转换和设备转移。
-
-        Args:
-            points (numpy.ndarray | torch.Tensor): 输入点云数据
-
-        Returns:
-            torch.Tensor: 转换后的张量
-        """
-        if "numpy" in str(type(points)):
-            return torch.from_numpy(points).to(dtype=torch.float32, device=self.device)
-        else:
-            return points.to(dtype=torch.float32, device=self.device)
-
-class RandomCrop:
+class RandomCrop_np:
     def __init__(self, radius=0.15):
         """
         随机移除一个点周围指定半径内的所有点
@@ -691,24 +344,10 @@ class RandomCrop:
 
 if __name__ =="__main__":
     from torchvision import transforms
-    transforms_torch = transforms.Compose(
-        [
-            ToTensor(device="cuda:0"),
-            Normalize(method="MaxMix",v_range=[0,1]),
-            RotateAxis(axis=[0,1,0]),
-            RotateXYZ(angle_sigma=0.05,angle_clip=0.15),
-            Scale(lo=0.8,hi=1.25),
-            Translate(translate_range=0.1),
-            Jitter(std=0.01,clip=0.05),
-            RandomDropout(max_dropout_ratio=0.2),
-            Flip(axis_x=False,axis_y=False,axis_z=True),
-        ]
-    )
 
 
     transforms_np = transforms.Compose(
         [
-           
             Normalize_np(method="MaxMix",v_range=[0,1]),
             RotateAxis_np(axis=[0,1,0]),
             RotateXYZ_np(angle_sigma=0.05,angle_clip=0.15),
@@ -717,7 +356,6 @@ if __name__ =="__main__":
             Jitter_np(std=0.01,clip=0.05),
             RandomDropout_np(max_dropout_ratio=0.2),
             Flip_np(axis_x=False,axis_y=False,axis_z=True),
-            ToTensor(device="cuda:0"),
         ]
     )
 
@@ -726,15 +364,11 @@ if __name__ =="__main__":
     points = np.random.randn(1024, 6)  
     points[:,3:6] = np.random.rand(1024,3)
     import time
-    s=time.time()
-    for i  in range(50):
-        transformed_points = transforms_torch(points)
     e1=time.time()
     for i  in range(50):
         transformed_points_np = transforms_np(points)
     e2=time.time()
-    
-    print(e1-s,transformed_points.shape,transformed_points.max(),transformed_points.min())
+
     print(e2-e1,transformed_points_np.shape,transformed_points_np.max(),transformed_points_np.min())
 
     # 0.39881253242492676 torch.Size([910, 6]) tensor(1.3718, device='cuda:0') tensor(-0.5744, device='cuda:0')

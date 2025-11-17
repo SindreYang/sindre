@@ -70,6 +70,53 @@ def get_gaussian_heatmap(points, keypoints, sigma=0.5, normalize=False):
 
     return heatmap
 
+
+def show_gaussian_heatmap(vertices,heatmap,faces=None):
+    """
+    用于渲染三维顶点的高斯热力图
+    Args:
+        vertices: 顶点，形状为 (N, 3)
+        heatmap: 热图数组，形状为 (N, K)
+        faces: 可选面片,如无，则按照点云渲染
+
+    """
+    vertices = np.array(vertices)[...,:3]
+    heatmap = np.array(heatmap)
+    assert vertices.shape[0] == heatmap.shape[0]
+    if faces is None:
+        vm = vedo.Points(vertices)
+    else:
+        vm = vedo.Mesh(vertices, faces)
+
+    max_idx= heatmap.shape[1]-1
+    cap = vedo.Text2D(f"{max_idx=} \n"
+                      f"{heatmap.shape=}\n"
+                      f"max={np.around(heatmap.max(axis=0),3).tolist()}\n"
+                      f"min={ np.around(heatmap.min(axis=0),3).tolist()}")
+
+    # 渲染回调
+    def render(widget, event):
+        idx_=int(widget.value)
+        if 0<=idx_<=max_idx:
+            # 获取第k个特征点的热图得分（0~1）
+            k_scores = heatmap[..., idx_].flatten()  # (N,)
+            vm.pointdata["scores"] = k_scores
+            vm.cmap("hot", "scores").add_scalarbar(title=f'{idx_=}', horizontal=True)
+
+
+    plt = vedo.Plotter()
+    plt += [vm,cap]
+    plt.add_slider(
+        render,
+        xmin=0,
+        xmax=max_idx,
+        value=0,
+        pos="bottom-right",
+        title="idx",
+    )
+    plt.show().close()
+
+
 def labels2colors(labels:np.array):
     """
     将labels转换成颜色标签
