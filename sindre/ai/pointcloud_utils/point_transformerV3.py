@@ -1539,12 +1539,17 @@ class PointTransformerV3(PointModule):
         # 解码器处理（非分类模式时启用）：特征上采样/重建
         if not self.cls_mode:
             point = self.dec(point)
-    
+        else:
+            point.feat = torch_scatter.segment_csr(src=point.feat,
+                                                   indptr=nn.functional.pad(point.offset,(1,0)),
+                                                   reduce="mean")
+
         return point
     
 if __name__ == "__main__":
     # 示例用法
-    model = PointTransformerV3(in_channels=6 ,enable_flash=True,cls_mode=False).cuda()
+    #model = PointTransformerV3(in_channels=6 ,enable_flash=True,cls_mode=False).cuda()
+    model = PointTransformerV3(in_channels=6 ,enable_flash=True,cls_mode=True).cuda()
     #model = PointTransformerV3(in_channels=6 ).cuda()
     x = torch.randn(2, 1000, 6).cuda()  # 批次x点数x特征
     p = torch.randn(2, 1000, 3).cuda()  # 坐标

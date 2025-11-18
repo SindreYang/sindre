@@ -267,11 +267,18 @@ class LMDB_Viewer(QtWidgets.QWidget):
         with Reader(self.db_path) as db:
             data = db[self.count]
             keys =db.get_data_keys(self.count)
-        dialog = DataConfigDialog(keys,self.data_config, self)
+
+        if hasattr(self, "append_data_config"):
+            data_config=self.append_data_config
+        else:
+            data_config=self.data_config
+        dialog = DataConfigDialog(keys,data_config, self)
         if dialog.exec_() == QDialog.Accepted:
             data_config = dialog.get_config()
             show_obj,current_obj =self._get_display_obj(data,data_config)
             self.vp.add(show_obj)
+            # 缓存一个配置，方便用户后续无需重新配置
+            self.append_data_config=data_config
 
 
 
@@ -434,7 +441,7 @@ class LMDB_Viewer(QtWidgets.QWidget):
                 self.countChanged.emit(self.count)
 
     def NextFile(self):
-        if self.count < self.max_count - 1:
+        if self.count <= self.max_count - 1:
             self.count += 1
             self.UpdateDisplay()
             # 发射信号
