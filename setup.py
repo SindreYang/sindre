@@ -17,7 +17,7 @@ setup(
         "lmdb>=1.6.2",
         "msgpack>=1.1.0",
         'vedo>=2025.5.3',
-        'numpy<2.0.0'
+        'numpy<2.0.0',
         'loguru',
         'tqdm',
         'scipy',
