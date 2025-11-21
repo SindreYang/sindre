@@ -448,7 +448,7 @@ class LMDB_Viewer(QtWidgets.QWidget):
             self.countChanged.emit(self.count)
 
     def PreFile(self):
-        if 0 < self.count < self.max_count - 1:
+        if 0 < self.count <= self.max_count - 1:
             self.count -= 1
             self.UpdateDisplay()
             # 发射信号
