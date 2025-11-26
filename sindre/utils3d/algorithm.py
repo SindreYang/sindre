@@ -2893,7 +2893,7 @@ def cut_mesh_with_meshlib(v: np.ndarray, f: np.ndarray, loop_points,
     # 计算两个部分的面积
     area_one = mesh_clone.area(one_part)
     area_other = mesh_clone.area(other_part)
-
+    # one_part_bool_np =mrmeshnumpy.getNumpyBitSet(one_part)
     # 根据面积选择保留部分
     if get_bigger_part:
         kept_part = one_part if area_one > area_other else other_part

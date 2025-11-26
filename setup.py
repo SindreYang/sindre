@@ -4,7 +4,7 @@ from setuptools import Extension, setup, find_packages
 import time
 
 # python setup.py bdist_wheel
-# pip install -e .
+# pip install -e . --config-settings editable_mode=compat
 GFICLEE_VERSION  = os.getenv('PACKAGE_VERSION', time.strftime("%Y.%m.%d", time.localtime()))  # 默认为GFICLEE_VERSION，如果环境变量未设置
 print(GFICLEE_VERSION)
 
@@ -43,7 +43,8 @@ setup(
         'console_scripts': [
             'LmdbViewer = sindre.lmdb.Viewer.App:main',
             'GpuViewer = nvitop.cli:main',
-            'LmdbWebViewer = sindre.lmdb.WebViewer.App:main'
+            'LmdbWebViewer = sindre.lmdb.WebViewer.App:main',
+            'Label3d = sindre.utils3d.Label3d.App:main'
         ],
     }
 
