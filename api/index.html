@@ -2217,6 +2217,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#utils3d.algorithm.sample_sharp_mesh" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        sample_sharp_mesh
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#utils3d.algorithm.save_np_json" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -6577,6 +6588,17 @@
     <span class="md-ellipsis">
       
         sample_sdf_mesh
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#utils3d.algorithm.sample_sharp_mesh" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        sample_sharp_mesh
       
     </span>
   </a>
@@ -17895,6 +17917,62 @@ Args:
             <td>
               <div class="doc-md-description">
                 <p>如果未安装 'mesh-to-sdf' 库，会提示安装。</p>
+              </div>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h2 id="utils3d.algorithm.sample_sharp_mesh" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">sample_sharp_mesh</span><span class="p">(</span><span class="n">mesh</span><span class="p">,</span> <span class="n">num</span><span class="o">=</span><span class="mi">20000</span><span class="p">,</span> <span class="n">angle_threshold</span><span class="o">=</span><span class="mf">10.0</span><span class="p">)</span></code>
+
+</h2>
+
+
+    <div class="doc doc-contents ">
+
+        <p>从网格的尖锐边缘采样点云,支持上采样;（阈值为角度，单位：度）
+https://github.com/Tencent-Hunyuan/Hunyuan3D-2/blob/f8db63096c8282cb27354314d896feba5ba6ff8a/hy3dgen/shapegen/surface_loaders.py#L40
+Args:
+    mesh (trimesh.Trimesh): 输入网格
+    num (int): 采样点数，默认16384
+    angle_threshold (float): 尖锐度角度阈值（范围0~180度），值越大识别的尖锐边越“钝”，默认10度</p>
+
+
+    <p><span class="doc-section-title">返回：</span></p>
+    <table>
+      <thead>
+        <tr>
+<th>名称</th>          <th>类型</th>
+          <th>描述</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+<td><code>samples</code></td>            <td>
+                  <code><span title="numpy.ndarray">ndarray</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>(num, 3) 采样点坐标</p>
+              </div>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+<td><code>normals</code></td>            <td>
+                  <code><span title="numpy.ndarray">ndarray</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>(num, 3) 采样点法线</p>
               </div>
             </td>
           </tr>
