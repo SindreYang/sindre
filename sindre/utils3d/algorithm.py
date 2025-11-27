@@ -2542,6 +2542,87 @@ def mesh2sdf(v, f, size=64):
     voxels = mesh_to_voxels(mesh, size, pad=True)
     return voxels
 
+def sample_sharp_mesh(mesh, num=20000, angle_threshold=10.0):
+    """
+    从网格的尖锐边缘采样点云,支持上采样;（阈值为角度，单位：度）
+    https://github.com/Tencent-Hunyuan/Hunyuan3D-2/blob/f8db63096c8282cb27354314d896feba5ba6ff8a/hy3dgen/shapegen/surface_loaders.py#L40
+    Args:
+        mesh (trimesh.Trimesh): 输入网格
+        num (int): 采样点数，默认16384
+        angle_threshold (float): 尖锐度角度阈值（范围0~180度），值越大识别的尖锐边越“钝”，默认10度
+
+    Returns:
+        samples (np.ndarray): (num, 3) 采样点坐标
+        normals (np.ndarray): (num, 3) 采样点法线
+
+    """
+    # 参数校验：确保角度阈值在合理范围
+    if not (0 <= angle_threshold <= 180):
+        raise ValueError(f"角度阈值angle_threshold必须在0~180度之间，当前值为{angle_threshold}")
+
+    # 将角度阈值转换为余弦值（顶点法线与面法线的点积阈值）
+    cos_threshold = np.cos(np.radians(angle_threshold))
+
+    # 提取网格基础数据
+    V = np.asarray(mesh.vertices)  # 顶点坐标 (Nv, 3)
+    N = np.asarray(mesh.face_normals)  # 面法线 (Nf, 3)
+    VN = np.asarray(mesh.vertex_normals)  # 顶点法线 (Nv, 3)
+    F = np.asarray(mesh.faces)  # 面索引 (Nf, 3)
+
+    # 计算顶点的尖锐度指标：顶点法线与所属面法线的最小点积
+    VN2 = np.ones(V.shape[0])  # 初始化尖锐度指标为1（最平滑）
+    for i in range(3):  # 遍历面的三个顶点
+        face_vertex_idx = F[:, i]  # 当前面的第i个顶点索引
+        # 顶点法线与对应面法线的点积
+        dot_product = np.sum(VN[face_vertex_idx] * N, axis=-1)
+        # 更新顶点的最小点积（保留最尖锐的情况）
+        current_vn2 = VN2[face_vertex_idx]
+        VN2[face_vertex_idx] = np.minimum(current_vn2, dot_product)
+
+    # 筛选尖锐顶点（点积小于角度对应的余弦值 → 夹角大于阈值）
+    sharp_mask = VN2 < cos_threshold
+
+    # 提取所有唯一边（避免重复边影响权重）
+    edges = mesh.edges_unique  # trimesh直接提供唯一边 (Ne, 2)
+    edge_a, edge_b = edges[:, 0], edges[:, 1]
+
+    # 筛选尖锐边（两个顶点均为尖锐顶点）
+    sharp_edge_mask = sharp_mask[edge_a] & sharp_mask[edge_b]
+    sharp_edges = edges[sharp_edge_mask]  # 尖锐边索引 (Nse, 2)
+
+    # 处理无尖锐边的情况
+    if len(sharp_edges) == 0:
+        print(f"警告：在角度阈值{angle_threshold}度下未检测到尖锐边，返回网格表面均匀采样")
+        samples, face_idx = mesh.sample(num, return_index=True)
+        normals = mesh.face_normals[face_idx]
+        return samples, normals
+
+    # 提取尖锐边的顶点坐标和法线
+    sharp_verts_a = V[sharp_edges[:, 0]]  # (Nse, 3)
+    sharp_verts_b = V[sharp_edges[:, 1]]  # (Nse, 3)
+    sharp_verts_an = VN[sharp_edges[:, 0]]  # (Nse, 3)
+    sharp_verts_bn = VN[sharp_edges[:, 1]]  # (Nse, 3)
+
+    # 计算每条尖锐边的长度作为采样权重（避免除以0）
+    edge_lengths = np.linalg.norm(sharp_verts_b - sharp_verts_a, axis=-1)
+    edge_lengths = np.maximum(edge_lengths, 1e-8)  # 防止零长度边
+    weights = edge_lengths / np.sum(edge_lengths)  # 归一化权重
+
+    # 按权重随机选择边（防止索引越界）
+    random_indices = np.searchsorted(weights.cumsum(), np.random.rand(num))
+    random_indices = np.clip(random_indices, 0, len(weights)-1)
+
+    # 在选中的边上线性插值采样
+    w = np.random.rand(num, 1)  # 插值权重 (num, 1)
+    samples = w * sharp_verts_a[random_indices] + (1 - w) * sharp_verts_b[random_indices]
+    normals = w * sharp_verts_an[random_indices] + (1 - w) * sharp_verts_bn[random_indices]
+
+    # 归一化法线（确保单位长度）
+    normals = normals / np.linalg.norm(normals, axis=-1, keepdims=True)
+
+    return samples, normals
+
+
 
 def sample_sdf_mesh(v, f, number_of_points=200000):
     """

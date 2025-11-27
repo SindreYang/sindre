@@ -161,12 +161,12 @@ class MainWindow(QMainWindow):
     
     def open_model(self):
         """打开3D模型文件"""
-        # file_dialog = QFileDialog()
-        # file_path, _ = file_dialog.getOpenFileName(
-        #     self, "打开3D模型文件", "", 
-        #     "3D模型文件 (*.ply *.obj *.stl *.vtk *.vtp);;所有文件 (*.*)"
-        # )
-        file_path=r"C:\Users\yx\Downloads\J10113717111_17\扫描模型\J10113717111_UpperJaw.stl"
+        file_dialog = QFileDialog()
+        file_path, _ = file_dialog.getOpenFileName(
+            self, "打开3D模型文件", "",
+            "3D模型文件 (*.ply *.obj *.stl *.vtk *.vtp);;所有文件 (*.*)"
+        )
+        #file_path=r"C:\Users\yx\Downloads\J10113717111_17\扫描模型\J10113717111_UpperJaw.stl"
         if file_path:
             try:
                 # 清除当前视图
