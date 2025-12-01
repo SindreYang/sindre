@@ -519,7 +519,6 @@ class LMDB_Viewer(QtWidgets.QWidget):
 
     def Pre_Num_Page(self):
         # 在当前页，选择上一个
-        print(self.model.rowCount())
         if self.model.rowCount() == 0:
             return
 
@@ -530,9 +529,7 @@ class LMDB_Viewer(QtWidgets.QWidget):
 
         # 计算上一个项的行号（不能小于0）
         prev_row = current_row - 1
-        print(f"{prev_row=}")
         if prev_row < 0:
-            print(prev_row)
             return  # 已在当前页第一个项，不跳转
 
         # 选中上一个项
@@ -560,7 +557,6 @@ class LMDB_Viewer(QtWidgets.QWidget):
         max_row = self.model.rowCount() - 1
         next_row = current_row + 1
         if next_row > max_row:
-            print(max_row,next_row)
             return  # 已在当前页最后一个项，不跳转
 
         # 选中下一个项
