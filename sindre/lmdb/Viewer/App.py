@@ -100,6 +100,7 @@ class config_thread(QtCore.QThread):
 
 
             # 使用configparser存储映射
+            formatted=f"{idx_str}_{formatted}" # 保证数据唯一性
             self.config_parser.set('INDEX_MAPPING', idx_str, formatted)
             self.config_parser.set('INDEX_MAPPING', formatted, idx_str)
 
