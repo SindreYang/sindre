@@ -97,13 +97,13 @@ class LabelDockWidget(QDockWidget):
         """使用标签（标记为已使用）"""
         if self.label_manager.mark_label_used(label_name):
             self.update_label_buttons()
-            self.signals.signal_labels_updated.emit(self.label_manager.labels)
-            self.show_label_completion_message(label_name)
             # 标记使用,自动将current_label设置为下一个
             unused_labels = self.label_manager.get_unused_labels()
             if len(unused_labels)>0:
                 self.label_manager.current_label=unused_labels[0]
+                self.signals.signal_labels_clicked.emit(unused_labels[0])
                 self.signals.signal_info.emit(f"已选择标签: {unused_labels[0]}")
+            self.signals.signal_labels_updated.emit(self.label_manager.labels)
             return True
         return False
     
@@ -162,7 +162,7 @@ class LabelDockWidget(QDockWidget):
         
         # 设置点击事件
         widget.mousePressEvent = lambda event, name=label_name: self.on_label_clicked(name, event)
-        
+
         # 设置样式
         if label_info['used']:
             widget.setStyleSheet("""
@@ -179,17 +179,19 @@ class LabelDockWidget(QDockWidget):
     
     def on_label_clicked(self, label_name, event):
         """标签点击事件"""
-        self.signals.signal_labels_clicked.emit(label_name)
         if event.button() == Qt.LeftButton:
             if not self.label_manager.is_label_used(label_name):
                 self.label_manager.current_label = label_name
                 self.signals.signal_info.emit(f"已选择标签: {label_name}")
                 self.update_label_buttons()
             else:
-                self.signals.signal_info.emit(f"标签 '{label_name}' 已使用")
-        
+                self.label_manager.current_label = label_name
+                self.signals.signal_info.emit(f"已选择 已使用标签: {label_name}")
+            self.signals.signal_labels_clicked.emit(label_name)
         elif event.button() == Qt.RightButton:
             self.show_label_context_menu(label_name, event.globalPos())
+
+
     
     def show_label_context_menu(self, label_name, pos):
         """显示标签上下文菜单"""
@@ -360,7 +362,7 @@ class LabelDockWidget(QDockWidget):
                 
                 
     def on_reset_label(self,label_name):
-        reply = QMessageBox.question(self, "确认删除", f"确定要重置'{label_name}' 吗？",
+        reply = QMessageBox.question(self, "确认重置标签", f"确定要重置标签'{label_name}' 吗？",
                                     QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
         
         if reply == QMessageBox.Yes:
@@ -368,7 +370,7 @@ class LabelDockWidget(QDockWidget):
                 self.label_manager.mark_label_unused(label_name)
                 self.update_label_buttons()
                 self.signals.signal_labels_updated.emit(self.label_manager.labels)
-                self.signals.signal_info.emit(f"删除标签: {label_name}")
+                self.signals.signal_info.emit(f"重置标签: {label_name}")
         
     
     def on_reset_all_labels(self):
@@ -381,7 +383,7 @@ class LabelDockWidget(QDockWidget):
             self.update_label_buttons()
             self.signals.signal_labels_updated.emit(self.label_manager.labels)
             self.signals.signal_info.emit("已重置所有标签为未使用状态")
-    
+
     def on_import_labels(self):
         """导入标签配置 (从 .npy 文件)"""
         file_path, _ = QFileDialog.getOpenFileName(
@@ -434,37 +436,8 @@ class LabelDockWidget(QDockWidget):
     
     
     
-    def show_label_completion_message(self, label_name):
-        """显示标签完成提示"""
-        # 创建一个临时的提示窗口
-        msg_widget = QWidget()
-        msg_widget.setWindowFlags(Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint)
-        msg_widget.setStyleSheet("""
-            QWidget {
-                background-color: #4CAF50;
-                color: white;
-                border-radius: 8px;
-                padding: 10px 20px;
-            }
-        """)
-        
-        layout = QHBoxLayout(msg_widget)
-        icon_label = QLabel("✓")
-        icon_label.setStyleSheet("font-size: 20px; margin-right: 10px;")
-        text_label = QLabel(f"标签 '{label_name}' 标记完成！")
-        text_label.setStyleSheet("font-size: 14px;")
-        
-        layout.addWidget(icon_label)
-        layout.addWidget(text_label)
-        
-        # 显示在屏幕中央
-        screen_geometry = QApplication.desktop().availableGeometry()
-        msg_widget.adjustSize()
-        x = (screen_geometry.width() - msg_widget.width()) // 2
-        y = (screen_geometry.height() - msg_widget.height()) // 2
-        msg_widget.move(x, y)
-        
-        msg_widget.show()
-        
-        # 2秒后自动隐藏
-        QTimer.singleShot(2000, msg_widget.deleteLater)
+
+
+    def clean(self):
+        self.label_manager.reset_all_labels()
+        self.update_label_buttons()

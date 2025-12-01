@@ -31,7 +31,7 @@ import traceback
 import numpy as np
 # You may need to uncomment these lines on some systems:
 import vtk.qt
-from PyQt5.QtCore import QStringListModel
+from PyQt5.QtCore import QStringListModel, QItemSelectionModel
 from PyQt5.QtGui import QPalette, QColor
 from PyQt5.QtWidgets import (QFileDialog, QInputDialog, QMessageBox, QLineEdit, 
                             QDialog, QVBoxLayout, QComboBox, QLabel, QPushButton,
@@ -74,39 +74,39 @@ class config_thread(QtCore.QThread):
         if not self.config_parser.has_section('INDEX_MAPPING'):
             self.config_parser.add_section('INDEX_MAPPING')
         
-        for i in range(self.start_idx, self.end_idx):
+        for idx in range(self.start_idx, self.end_idx):
             with Reader(self.db_path) as db:
-                data = db[i]
-            k = str(i)
+                data = db[idx]
+            idx_str = str(idx)
+
+            # 提取目标值（统一异常处理，简化默认值）
             try:
-                v =get_data_value(data,self.name_key)
-            except Exception as e:
-                v = f"{k}_unknown"
-            #v =data.get(self.name_key, "unknown")
-            if isinstance(v,np.ndarray):
-                if np.issubdtype(v.dtype,np.str_):
-                    v = str(v)
-                    if len(v)>34:
-                        v=f"{k}*_{v[-34:]}"
-                    else:
-                        v=f"{k}_{v}"
+                value=get_data_value(data,self.name_key)
+            except Exception:
+                value = f"{idx_str}_unknown"
+
+
+            # 格式化值
+            if isinstance(value, np.ndarray):
+                if np.issubdtype(value.dtype, np.str_):
+                    # 字符串数组：转字符串后取后30位
+                    formatted = str(value)[-30:]
                 else:
-                    v = f"np_{k}_{v.shape}"
-            elif isinstance(v,str):
-                if len(v)>30:
-                    v=f"{k}**{v[-30:]}"
-                else:
-                    v=f"{k}_{v}"
+                    # 非字符串数组：单元素取原值后30位，多元素显示形状
+                    formatted = str(value.item())[-30:] if value.shape == () else f"shape:{value.shape}"
             else:
-                v = f"{k}_{v}"
+                # 非数组类型：字符串取后30位，其他直接转字符串
+                formatted = str(value)[-30:] if isinstance(value, str) else str(value)
 
 
-        # 使用configparser存储映射
-            self.config_parser.set('INDEX_MAPPING', k, v)
-            self.config_parser.set('INDEX_MAPPING', v, k)
-            
-            self.progress_int.emit(int(i * 99 / self.len_idx))
-            
+            # 使用configparser存储映射
+            self.config_parser.set('INDEX_MAPPING', idx_str, formatted)
+            self.config_parser.set('INDEX_MAPPING', formatted, idx_str)
+
+            # 5. 发送进度信号
+            progress = int((idx - self.start_idx) / (self.end_idx - self.start_idx) * 99)
+            self.progress_int.emit(progress)
+
         self.progress_int.emit(100)
 
 class LMDB_Viewer(QtWidgets.QWidget):
@@ -189,8 +189,10 @@ class LMDB_Viewer(QtWidgets.QWidget):
         self.app_ui.SearchButton.clicked.connect(self.search)
         self.app_ui.NameView.clicked.connect(self.show_selected_value)
         self.app_ui.state_bt.clicked.connect(self.SetState)
-        self.app_ui.Pre_view_Button.clicked.connect(self.Previous_Page)
+        self.app_ui.Pre_view_Button.clicked.connect(self.Pre_Page)
         self.app_ui.Next_view_Button.clicked.connect(self.Next_Page)
+        self.app_ui.Pre_num_view_Button.clicked.connect(self.Pre_Num_Page)
+        self.app_ui.Next_num_view_Button.clicked.connect(self.Next_Num_Page)
         # 功能区
         self.app_ui.functionButton.clicked.connect(self.toggle_sub_buttons)
         # 创建子按钮容器（弹出式）
@@ -510,10 +512,68 @@ class LMDB_Viewer(QtWidgets.QWidget):
         self.load_view_data()
 
 
-    def Previous_Page(self):
+    def Pre_Page(self):
         if self.current_page > 1:
             self.current_page -= 1
             self.load_view_data()
+
+    def Pre_Num_Page(self):
+        # 在当前页，选择上一个
+        print(self.model.rowCount())
+        if self.model.rowCount() == 0:
+            return
+
+        # 获取当前选中项的行号
+        selection_model = self.app_ui.NameView.selectionModel()
+        selected_indexes = selection_model.selectedIndexes()
+        current_row = selected_indexes[0].row() if selected_indexes else 0
+
+        # 计算上一个项的行号（不能小于0）
+        prev_row = current_row - 1
+        print(f"{prev_row=}")
+        if prev_row < 0:
+            print(prev_row)
+            return  # 已在当前页第一个项，不跳转
+
+        # 选中上一个项
+        prev_index = self.model.index(prev_row)
+        selection_model.select(prev_index, QItemSelectionModel.Clear | QItemSelectionModel.Select)
+        selection_model.setCurrentIndex(prev_index, QItemSelectionModel.NoUpdate)
+        for k in self.config_parser.options('INDEX_MAPPING'):
+            if self.config_parser.get('INDEX_MAPPING',k)==prev_index.data() and k.isdigit():
+                self.count=int(k)
+                self.UpdateDisplay()
+                self.countChanged.emit(self.count)
+
+
+    def Next_Num_Page(self):
+        """在当前页中，选中下一个项（若已在最后一个项，则不操作）"""
+        if self.model.rowCount() == 0:
+            return
+
+        # 获取当前选中项的行号
+        selection_model = self.app_ui.NameView.selectionModel()
+        selected_indexes = selection_model.selectedIndexes()
+        current_row = selected_indexes[0].row() if selected_indexes else 0
+
+        # 计算下一个项的行号（不能超过当前页最大行号）
+        max_row = self.model.rowCount() - 1
+        next_row = current_row + 1
+        if next_row > max_row:
+            print(max_row,next_row)
+            return  # 已在当前页最后一个项，不跳转
+
+        # 选中下一个项
+        next_index = self.model.index(next_row)
+        selection_model.select(next_index, QItemSelectionModel.Clear | QItemSelectionModel.Select)
+        selection_model.setCurrentIndex(next_index, QItemSelectionModel.NoUpdate)
+        for k in self.config_parser.options('INDEX_MAPPING'):
+            if self.config_parser.get('INDEX_MAPPING',k)==next_index.data() and k.isdigit():
+                self.count=int(k)
+                self.UpdateDisplay()
+                self.countChanged.emit(self.count)
+
+
 
     def search(self):
         keyword = self.app_ui.search_edit.text().lower()

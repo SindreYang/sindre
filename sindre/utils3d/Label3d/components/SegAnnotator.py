@@ -3,6 +3,8 @@
 """
 import json
 import os
+import traceback
+
 import numpy as np
 from PyQt5.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QLabel, 
@@ -27,7 +29,7 @@ class SplineSegmentAnnotator(QWidget):
     def __init__(self,parent=None, label_dock=None):
         super().__init__(parent)
         self.signals = CoreSignals()
-        self.save_info = []  # 存储所有曲线数据
+        self.save_info = {} # 存储所有曲线数据
         self.plt = None
         self.label_dock = label_dock  # 引用标签Dock组件
         # 状态
@@ -35,9 +37,11 @@ class SplineSegmentAnnotator(QWidget):
         self.spline_tool = None  # Vedo的spline工具
         self.vdmesh=None # 缓存mesh对象
         self.mmesh=None # 缓存mesh对象
+        self.callback_cid =[] #回调标识
+        self.drawmode =False # 是否可绘制
         
         # 网格小组件
-        self.mesh_components = []  # 存储Mesh组件：[{\"mesh\": 原始Mesh, \"vdmesh\": Vedo显示Mesh, \"name\": \"组件1\"}, ...]
+        self.mesh_components = []  # 存储Mesh组件
         self.current_component_idx = 0  # 当前选中的组件索引（默认第1个）
 
         self.setup_ui()
@@ -81,7 +85,8 @@ class SplineSegmentAnnotator(QWidget):
         
      
         # 控制按钮
-        self.btn_complete = QPushButton("完成标注")
+        self.btn_save = QPushButton("保存裁剪网格")
+        self.btn_complete = QPushButton("保存标注信息")
         
         # 设置按钮样式
         button_style = """
@@ -103,11 +108,11 @@ class SplineSegmentAnnotator(QWidget):
                 background-color: #cccccc;
             }
         """
-        
-      
+
+        self.btn_save.setStyleSheet(button_style)
         self.btn_complete.setStyleSheet(button_style)
         
-        
+        self.dock_layout.addWidget(self.btn_save)
         self.dock_layout.addWidget(self.btn_complete)
         
         # 添加操作说明
@@ -133,16 +138,16 @@ class SplineSegmentAnnotator(QWidget):
         self.dock_layout.addStretch()
         
         # 连接信号
+        self.btn_save.clicked.connect(self.save_mesh)
         self.btn_complete.clicked.connect(self.complete_annotations)
         
         # 连接标签Dock的信号
         if self.label_dock:
-            self.label_dock.signals.signal_info.connect(self.on_label_info)
             self.label_dock.signals.signal_labels_updated.connect(self.on_labels_updated)
-            self.label_dock.signals.signal_labels_clicked.connect(self.on_labels_clicked)
+            self.label_dock.signals.signal_labels_clicked.connect(self.update_display)
         
         # 更新按钮状态
-        self.update_current_label_display()
+        self.update_display()
         
         # 释放dock组件信号
         self.signals.signal_dock.emit(self.dock_content)
@@ -152,79 +157,84 @@ class SplineSegmentAnnotator(QWidget):
         
         return self.dock_content
     
-    def update_current_label_display(self):
+    def update_display(self):
         """更新当前标签显示"""
-        if self.label_dock and self.label_dock.label_manager:
-            current_label_name = self.label_dock.label_manager.current_label
-            if current_label_name in self.label_dock.label_manager.labels:
-                label_info = self.label_dock.label_manager.labels[current_label_name]
-                color = label_info['color']
-                qcolor = QColor(int(color[0]), int(color[1]), int(color[2]))
-                self.current_label_icon.setStyleSheet(f"background-color: {qcolor.name()}; border-radius: 2px;")
-                if self.label_dock.label_manager.is_label_used(current_label_name):
-                    self.current_label_name.setText(f"当前标签: {current_label_name} (已使用)")
-                    self.current_label_name.setStyleSheet("font-size: 12px; color: #ff0000;")
-                else:
-                    self.current_label_name.setText(f"当前标签: {current_label_name}")
-                    self.current_label_name.setStyleSheet("font-size: 12px; color: #333;")
-            else:
-                self.current_label_icon.setStyleSheet("background-color: transparent;")
-                self.current_label_name.setText("请在左侧选择标签")
-                self.current_label_name.setStyleSheet("font-size: 12px; color: #666;")
-        else:
-            self.current_label_icon.setStyleSheet("background-color: transparent;")
-            self.current_label_name.setText("请在左侧选择标签")
-            self.current_label_name.setStyleSheet("font-size: 12px; color: #666;")
-    
-    def on_label_info(self, text):
-        """标签信息更新"""
-        self.signals.signal_info.emit(text)
-        self.update_current_label_display()
-    
-    def on_labels_updated(self, labels):
-        """标签配置更新"""
-        self.update_current_label_display()
-        if self.plt and self.label_dock:
-            for i,info in enumerate(self.save_info):
-                label_name = info['label']
-                if label_name in labels and  not labels[label_name]['used']:
-                    # 用户重置标签
-                    self.save_info.pop(i)
-                    self.spline_tool=None
-                    self.current_spline_points = [] 
-                elif label_name not in labels:
-                    # 用户删除标签
-                    self.save_info.pop(i)
-                    self.spline_tool=None
-                    self.current_spline_points = [] 
-                else:
-                    # 用户编辑标签
-                    color = self.label_dock.label_manager.get_label_color(label_name)
-                    self.save_info[i]['color']=color
-            
-            self.plt.render()
-
-    def on_labels_clicked(self,labels_name):
-        """用户点击标签"""
-        selected_data=None
-        for info in self.save_info:
-            if info["label"]==labels_name:
-                selected_data = info
-                self.label_dock.label_manager.current_label=labels_name
-                self.update_current_label_display()
-        # 渲染spline
+        # 初始化
+        self.current_spline_points=[]
         if self.spline_tool:
             self.spline_tool.off()
-        if selected_data:
-            self.vdmesh.alpha(0.5)
-            self.spline_tool = self.plt.add_spline_tool(
-                    selected_data['pts'], 
-                    closed=True,
-                    lc=vedo.get_color_name(selected_data['color']),
-                    pc="red",
-                )
-            self.spline_tool.on()
-            self.signals.signal_info.emit("进入曲线编辑模式 - 拖动控制点调整形状，按空格键退出编辑")
+            self.plt.remove("SplineTool")
+            self.spline_tool=None
+        if self.vdmesh is not None:
+            self.vdmesh.alpha(1)
+
+        self.drawmode=False
+
+        # 更新标签
+        current_label_name = self.label_dock.label_manager.current_label
+        print(f"{current_label_name=}")
+        if current_label_name in self.label_dock.label_manager.labels:
+            label_info = self.label_dock.label_manager.labels[current_label_name]
+            color = label_info['color']
+            qcolor = QColor(int(color[0]), int(color[1]), int(color[2]))
+            self.current_label_icon.setStyleSheet(f"background-color: {qcolor.name()}; border-radius: 2px;")
+            if self.label_dock.label_manager.is_label_used(current_label_name):
+                self.current_label_name.setText(f"当前标签: {current_label_name} (已使用)")
+                self.current_label_name.setStyleSheet("font-size: 12px; color: #ff0000;")
+                # 进入调整模式
+                if current_label_name in self.save_info:
+                    selected_data = self.save_info[current_label_name]
+                    # 重新渲染曲线
+                    self.current_spline_points=selected_data['pts']
+                    if len(self.current_spline_points)==0:
+                        self.signals.signal_info("当前信息保存的曲线为空,无法编辑")
+                        return
+                    self.spline_tool = self.plt.add_spline_tool(
+                        self.current_spline_points,
+                        closed=True,
+                        lc=vedo.get_color_name(selected_data['color']),
+                        pc="red",
+                    )
+                    self.spline_tool.on()
+                    self.drawmode=True
+                    self.signals.signal_info.emit(f"进入{current_label_name}曲线编辑模式 ")
+
+
+
+            else:
+                self.current_label_name.setText(f"当前标签: {current_label_name}")
+                self.current_label_name.setStyleSheet("font-size: 12px; color: #333;")
+                self.drawmode=True
+        else:
+            self.current_label_name.setText(f"请选择标签....")
+            self.current_label_name.setStyleSheet("font-size: 12px; color:  #ff0000;")
+
+
+    def on_labels_updated(self, labels):
+        """标签配置更新"""
+        self.signals.signal_info.emit(f"标签配置更新,{labels}")
+        self.update_display()
+        if not self.plt or not  self.label_dock:
+            return
+        new_label_keys  = labels.keys()
+        save_keys = self.save_info.keys()
+        for key in save_keys:
+            if key not in new_label_keys:
+                # 用户删除标签
+                self.remove_labels(key)
+            else:
+                if not labels[key]['used'] :
+                    # 用户重置标签
+                    self.remove_labels(key)
+
+
+
+
+
+
+
+
+
 
     
             
@@ -238,8 +248,10 @@ class SplineSegmentAnnotator(QWidget):
         
         # 1. 更新当前组件状态
         self.current_component_idx = idx
+        color = self.vdmesh.color()
         self.vdmesh = self.mesh_components[idx]
         self.vdmesh.name = "vdmesh"
+        self.vdmesh.color(color)
         v,f= np.array(self.vdmesh.vertices),np.array(self.vdmesh.cells)
         self.mmesh = mrmeshnumpy.meshFromFacesVerts(f, v)
         
@@ -252,7 +264,7 @@ class SplineSegmentAnnotator(QWidget):
 
         
     
-    def render(self, plt):
+    def render_ui(self, plt):
         """渲染标注"""
         self.plt = plt
         
@@ -302,33 +314,23 @@ class SplineSegmentAnnotator(QWidget):
         
         
         # 添加键盘和鼠标回调
-        plt.add_callback('on left click', self.on_left_click)
-        plt.add_callback('on right click', self.on_right_click)
-        plt.add_callback('on key press', self.on_key_press)
+        callback1=plt.add_callback('on left click', self.on_left_click)
+        callback2=plt.add_callback('on right click', self.on_right_click)
+        callback3=plt.add_callback('on key press', self.on_key_press)
+        self.callback_cid+=[callback1,callback2,callback3]
     
     def on_left_click(self, evt):
         """左键点击添加点"""
-        self.vdmesh.alpha(1)
-        current_label_name = self.label_dock.label_manager.current_label
-       
-        
-        if current_label_name not in self.label_dock.label_manager.labels:
-            QMessageBox.warning(self, "警告", "请先在左侧选择一个标签！")
+        if not self.drawmode:
             return
+        current_label_name = self.label_dock.label_manager.current_label
         label_info = self.label_dock.label_manager.labels[current_label_name]
-        
         if hasattr(evt, 'actor') and evt.actor:
             # 获取点击位置
             if hasattr(evt, 'picked3d') and evt.picked3d is not None:
-                # 检查标签是否已使用
-                if self.label_dock.label_manager.is_label_used(current_label_name):
-                    QMessageBox.warning(self, "警告", f"标签 '{self.label_dock.label_manager.labels[current_label_name]}' 已使用，请选择其他标签！")
-                    return
-                
                 pts =self.vdmesh.closest_point(evt.picked3d)
                 self.current_spline_points.append(pts)
                 color = label_info['color']
-                
                 # 如果有足够的点，显示临时线
                 if len(self.current_spline_points) >= 2 :
                     # 清除之前的临时显示
@@ -345,6 +347,8 @@ class SplineSegmentAnnotator(QWidget):
                     else:
                         if  not self.spline_closed and np.linalg.norm(pts-self.current_spline_points[0])<2:
                             self.spline_tool.off()
+                            self.plt.remove("SplineTool")
+                            self.spline_tool=None
                             self.spline_tool = self.plt.add_spline_tool(
                                 self.current_spline_points, 
                                 closed=True,
@@ -356,7 +360,7 @@ class SplineSegmentAnnotator(QWidget):
                             self.spline_tool.add(pts)
                 else:
                     # 创建临时点显示
-                    temp_points = vedo.Points(self.current_spline_points, r=8, c='red')
+                    temp_points = vedo.Points(self.current_spline_points, r=8, c=color)
                     self.temp_points_actor = temp_points
                     self.plt.add(temp_points)
                     
@@ -378,6 +382,8 @@ class SplineSegmentAnnotator(QWidget):
             # 获取编辑的曲线
             self.spline_tool.off()
             spline=self.spline_tool.spline()
+            self.plt.remove("SplineTool")
+            self.spline_tool=None
             
             
             # 投影到网格表面
@@ -429,15 +435,17 @@ class SplineSegmentAnnotator(QWidget):
 
 
             # 保存曲线数据
-            new_info = {
+            if  current_label_name in self.save_info:
+                # 去除之前渲染mesh
+                self.plt.remove(current_label_name)
+
+            self.save_info[current_label_name] = {
                 "pts":self.current_spline_points,
-                'label': current_label_name,
                 'vertices':cut_mesh_v,
                 'faces':cut_mesh_f,
                 'color': color,
             }
-            
-            self.save_info.append(new_info)
+
             
             # 清空缓存
             self.spline=None
@@ -447,7 +455,7 @@ class SplineSegmentAnnotator(QWidget):
             
             # 标记标签为已使用
             self.label_dock.use_label(current_label_name)
-            self.signals.signal_info.emit(f"创建曲线标签: {current_label_name}")
+            self.signals.signal_info.emit(f"裁剪完成,创建曲线标签: {current_label_name}")
             
             # 绘制渲染
             cut_vdmesh = vedo.Mesh([cut_mesh_v,cut_mesh_f]).c(color)
@@ -463,36 +471,77 @@ class SplineSegmentAnnotator(QWidget):
         print(evt.keypress)
         if hasattr(evt, 'keypress'):
             key = evt.keypress.lower()
-            
 
-
-               
             if key == "space": # 空格键
                 if self.spline_tool:
                     self.spline_tool.off()
                     self.spline_tool = None
                     self.signals.signal_info.emit("编辑模式已退出。")
+
+
+    def remove_labels(self,label_name):
+        self.save_info.pop(label_name)
+        if self.spline_tool:
+            self.spline_tool.off()
+            self.plt.remove("SplineTool")
+            self.spline_tool=None
+        if self.plt:
+            self.plt.remove(label_name)
+            self.plt.render()
+
+
+        self.current_spline_points = []
+
+
+
     
+    def save_mesh(self):
+        current_label_name= self.label_dock.label_manager.current_label
+        self.signals.signal_info.emit(f"保存{current_label_name}网格")
+        info=self.save_info[current_label_name]
+        mesh = vedo.Mesh([info["vertices"],info["faces"]])
+        file_path, _ = QFileDialog.getSaveFileName(
+            self, "保存mesh", f"{current_label_name}.ply", "所有文件 (*.*)"
+        )
+        if file_path:
+            mesh.write(file_path)
 
 
     
     def complete_annotations(self):
         """完成标注"""
-        # 检查未使用的标签
-        if not self.check_unused_labels():
+        #检查未使用的标签
+        unused_labels = self.label_dock.label_manager.get_unused_labels()
+        if len(unused_labels)>0:
+            QMessageBox.warning(self,"标注未完成",f"{unused_labels}未标注")
             return
-        
-        if not self.splines:
-            self.signals.signal_info.emit("没有曲线可完成标注")
-            return
-        
-        label_stats = {}
-        for spline in self.splines:
-            label_name = spline['label_name']
-            label_stats[label_name] = label_stats.get(label_name, 0) + 1
-        
-        stats_text = " | ".join([f"{label}: {count}个" for label, count in label_stats.items()])
-        self.signals.signal_info.emit(f"标注完成 - 共添加 {len(self.splines)} 个曲线 ({stats_text})")
-        self.signals.signal_close.emit(True)
-    
+
+
+        self.signals.signal_info.emit(f"标注完成")
+        self.signals.signal_close.emit(self.save_info)
+
+    def clean(self):
+        # 清理
+        self.save_info = {}  # 存储所有曲线数据
+        # 状态
+        self.current_spline_points = []  # 当前正在绘制的曲线点
+        if self.spline_tool:
+            self.spline_tool.off()
+        self.spline_tool = None  # Vedo的spline工具
+        self.vdmesh=None # 缓存mesh对象
+        self.mmesh=None # 缓存mesh对象
+
+        # 网格小组件
+        self.mesh_components = []  # 存储Mesh组件
+        self.current_component_idx = 0  # 当前选中的组件索引（默认第1个）
+
+        # 标签
+        self.label_dock.clean()
+
+        # 回调
+        for i in self.callback_cid:
+            self.plt.remove_callback(i)
+        self.callback_cid.clear()
+
+
 

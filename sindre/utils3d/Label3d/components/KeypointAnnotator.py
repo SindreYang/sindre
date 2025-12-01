@@ -23,12 +23,13 @@ class KeypointAnnotator(QWidget):
     def __init__(self, parent=None, label_dock=None):
         super().__init__(parent)
         self.signals = CoreSignals()
-        self.keypoints = []
+        self.keypoints = {}
         self.plt = None
         self.label_dock = label_dock  # 引用标签Dock组件
         self.selected_keypoint = None
         self.sphere_radius = 0.4  # 默认球体大小
         self.next_id = 0  # 用于按顺序分配ID
+        self.callback_cid =[] #回调标识
     
     def setup_ui(self):
         """设置UI"""
@@ -111,11 +112,10 @@ class KeypointAnnotator(QWidget):
         
         # 连接标签Dock的信号
         if self.label_dock:
-            self.label_dock.signals.signal_info.connect(self.on_label_info)
             self.label_dock.signals.signal_labels_updated.connect(self.on_labels_updated)
         
         # 更新按钮状态
-        self.update_current_label_display()
+        self.update_display()
         
         # 释放dock组件信号
         self.signals.signal_dock.emit(self.dock_content)
@@ -125,90 +125,64 @@ class KeypointAnnotator(QWidget):
         
         return self.dock_content
     
-    def update_current_label_display(self):
+    def update_display(self):
         """更新当前标签显示"""
-        if self.label_dock and self.label_dock.label_manager:
-            current_label_name = self.label_dock.label_manager.current_label
-            if current_label_name in self.label_dock.label_manager.labels:
-                label_info = self.label_dock.label_manager.labels[current_label_name]
-                color = label_info['color']
-                qcolor = QColor(int(color[0]), int(color[1]), int(color[2]))
-                self.current_label_icon.setStyleSheet(f"background-color: {qcolor.name()}; border-radius: 2px;")
-                if self.label_dock.label_manager.is_label_used(current_label_name):
-                    self.current_label_name.setText(f"当前标签: {current_label_name} (已使用)")
-                    self.current_label_name.setStyleSheet("font-size: 12px; color: #ff0000;")
-                else:
-                    self.current_label_name.setText(f"当前标签: {current_label_name}")
-                    self.current_label_name.setStyleSheet("font-size: 12px; color: #333;")
+        current_label_name = self.label_dock.label_manager.current_label
+        if current_label_name in self.label_dock.label_manager.labels:
+            label_info = self.label_dock.label_manager.labels[current_label_name]
+            color = label_info['color']
+            qcolor = QColor(int(color[0]), int(color[1]), int(color[2]))
+            self.current_label_icon.setStyleSheet(f"background-color: {qcolor.name()}; border-radius: 2px;")
+            if self.label_dock.label_manager.is_label_used(current_label_name):
+                self.current_label_name.setText(f"当前标签: {current_label_name} (已使用)")
+                self.current_label_name.setStyleSheet("font-size: 12px; color: #ff0000;")
             else:
-                self.current_label_icon.setStyleSheet("background-color: transparent;")
-                self.current_label_name.setText("请在左侧选择标签")
-                self.current_label_name.setStyleSheet("font-size: 12px; color: #666;")
+                self.current_label_name.setText(f"当前标签: {current_label_name}")
+                self.current_label_name.setStyleSheet("font-size: 12px; color: #333;")
         else:
-            self.current_label_icon.setStyleSheet("background-color: transparent;")
-            self.current_label_name.setText("请在左侧选择标签")
-            self.current_label_name.setStyleSheet("font-size: 12px; color: #666;")
-    
-    def on_label_info(self, text):
-        """标签信息更新"""
-        self.signals.signal_info.emit(text)
-        self.update_current_label_display()
+            self.current_label_name.setText(f"请选择标签....")
+            self.current_label_name.setStyleSheet("font-size: 12px; color:  #ff0000;")
+
+
     
     def on_labels_updated(self, labels):
         """标签配置更新"""
-        self.update_current_label_display()
+        self.signals.signal_info.emit(f"标签配置更新,{labels}")
+        self.update_display()
         if self.plt and self.label_dock:
-            for i,kp in enumerate(self.keypoints):
-                label_name = kp['label']
-                if label_name in labels and  not labels[label_name]['used']:
-                    # 用户重置标签
-                    self.plt.remove(kp['actor'])
-                    self.keypoints.pop(i)
-                elif label_name not in labels:
+            new_label_keys  = labels.keys()
+            save_keys = self.keypoints.keys()
+            for key in save_keys:
+                if key not in new_label_keys:
                     # 用户删除标签
-                    self.plt.remove(kp['actor'])
-                    self.keypoints.pop(i)
-                    
+                    self.plt.remove(key)
+                    self.keypoints.pop(key)
                 else:
-                    # 用户编辑标签
-                    color = self.label_dock.label_manager.get_label_color(label_name)
-                    kp['actor'].color(color)
-                    kp['color'] = color
-            
-                
-            self.plt.render()
-    
+                    if not labels[key]['used'] :
+                        # 用户重置标签
+                        self.plt.remove(key)
+                        self.keypoints.pop(key)
 
-   
 
     
 
    
-        
+
     
-    def on_keypoint_selected(self, item):
-        """关键点列表选中"""
-        kp = item.data(Qt.UserRole)
-        # 取消之前的选择
-        if self.selected_keypoint:
-            self.selected_keypoint['actor'].color(self.selected_keypoint['color'])
-        
-        # 设置新的选择
-        self.selected_keypoint = kp
-        kp['actor'].color((255, 255 ,255))  # 白色表示选中
-        self.plt.render()
-        self.update_keypoint_list()
-        self.signals.signal_info.emit(f"选中关键点{kp['label']}")
+
+   
+
     
        
 
     def render(self, plt):
         """渲染关键点标注"""
         self.plt = plt
-        
+
         # 添加键盘和鼠标回调
-        plt.add_callback('on left click', self.on_left_click)
-        plt.add_callback('on right click', self.on_right_click)
+        callback1= plt.add_callback('on left click', self.on_left_click)
+        callback2=  plt.add_callback('on right click', self.on_right_click)
+        self.callback_cid+=[callback1,callback2]
         
     
     def on_left_click(self, evt):
@@ -238,29 +212,29 @@ class KeypointAnnotator(QWidget):
                 
                 # 创建关键点球体
                 keypoint = vedo.Sphere(pos=pts, r=self.sphere_radius, c=color, alpha=0.8).pickable(True)
-                
+                keypoint.name = current_label_name
                 self.plt.add(keypoint)
                 new_kp = {
                     'keypoints': pts,
-                    'actor': keypoint,
-                    'label': current_label_name,  # 存储标签名称
                     'color': color,
                 }
                 
-                self.keypoints.append(new_kp)
+                self.keypoints[current_label_name]=new_kp
                 self.label_dock.use_label(current_label_name)
                 self.signals.signal_info.emit(f"添加关键点标签: {current_label_name}")
     
     def on_right_click(self, evt):
         """右键删除关键点"""
         if hasattr(evt, 'actor') and evt.actor:
-            for i,kp in enumerate(self.keypoints):
-                if kp['actor'] == evt.actor:
-                    self.plt.remove(kp['actor'])
-                    current_label_name = kp["label"]
-                    self.keypoints.pop(i)
-                    self.label_dock.unuse_label(current_label_name)
-                    self.signals.signal_info.emit(f"删除标签: {current_label_name}")
+            name = evt.actor.name
+            if name in self.keypoints:
+                self.plt.remove(name)
+                self.keypoints.pop(name)
+                self.label_dock.unuse_label(name)
+                self.signals.signal_info.emit(f"删除标签: {name}")
+                self.label_dock.label_manager.current_label=name
+                self.update_display()
+
             
 
 
@@ -269,7 +243,6 @@ class KeypointAnnotator(QWidget):
     def complete_annotations(self):
         """完成标注"""
         # 检查未使用的标签
-        print(self.keypoints)
         unused = self.label_dock.label_manager.get_unused_labels()
         if unused:
             msg = f"以下标签尚未使用：\n"
@@ -283,15 +256,23 @@ class KeypointAnnotator(QWidget):
         if not self.keypoints:
             self.signals.signal_info.emit("没有关键点可完成标注")
             return
-        
-        label_stats = {}
-        for kp in self.keypoints:
-            label_name = kp['label']
-            label_stats[label_name] = label_stats.get(label_name, 0) + 1
-        
-        stats_text = " | ".join([f"{label}: {count}个" for label, count in label_stats.items()])
-        self.signals.signal_info.emit(f"标注完成 - 共添加 {len(self.keypoints)} 个关键点 ({stats_text})")
-        self.signals.signal_close.emit(True)
+
+        self.signals.signal_info.emit(f"标注完成 - 共添加 {len(self.keypoints)} 个关键点)")
+        self.signals.signal_close.emit(self.keypoints)
+
+    def clean(self):
+        self.keypoints = []
+        self.selected_keypoint = None
+        self.sphere_radius = 0.4  # 默认球体大小
+        self.next_id = 0  # 用于按顺序分配ID
+
+        # 标签
+        self.label_dock.clean()
+        # 回调
+        for i in self.callback_cid:
+            self.plt.remove_callback(i)
+        self.callback_cid.clear()
+        self.plt = None
     
         
         

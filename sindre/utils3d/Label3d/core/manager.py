@@ -7,16 +7,15 @@ class CoreSignals(QObject):
     """信号集合（统一管理，便于扩展）"""
     # 信号1：提示信息（参数：文本str)
     signal_info = pyqtSignal(str)
-    # 信号2: 结束信号(参数：bool)
-    signal_close = pyqtSignal(bool)
+    # 信号2: 结束信号: 返回list信息
+    signal_close = pyqtSignal(dict)
     # 信号3: dock组件替换
     signal_dock = pyqtSignal(QWidget)
-    # 信号4: 当前处理数据
-    signal_data = pyqtSignal(dict)
     # 信号5: labels更新
     signal_labels_updated = pyqtSignal(dict)
     # 信号5: labels选择信号
     signal_labels_clicked = pyqtSignal(str) #当前选择标签
+    # 信号6:
     
 class LabelManager:
     """标签管理器"""

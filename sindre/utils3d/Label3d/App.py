@@ -1,22 +1,23 @@
 import os
-from PyQt5.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, 
-                            QPushButton, QFileDialog, QMessageBox, QSplitter,
-                            QStatusBar, QToolBar, QListWidget, QDialog, QLabel,
-                            QDockWidget, QAction, QMenuBar, QMenu, QComboBox,
-                            QColorDialog, QLineEdit, QGridLayout, QListWidgetItem,
-                            QSlider, QCheckBox, QFormLayout, QGroupBox, QFrame)
-from PyQt5.QtCore import Qt, pyqtSignal, QObject, QSize, QTimer
-from PyQt5.QtGui import QKeySequence, QColor, QIcon, QBrush, QPen, QPixmap
+from PyQt5.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
+                             QPushButton, QFileDialog, QMessageBox, QSplitter,
+                             QStatusBar, QToolBar, QListWidget, QDialog, QLabel,
+                             QDockWidget, QAction, QMenuBar, QMenu, QComboBox,
+                             QColorDialog, QLineEdit, QGridLayout, QListWidgetItem,
+                             QSlider, QCheckBox, QFormLayout, QGroupBox, QFrame, QPlainTextEdit)
+from PyQt5.QtCore import Qt, pyqtSignal, QObject, QSize, QTimer, QDateTime
+from PyQt5.QtGui import QKeySequence, QColor, QIcon, QBrush, QPen, QPixmap, QFont
 import numpy as np
 import vedo
+from sindre.utils3d import save_np_json
 from vtkmodules.qt.QVTKRenderWindowInteractor import QVTKRenderWindowInteractor
 from vtkmodules.vtkInteractionStyle import vtkInteractorStyleTrackballCamera
-
+from pathlib import Path
 from sindre.utils3d.Label3d.components.KeypointAnnotator import KeypointAnnotator
 from sindre.utils3d.Label3d.components.LabelDock import LabelDockWidget
 from sindre.utils3d.Label3d.components.SegAnnotator import SplineSegmentAnnotator
 from sindre.utils3d.Label3d.components.CutAnnotator import CutAnnotator
-
+from sindre.utils3d.algorithm import save_np_json
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
@@ -25,21 +26,50 @@ class MainWindow(QMainWindow):
         
         # 初始化变量
         self.current_annotator = None
+        self.current_annotator_name = ''
         self.mesh = None
-        self.label_dock = None
-        
+        self.label_dock = LabelDockWidget(self)
+        self.model_files = []
+        self.current_annotation_data = None
+        self.current_path = None
+        self.current_dir = None
+        self.vp =None
+
         # 初始化UI
         self.init_ui()
-        self.init_signals()
+        self.check_config(save=False )
     
     def init_ui(self):
         """初始化UI"""
-        # 创建独立的标签管理Dock（固定在左侧）
-        self.label_dock = LabelDockWidget(self)
-        self.addDockWidget(Qt.LeftDockWidgetArea, self.label_dock)
-        
+        # 左侧Dock：文件列表 + 标签管理
+        self.left_dock = QDockWidget("文件与标签管理", self)
+        self.addDockWidget(Qt.LeftDockWidgetArea, self.left_dock)
+
+        # 左侧Dock内容布局
+        left_widget = QWidget()
+        left_layout = QVBoxLayout(left_widget)
+        left_layout.setContentsMargins(5, 5, 5, 5)
+        left_layout.setSpacing(8)
+
+        # 模型文件列表
+        file_group = QGroupBox("模型文件列表")
+        file_layout = QVBoxLayout(file_group)
+        self.file_list_widget = QListWidget()
+        self.file_list_widget.setMinimumHeight(120)
+        file_layout.addWidget(self.file_list_widget)
+        left_layout.addWidget(file_group)
+
+        # 标签管理
+        label_group = QGroupBox("标签管理")
+        label_layout = QVBoxLayout(label_group)
+        label_layout.addWidget(self.label_dock)
+        left_layout.addWidget(label_group)
+
+        self.left_dock.setWidget(left_widget)
+        self.left_dock.setMinimumWidth(250)
+
         # 主菜单
-        self.create_menus()
+        self.init_menus()
         
         # 中央部件
         self.central_widget = QWidget()
@@ -50,7 +80,12 @@ class MainWindow(QMainWindow):
         self.main_layout.setContentsMargins(0, 0, 0, 0)
         
         # 3D视图
-        self.init_3d_view()
+        # 创建VTK部件
+        self.vtk_widget = QVTKRenderWindowInteractor(self)
+        self.main_layout.addWidget(self.vtk_widget)
+        self.vp = vedo.Plotter(N=1, qt_widget=self.vtk_widget)
+        self.vp.show(bg="white", title="3D模型视图")
+        self.vp.interactor.SetInteractorStyle(vtkInteractorStyleTrackballCamera())
         
         # 状态栏
         self.status_bar = QStatusBar()
@@ -65,23 +100,34 @@ class MainWindow(QMainWindow):
         # 设置工具dock大小
         self.tool_dock.setMinimumWidth(300)
         self.tool_dock.setMaximumWidth(500)
-        
-        
-        # 连接标签Dock的信号
-        self.label_dock.signals.signal_info.connect(self.update_status)
-    
-    def create_menus(self):
+
+
+        # 日志
+        self.log_dock = QDockWidget("日志", self)
+        self.log_dock.setFeatures(QDockWidget.DockWidgetMovable | QDockWidget.DockWidgetFloatable)
+        self.plain_text = QPlainTextEdit()
+        self.plain_text.setReadOnly(True)  # 设为只读（根据需求调整）
+        self.plain_text.setFont(QFont("Consolas", 9))  # 等宽字体，适合日志/代码
+        self.plain_text.setStyleSheet("background-color: #f8f8f8;")
+        self.log_dock.setWidget(self.plain_text)
+        self.addDockWidget(Qt.RightDockWidgetArea,self.log_dock)
+
+        # 初始化信号
+        self.init_signals()
+
+
+    def init_menus(self):
         """创建菜单"""
         self.main_menu_bar = QMenuBar()
         
         # 文件菜单
         self.file_menu = QMenu("文件", self)
-        self.open_action = QAction("打开模型", self)
-        self.save_action = QAction("保存标注", self)
+        self.open_action = QAction("打开文件", self)
+        self.open_dir_action = QAction("打开目录", self)
         self.exit_action = QAction("退出", self)
         
         self.file_menu.addAction(self.open_action)
-        self.file_menu.addAction(self.save_action)
+        self.file_menu.addAction(self.open_dir_action)
         self.file_menu.addSeparator()
         self.file_menu.addAction(self.exit_action)
         
@@ -93,27 +139,24 @@ class MainWindow(QMainWindow):
         self.transform_action =QAction("网格处理-变换位置", self)
         self.sculpt_action =QAction("网格处理-局部塑形", self)
         self.cut_action =QAction("网格处理-裁剪", self)
-        
-        self.annotate_menu.addAction(self.keypoints_action)
+
         self.annotate_menu.addAction(self.segment_action)
-        self.annotate_menu.addAction(self.bbox_action)
+        self.annotate_menu.addAction(self.keypoints_action)
         self.annotate_menu.addAction(self.transform_action)
-        self.annotate_menu.addAction(self.sculpt_action)
         self.annotate_menu.addAction(self.cut_action)
+        self.annotate_menu.addAction(self.bbox_action)
+        self.annotate_menu.addAction(self.sculpt_action)
         
         # 视图菜单
         self.view_menu = QMenu("视图", self)
-        self.reset_view_action = QAction("重置视图", self)
-        self.toggle_tool_dock_action = QAction("显示/隐藏工具面板", self)
-        
-        self.view_menu.addAction(self.reset_view_action)
+        self.clear_file_action = QAction("清空文件列表", self)
+        self.toggle_tool_dock_action = QAction("显示/隐藏面板", self)
+
         self.view_menu.addAction(self.toggle_tool_dock_action)
-        
+        self.view_menu.addAction(self.clear_file_action)
+
         # 帮助菜单
         self.help_menu = QMenu("帮助", self)
-        self.about_action = QAction("关于", self)
-        
-        self.help_menu.addAction(self.about_action)
         
         # 添加到菜单栏
         self.main_menu_bar.addMenu(self.file_menu)
@@ -125,9 +168,11 @@ class MainWindow(QMainWindow):
     
     def init_signals(self):
         """初始化信号连接"""
+        # 连接标签Dock的信号
+        self.label_dock.signals.signal_info.connect(self.update_status)
         # 文件菜单
-        self.open_action.triggered.connect(self.open_model)
-        self.save_action.triggered.connect(self.save_annotations)
+        self.open_action.triggered.connect(self.append_file)
+        self.open_dir_action.triggered.connect(self.append_dir)
         self.exit_action.triggered.connect(self.close)
         
         # 标注菜单
@@ -138,96 +183,119 @@ class MainWindow(QMainWindow):
         self.cut_action.triggered.connect(self.start_cut_annotation)
         
         # 视图菜单
-        self.reset_view_action.triggered.connect(self.reset_3d_view)
         self.toggle_tool_dock_action.triggered.connect(self.toggle_tool_dock)
-        
-        # 帮助菜单
-        self.about_action.triggered.connect(self.show_about)
-    
-    def init_3d_view(self):
-        """初始化3D视图"""
-        # 创建VTK部件
-        self.vtk_widget = QVTKRenderWindowInteractor(self)
-        self.main_layout.addWidget(self.vtk_widget)
-        
-        # 创建vedo绘图器
-        self.vp = vedo.Plotter(N=1, qt_widget=self.vtk_widget)
-        self.vp.show(bg="white", title="3D模型视图")
-        
-        # 设置交互样式
-        self.vp.interactor.SetInteractorStyle(vtkInteractorStyleTrackballCamera())
-    
+        self.clear_file_action.triggered.connect(self.clear_file_list)
 
+
+        # 文件列表点击事件
+        self.file_list_widget.itemClicked.connect(self.on_file_selected)
+        
+
+    def clear_file_list(self):
+        """清空文件目录"""
+        self.model_files = []
+        self.file_list_widget.clear()
     
-    def open_model(self):
+    def append_file(self):
         """打开3D模型文件"""
         file_dialog = QFileDialog()
         file_path, _ = file_dialog.getOpenFileName(
             self, "打开3D模型文件", "",
             "3D模型文件 (*.ply *.obj *.stl *.vtk *.vtp);;所有文件 (*.*)"
         )
-        #file_path=r"C:\Users\yx\Downloads\J10113717111_17\扫描模型\J10113717111_UpperJaw.stl"
         if file_path:
-            try:
-                # 清除当前视图
-                self.vp.clear()
-                
-                # 读取模型
-                self.mesh = vedo.Mesh(file_path)
-                
-                # 显示模型
-                self.vp.add(self.mesh)
-                self.vp.reset_camera()
-                self.vp.render()
-                
-                # 更新状态
-                self.status_bar.showMessage(f"已加载模型: {os.path.basename(file_path)},顶点数量: {self.mesh.npoints},面数量: {self.mesh.ncells}")
-                
-       
-                
-            except Exception as e:
-                QMessageBox.critical(self, "错误", f"加载模型失败: {str(e)}")
-                self.status_bar.showMessage("加载模型失败")
-    
+            if file_path not in self.model_files:
+                self.model_files.append(file_path)
+            # 更新文件列表
+            item = QListWidgetItem(os.path.basename(file_path))
+            item.setData(Qt.UserRole, file_path)
+            self.file_list_widget.addItem(item)
+            self.on_file_selected(item)
 
-    
-    def get_button_style(self, color):
-        """获取按钮样式"""
-        return f"""
-            QPushButton {{
-                padding: 12px 20px;
-                background-color: {color};
-                color: white;
-                border: none;
-                border-radius: 6px;
-                font-size: 16px;
-                text-align: left;
-                padding-left: 25px;
-            }}
-            QPushButton:hover {{
-                opacity: 0.9;
-            }}
-            QPushButton:pressed {{
-                opacity: 0.8;
-            }}
-        """
-    
+    def append_dir(self):
+        """打开目录，加载模型文件列表"""
+        dir_path = QFileDialog.getExistingDirectory(self, "选择模型目录")
+        if dir_path:
+            self.current_dir = dir_path
+            # 扫描支持的模型格式
+            supported_ext = ['.stl', '.ply', '.vtp', '.obj', '.vtk']
+            for file in os.listdir(dir_path):
+                if Path(file).suffix.lower() in supported_ext:
+                    new_path =os.path.join(dir_path, file)
+                    if new_path not in self.model_files:
+                        self.model_files.append(new_path)
+
+            # 更新文件列表
+            for file_path in self.model_files:
+                item = QListWidgetItem(os.path.basename(file_path))
+                item.setData(Qt.UserRole, file_path)
+                self.file_list_widget.addItem(item)
+
+            self.update_status(f"加载目录: {dir_path} | 模型数量: {len(self.model_files)}")
+
+    def on_file_selected(self, item):
+        """选择文件列表中的模型"""
+        file_path = item.data(Qt.UserRole)
+        if file_path:
+            if self.current_path is not None:
+                reply = QMessageBox.question(
+                    self, "确认切换", "确定要切换数据吗？",
+                    QMessageBox.Yes | QMessageBox.No, QMessageBox.Yes
+                )
+                if reply == QMessageBox.Yes:
+                    self.update_render(file_path)
+            else:
+
+                self.update_render(file_path)
+
+
+
+    def update_status(self, text):
+        """更新状态栏"""
+        self.status_bar.showMessage(text)
+        # 自动滚动到底部
+        self.plain_text.appendPlainText(f"[{QDateTime.currentDateTime().toString('HH:mm:ss')}] {text}")
+        scroll_bar = self.plain_text.verticalScrollBar()
+        scroll_bar.setValue(scroll_bar.maximum())
+
+    def update_render(self,file_path):
+        self.current_path = file_path
+
+        try:
+            # 清除当前视图
+            self.vp.clear(deep=True)
+            # 读取模型
+            self.mesh = vedo.Mesh(file_path)
+            # 显示模型
+            self.vp.add(self.mesh)
+            self.vp.reset_camera()
+            self.vp.render()
+            # 更新状态
+            self.update_status(f"已加载模型: {os.path.basename(file_path)},\n\t顶点数量: {self.mesh.npoints},面数量: {self.mesh.ncells}\n")
+        except Exception as e:
+            QMessageBox.critical(self, "错误", f"加载模型失败: {str(e)}")
+            self.update_status("加载模型失败")
+
+    def setup_annotator_signals(self):
+        """设置标注器通用信号连接"""
+        if self.current_annotator:
+            self.current_annotator.signals.signal_info.connect(self.update_status)
+            self.current_annotator.signals.signal_dock.connect(self.tool_dock.setWidget)
+            self.current_annotator.signals.signal_close.connect(self.close_annotation)
+
     def start_keypoint_annotation(self):
         """开始关键点标注"""
         if not self.mesh:
             QMessageBox.warning(self, "警告", "请先打开一个3D模型")
             return
-        
-        # 清除当前标注器
-        self.cleanup_current_annotator()
+
         
         # 创建关键点标注器，传入标签Dock组件
         self.current_annotator = KeypointAnnotator(label_dock=self.label_dock)
+        self.current_annotator_name='keypoint'
         
         # 连接信号
-        self.current_annotator.signals.signal_info.connect(self.update_status)
-        self.current_annotator.signals.signal_dock.connect(self.update_tool_dock)
-        self.current_annotator.signals.signal_close.connect(self.complete_annotation)
+        self.setup_annotator_signals()
         
         # 设置UI
         self.current_annotator.setup_ui()
@@ -240,23 +308,18 @@ class MainWindow(QMainWindow):
         if not self.mesh:
             QMessageBox.warning(self, "警告", "请先打开一个3D模型")
             return
-        
-        # 清除当前标注器
-        self.cleanup_current_annotator()
-        
+
         # 创建关键点标注器，传入标签Dock组件
         self.current_annotator = SplineSegmentAnnotator(label_dock=self.label_dock)
+        self.current_annotator_name='Spline'
         
         # 连接信号
-        self.current_annotator.signals.signal_info.connect(self.update_status)
-        self.current_annotator.signals.signal_dock.connect(self.update_tool_dock)
-        self.current_annotator.signals.signal_close.connect(self.complete_annotation)
-        
+        self.setup_annotator_signals()
         # 设置UI
         self.current_annotator.setup_ui()
         
         # 渲染标注器
-        self.current_annotator.render(self.vp)
+        self.current_annotator.render_ui(self.vp)
         
     
     def start_bbox_annotation(self):
@@ -267,16 +330,13 @@ class MainWindow(QMainWindow):
         if not self.mesh:
             QMessageBox.warning(self, "警告", "请先打开一个3D模型")
             return
-        # 清除当前标注器
-        self.cleanup_current_annotator()
-        
+
         # 创建标注器
         self.current_annotator = CutAnnotator()
+        self.current_annotator_name='cut'
         
         # 连接信号
-        self.current_annotator.signals.signal_info.connect(self.update_status)
-        self.current_annotator.signals.signal_dock.connect(self.update_tool_dock)
-        self.current_annotator.signals.signal_close.connect(self.complete_annotation)
+        self.setup_annotator_signals()
         
         # 设置UI
         self.current_annotator.setup_ui()
@@ -327,85 +387,74 @@ class MainWindow(QMainWindow):
         self.setHidden(False)
         
     
-    def update_status(self, text):
-        """更新状态栏"""
-        self.status_bar.showMessage(text)
-    
-    def update_tool_dock(self, widget):
-        """更新工具Dock窗口内容"""
-        self.tool_dock.setWidget(widget)
-    
-    def complete_annotation(self, completed):
-        """完成标注"""
-        if completed:
-            self.cleanup_current_annotator()
-    
-    def cleanup_current_annotator(self):
-        """清理当前标注器"""
+
+
+
+    def check_config(self,save=True):
+        if save:
+            info ={
+                "model_files":self.model_files,
+                "label_info":self.label_dock.label_manager.labels,
+            }
+            np.save("LabelConfig.npy", info)
+        else:
+            if os.path.exists("LabelConfig.npy"):
+                reply = QMessageBox.question(
+                    self, "检测到旧配置", "是否导入之前配置？",
+                    QMessageBox.Yes | QMessageBox.No, QMessageBox.No
+                )
+                if reply == QMessageBox.Yes:
+                    data = np.load("LabelConfig.npy",allow_pickle=True).item()
+                    self.model_files =data["model_files"]
+
+                    # 更新文件列表
+                    self.file_list_widget.clear()
+                    for file_path in self.model_files:
+                        item = QListWidgetItem(os.path.basename(file_path))
+                        item.setData(Qt.UserRole, file_path)
+                        self.file_list_widget.addItem(item)
+
+                    # 更新标签
+                    self.label_dock.label_manager.labels =data["label_info"]
+                    self.label_dock.label_manager.reset_all_labels()
+                    self.label_dock.update_label_buttons()
+                    self.update_status(f"成功导入配置: {os.path.abspath("LabelConfig.npy")}")
+
+
+    def close_annotation(self, data):
+        if data:
+            save_path =self.current_path+f'{self.current_annotator_name}.json'
+            self.update_status(f"保存标注信息：{save_path}")
+            save_np_json(save_path,data)
         if self.current_annotator:
+            self.current_annotator.disconnect()
+            self.current_annotator.clean()
             self.current_annotator.close()
+            self.tool_dock.setWidget(None)
             self.current_annotator = None
-            
-    
-    def reset_3d_view(self):
-        """重置3D视图"""
-        if self.vp:
-            self.vp.reset_camera()
-            self.vp.render()
-            self.status_bar.showMessage("视图已重置")
+            self.current_path=None
+        # 自动选择下一个
+        next_index = ( self.file_list_widget.row(self.file_list_widget.currentItem()) + 1) % self.file_list_widget.count()
+        next_item = self.file_list_widget.item(next_index)
+        if next_item:
+            self.file_list_widget.setCurrentItem(next_item)
+            self.on_file_selected(next_item)
+
     
     def toggle_tool_dock(self):
         """切换工具Dock窗口显示/隐藏"""
         if self.tool_dock.isVisible():
             self.tool_dock.hide()
-            self.status_bar.showMessage("工具面板已隐藏")
+            self.left_dock.hide()
+            self.log_dock.hide()
+            self.update_status("工具面板已隐藏")
         else:
             self.tool_dock.show()
-            self.status_bar.showMessage("工具面板已显示")
+            self.left_dock.show()
+            self.log_dock.show()
+            self.update_status("工具面板已显示")
     
-    def save_annotations(self):
-        """保存标注"""
-        if self.current_annotator and hasattr(self.current_annotator, 'save_keypoints'):
-            self.current_annotator.save_keypoints()
-        else:
-            QMessageBox.warning(self, "警告", "没有正在进行的标注")
-    
-    def show_about(self):
-        """显示关于信息"""
-        about_text = """
-        三角网格标注工具 v1.3
-        
-        新增功能：
-        • 独立的标签管理面板（左侧固定）
-        • 每个标签只能标记一次
-        • 标签使用完成后显示提示
-        • 优化的用户界面布局
-        
-        原有功能：
-        • 关键点标注（支持多标签和颜色）
-        • 标签配置导入导出
-        • 关键点编辑和删除
-        • 球体大小实时调节
-        • 多种3D模型格式支持
-        
-        支持格式：
-        • PLY (.ply)
-        • OBJ (.obj)
-        • STL (.stl)
-        • VTK (.vtk)
-        • VTP (.vtp)
-        
-        使用说明：
-        1. 在左侧标签管理面板选择要使用的标签
-        2. 点击模型表面添加关键点
-        3. 每个标签只能使用一次
-        4. 可以在右侧面板编辑和管理关键点
-        
-        版权所有 © 2024
-        """
-        
-        QMessageBox.about(self, "关于", about_text)
-    
+
     def closeEvent(self, event):
         """关闭事件"""
         reply = QMessageBox.question(
@@ -415,6 +464,7 @@ class MainWindow(QMainWindow):
         
         if reply == QMessageBox.Yes:
             event.accept()
+            self.check_config(save=True )
         else:
             event.ignore()
 
@@ -492,4 +542,5 @@ def main():
 
 
 if __name__ == "__main__":
+    os.environ["DISPLAY"] = ":0"
     main()

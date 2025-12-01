@@ -79,7 +79,6 @@ class CutAnnotator(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.signals = CoreSignals()
-        self.keypoints = []
         self.plt = None
         self.current_cutter =None
         self.current_mesh =None
@@ -175,12 +174,13 @@ class CutAnnotator(QWidget):
         self.signals.signal_dock.emit(self.dock_content)
         
         # 释放信息信号
-        self.signals.signal_info.emit("位置调整标注器已启动")
+        self.signals.signal_info.emit("裁剪标注器已启动")
         
         return self.dock_content
     
     
     def start_planecutter(self):
+        self.signals.signal_info.emit("平面裁剪已启动")
         if self.current_cutter is not  None:
             self.current_cutter.off()
         self.current_cutter=MyPlaneCutter(self.current_mesh)
@@ -190,6 +190,7 @@ class CutAnnotator(QWidget):
         self.plt.render()
         
     def start_boxcutter(self):
+        self.signals.signal_info.emit("包围球裁剪已启动")
         if self.current_cutter is not  None:
             self.current_cutter.off()
         self.current_cutter=MyBoxCutter(self.current_mesh)
@@ -199,6 +200,7 @@ class CutAnnotator(QWidget):
         self.plt.render()
 
     def start_spherecutter(self):
+        self.signals.signal_info.emit("球形裁剪已启动")
         if self.current_cutter is not  None:
             self.current_cutter.off()
         self.current_cutter=MySphereCutter(self.current_mesh)
@@ -238,9 +240,15 @@ class CutAnnotator(QWidget):
             )
         if file_path:
             self.current_mesh.write(file_path)
-            self.signals.signal_info.emit(f"标注完成")
-            self.signals.signal_close.emit(True)
-    
+            self.signals.signal_info.emit(f"裁剪完成")
+            self.signals.signal_close.emit({})
+
+    def clean(self):
+        if self.current_cutter:
+            self.current_cutter.off()
+        self.plt = None
+        self.current_cutter =None
+        self.current_mesh =None
     
         
         
