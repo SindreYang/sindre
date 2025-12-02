@@ -9,14 +9,13 @@ from PyQt5.QtCore import Qt, pyqtSignal, QObject, QSize, QTimer, QDateTime
 from PyQt5.QtGui import QKeySequence, QColor, QIcon, QBrush, QPen, QPixmap, QFont
 import numpy as np
 import vedo
-from sindre.utils3d import save_np_json
 from vtkmodules.qt.QVTKRenderWindowInteractor import QVTKRenderWindowInteractor
 from vtkmodules.vtkInteractionStyle import vtkInteractorStyleTrackballCamera
 from pathlib import Path
-from sindre.utils3d.Label3d.components.KeypointAnnotator import KeypointAnnotator
-from sindre.utils3d.Label3d.components.LabelDock import LabelDockWidget
-from sindre.utils3d.Label3d.components.SegAnnotator import SplineSegmentAnnotator
-from sindre.utils3d.Label3d.components.CutAnnotator import CutAnnotator
+from sindre.utils3d.Annotator3D.components.KeypointAnnotator import KeypointAnnotator
+from sindre.utils3d.Annotator3D.components.LabelDock import LabelDockWidget
+from sindre.utils3d.Annotator3D.components.SegAnnotator import SplineSegmentAnnotator
+from sindre.utils3d.Annotator3D.components.CutAnnotator import CutAnnotator
 from sindre.utils3d.algorithm import save_np_json
 class MainWindow(QMainWindow):
     def __init__(self):
@@ -243,6 +242,8 @@ class MainWindow(QMainWindow):
                     QMessageBox.Yes | QMessageBox.No, QMessageBox.Yes
                 )
                 if reply == QMessageBox.Yes:
+                    if self.current_annotator:
+                        self.close_annotation(None)
                     self.update_render(file_path)
             else:
 

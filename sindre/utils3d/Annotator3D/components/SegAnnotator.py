@@ -14,7 +14,7 @@ from PyQt5.QtCore import Qt, pyqtSignal, QObject
 from PyQt5.QtGui import QColor
 from sklearn.neighbors import KDTree
 import vedo
-from sindre.utils3d.Label3d.core.manager import CoreSignals
+from sindre.utils3d.Annotator3D.core.manager import CoreSignals
 import meshlib.mrmeshnumpy as mrmeshnumpy
 from meshlib.mrmeshpy import (smoothRegionBoundary, edgeCurvMetric,
                                 fillContourLeftByGraphCut, Mesh, Vector3f,extractMeshContours,
@@ -39,6 +39,11 @@ class SplineSegmentAnnotator(QWidget):
         self.mmesh=None # 缓存mesh对象
         self.callback_cid =[] #回调标识
         self.drawmode =False # 是否可绘制
+
+        # 候选
+        self.select_mesh ={}
+        self.inv_select_mesh={}
+        self.current_select="select"
         
         # 网格小组件
         self.mesh_components = []  # 存储Mesh组件
@@ -111,7 +116,7 @@ class SplineSegmentAnnotator(QWidget):
 
         self.btn_save.setStyleSheet(button_style)
         self.btn_complete.setStyleSheet(button_style)
-        
+
         self.dock_layout.addWidget(self.btn_save)
         self.dock_layout.addWidget(self.btn_complete)
         
@@ -125,8 +130,7 @@ class SplineSegmentAnnotator(QWidget):
             "• 第二步：点击'开始绘制'进入绘制模式",
             "• 第三步：鼠标左键点击模型添加点",
             "• 第四步：右键点击完成当前曲线绘制",
-            "• 每个标签只能使用一次",
-            "• 编辑模式：拖动点调整曲线形状"
+            "• 注意：每个标签只能使用一次，按U可以反向选择;",
         ]
         
         for instruction in instructions:
@@ -172,7 +176,6 @@ class SplineSegmentAnnotator(QWidget):
 
         # 更新标签
         current_label_name = self.label_dock.label_manager.current_label
-        print(f"{current_label_name=}")
         if current_label_name in self.label_dock.label_manager.labels:
             label_info = self.label_dock.label_manager.labels[current_label_name]
             color = label_info['color']
@@ -418,20 +421,33 @@ class SplineSegmentAnnotator(QWidget):
                     edge_path,
                     edgeCurvMetric( self.mmesh)
                 )
-                one_part =self.mmesh.topology.getValidFaces() - one_part 
-            
-                
-                # 获取输出
+                other_part =self.mmesh.topology.getValidFaces() - one_part
+
+
+
+                # 反选
                 cut_mesh = Mesh()
                 cut_mesh.addPartByMask(self.mmesh, one_part)
                 cut_mesh.pack()
                 cut_mesh_v = mrmeshnumpy.getNumpyVerts(cut_mesh)
                 cut_mesh_f = mrmeshnumpy.getNumpyFaces(cut_mesh.topology)
+                self.inv_select_mesh={"v":cut_mesh_v, "f":cut_mesh_f}
+                # 获取输出
+                cut_mesh = Mesh()
+                cut_mesh.addPartByMask(self.mmesh, other_part)
+                cut_mesh.pack()
+                cut_mesh_v = mrmeshnumpy.getNumpyVerts(cut_mesh)
+                cut_mesh_f = mrmeshnumpy.getNumpyFaces(cut_mesh.topology)
+                self.select_mesh ={"v":cut_mesh_v, "f":cut_mesh_f}
+                self.current_select="select"
+
+
             except Exception as e:
-                print(e)
-                QMessageBox.warning(self,"绘制错误","投影错误，请调整分割线")
-                self.spline_tool.on()
-                return
+                        print(e)
+                        QMessageBox.warning(self,"绘制错误","投影错误，请调整分割线")
+                        if self.spline_tool:
+                            self.spline_tool.on()
+                        return
 
 
             # 保存曲线数据
@@ -464,19 +480,47 @@ class SplineSegmentAnnotator(QWidget):
             self.vdmesh.alpha(0.2)
             self.plt.render()
             
-            
+
     
     def on_key_press(self, evt):
         """键盘事件处理"""
-        print(evt.keypress)
         if hasattr(evt, 'keypress'):
             key = evt.keypress.lower()
-
             if key == "space": # 空格键
                 if self.spline_tool:
                     self.spline_tool.off()
                     self.spline_tool = None
                     self.signals.signal_info.emit("编辑模式已退出。")
+            if key == "u": # 反选
+                if self.save_info and len(self.inv_select_mesh)>0:
+                    current_label_name= self.label_dock.label_manager.current_label
+                    if current_label_name not in self.save_info:
+                        self.signals.signal_info.emit("没有相应数据")
+                        return
+                    color = self.save_info[current_label_name]["color"]
+                    if  current_label_name in self.save_info:
+                        # 去除之前渲染mesh
+                        self.plt.remove(current_label_name)
+                    if self.current_select=="select":
+                        cut_mesh_v=self.inv_select_mesh["v"]
+                        cut_mesh_f=self.inv_select_mesh["f"]
+                        self.current_select="inv_select"
+                    else:
+                        cut_mesh_v=self.select_mesh["v"]
+                        cut_mesh_f=self.select_mesh["f"]
+                        self.current_select="select"
+
+
+                    self.save_info[current_label_name]['vertices'] = cut_mesh_v
+                    self.save_info[current_label_name]['faces'] = cut_mesh_f
+
+
+                    cut_vdmesh = vedo.Mesh([cut_mesh_v,cut_mesh_f]).c(color)
+                    cut_vdmesh.name =current_label_name
+                    self.plt.add(cut_vdmesh)
+                    self.vdmesh.alpha(0.2)
+                    self.plt.render()
+                    self.signals.signal_info.emit("反选")
 
 
     def remove_labels(self,label_name):

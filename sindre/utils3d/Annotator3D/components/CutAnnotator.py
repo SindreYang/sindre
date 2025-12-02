@@ -1,22 +1,11 @@
-import json
-from PyQt5.QtCore import Qt
+import vedo
 from PyQt5.QtWidgets import (
-    QWidget, QMainWindow, QDockWidget, QVBoxLayout, QHBoxLayout,
-    QPushButton, QLabel, QTextEdit, QAction, QMenuBar, QMenu, QGridLayout,QButtonGroup
+    QButtonGroup
 )
-import vedo
-from PyQt5.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, 
-                            QPushButton, QFileDialog, QMessageBox, QSplitter,
-                            QStatusBar, QToolBar, QListWidget, QDialog, QLabel,
-                            QDockWidget, QAction, QMenuBar, QMenu, QComboBox,
-                            QColorDialog, QLineEdit, QGridLayout, QListWidgetItem,
-                            QSlider, QCheckBox, QFormLayout, QGroupBox, QFrame)
-from PyQt5.QtCore import Qt, pyqtSignal, QObject, QSize, QTimer
-from PyQt5.QtGui import QKeySequence, QColor, QIcon, QBrush, QPen, QPixmap
-import vedo
-from sindre.utils3d.Label3d.core.manager import CoreSignals
+from PyQt5.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout,
+                             QPushButton, QFileDialog, QLabel)
 
-
+from sindre.utils3d.Annotator3D.core.manager import CoreSignals
 
 
 class MyPlaneCutter(vedo.PlaneCutter):

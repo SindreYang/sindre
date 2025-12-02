@@ -14,7 +14,7 @@ import vedo
 from vtkmodules.qt.QVTKRenderWindowInteractor import QVTKRenderWindowInteractor
 from vtkmodules.vtkInteractionStyle import vtkInteractorStyleTrackballCamera
 from PyQt5.QtWidgets import QApplication
-from sindre.utils3d.Label3d.core.manager import CoreSignals, LabelManager
+from sindre.utils3d.Annotator3D.core.manager import CoreSignals, LabelManager
 class ColorHolder:
     # 共享变量
     def __init__(self, r, g, b):
