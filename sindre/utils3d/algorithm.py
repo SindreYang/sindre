@@ -439,8 +439,8 @@ def save_np_json(output_path: str, obj) -> None:
 
     """
 
-    with open(output_path, 'w') as fp:
-        json.dump(obj, fp, cls=NpEncoder)
+    with open(output_path, 'w',encoding="utf-8") as fp:
+        json.dump(obj, fp, cls=NpEncoder,ensure_ascii=False)
 
 
 def get_obb_box(x_pts: np.array, z_pts: np.array, vertices: np.array) -> Tuple[list, list, np.array]:
