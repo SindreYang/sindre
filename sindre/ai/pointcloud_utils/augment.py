@@ -1,4 +1,6 @@
 import numpy  as np
+import scipy
+import random
 
 class ElasticDistortion(object):
     """弹性畸变（通过高斯噪声 + 卷积平滑，模拟非刚性变形"""

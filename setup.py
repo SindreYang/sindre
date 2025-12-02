@@ -24,10 +24,17 @@ setup(
         'numba',
 
     ],
-    extras_require={"full": ["pymeshlab","meshlib==3.0.6.229","libigl>=2.6.1","Cython",'nvitop',
-                             'scikit-learn','Cython','trimesh',"open3d","pymeshlab",
-                             "pyqt5","qdarkstyle","fastapi","imgaug"],
-                    "2d":["opencv-contrib-python","opencv-python","scikit-image"]},
+    extras_require={"full": ["Cython",'nvitop','scikit-learn', # 常用
+                             "pyqt5","qdarkstyle",# pyqt5
+                             "fastapi",#网络
+                             "opencv-contrib-python","opencv-python","scikit-image","imgaug","matplotlib","Pillow", # 2d
+                             "pymeshlab","meshlib==3.0.6.229","libigl>=2.6.1","trimesh","open3d","pymeshlab" #3d
+                             ],
+
+                    "2d":["opencv-contrib-python","opencv-python","scikit-image","imgaug","matplotlib","Pillow"],
+                    "3d":["pymeshlab","meshlib==3.0.6.229","libigl>=2.6.1","trimesh","open3d","pymeshlab"],
+
+                    },
     
     #data_files=find_files("sindre\Resources"),
     url='https://github.com/SindreYang/Sindre',
@@ -42,9 +49,9 @@ setup(
     entry_points={
         'console_scripts': [
             'LmdbViewer = sindre.lmdb.Viewer.App:main',
-            'GpuViewer = nvitop.cli:main',
             'LmdbWebViewer = sindre.lmdb.WebViewer.App:main',
-            'Label3d = sindre.utils3d.Label3d.App:main'
+            'GpuViewer = nvitop.cli:main',
+            'Annotator3D = sindre.utils3d.Annotator3D.App:main'
         ],
     }
 

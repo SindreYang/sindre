@@ -3,6 +3,7 @@ import argparse
 import os
 import random
 
+import torch
 import torch.nn as nn
 import vedo
 from pytorch3d.renderer import (
@@ -17,7 +18,8 @@ from tqdm import tqdm
 
 from sindre.lmdb import Reader
 from sindre.utils3d import *
-from sindre.utils3d.pointcloud_augment import *
+from sindre.ai.pointcloud_utils.augment import *
+from sindre.ai.utils import set_global_seeds
 
 # 屏蔽TensorFlow的INFO/WARNING级日志（包括oneDNN提示
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "2"
@@ -433,7 +435,7 @@ def main():
     parser.add_argument("--model_name",  default=r"best_mv_depth.pt")
     args = parser.parse_args()
     # 设置随机数
-    set_seeds(1024)
+    set_global_seeds(1024)
 
     # Device setup
     if args.multi_gpu:

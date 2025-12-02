@@ -1,7 +1,7 @@
+from typing import *
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
-from typing import *
+
 
 class BoundaryLoss(nn.Module):
     """Boundary Loss proposed in:
@@ -97,10 +97,6 @@ def smooth_truncated_loss(p, t, ths=0.06, if_reduction=True, if_balance=True):
 def balance_bce_loss(input, target):
     L0 = F.binary_cross_entropy_with_logits(input, target, reduction='none')
     return 0.5*((L0*target).sum()/target.sum().clamp(1)+(L0*(1-target)).sum()/(1-target).sum().clamp(1))
-
-
-
-import math
 
 
 # combined with cross entropy loss, instance level

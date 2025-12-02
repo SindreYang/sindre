@@ -1,5 +1,6 @@
 
 import numpy as np
+from PIL.Image import Image
 
 
 class SindreImage:
