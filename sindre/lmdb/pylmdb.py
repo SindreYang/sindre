@@ -1,13 +1,14 @@
 # -*- coding: UTF-8 -*-
+
 import shutil
 import os
+
 import numpy as np
 import time
 import traceback
 import sys
 from tqdm import tqdm
 import pickle
-#from sindre.lmdb.tools import *
 import multiprocessing as mp
 try:
     import lmdb
@@ -872,6 +873,41 @@ class Writer(Base):
                 "LMDB 的map_size 太小:%s MB, %s" % (self.map_size_limit, e)
             )
 
+    def put_batch_sample(self,samples:list[dict]):
+        """
+        将传入内容的键和值放入`data_db` LMDB中。
+
+        Notes:
+            put_batch_sample({'key1': value1},{'key2': value2})
+
+        Args:
+            samples: 由str为键,numpy类型为值组成的list
+
+        """
+        try:
+            with self._lmdb_env.begin(write=True, db=self.data_db) as txn:
+                for sample in samples:
+                    # 生成新的物理键
+                    new_physical_key = len(self.physical_keys)
+                    # 写入数据
+                    msg_pkgs = {}
+                    for key in sample:
+                        obj = Base.encode_data(sample[key])
+                        msg_pkgs[key] = msgpack.packb(obj, use_bin_type=True)
+                    physical_key_str = Base.encode_str("{:010}".format(new_physical_key))
+                    pkg = msgpack.packb(msg_pkgs, use_bin_type=True)
+                    txn.put(physical_key_str, pkg)
+                    # 更新键管理系统
+                    self.physical_keys.append(new_physical_key)
+                    self.read_keys.append(new_physical_key)
+            self.nb_samples = len(self.read_keys)
+            # 保存信息
+            self._save_keys()
+        except lmdb.MapFullError as e:
+            raise AttributeError(
+                "LMDB 的map_size 太小:%s MB, %s" % (self.map_size_limit, e)
+            )
+
 
 
     ####################其他功能###############################################
@@ -947,6 +983,8 @@ class Writer(Base):
         self._lmdb_env.close()
         if sys.platform.startswith('win') and not self.multiprocessing:
             print(f"检测到windows系统, 请运行  fix_lmdb_windows_size('{self.dirpath}') 修复文件大小问题")
+
+
 
 
 
@@ -1119,7 +1157,7 @@ def parallel_write(output_dir: str,
                         process: callable, 
                         map_size_limit: int, 
                         num_processes: int, 
-                        multiprocessing: bool = False,
+                        multiprocessing: bool = True,
                         temp_root: str = "./tmp", 
                         cleanup_temp: bool = True):
     """
@@ -1494,8 +1532,8 @@ class ReaderSSDList:
         real_idx = self.real_idx_mapping[idx]
         db_path = self.db_path_list[db_idx]
         # 使用ReaderSSD动态打开数据库并获取条目
-        db = ReaderSSD(db_path, self.multiprocessing)
-        return db[real_idx]
+        with Reader(db_path, multiprocessing=self.multiprocessing) as db:
+            return db[real_idx]
 
     def get_batch(self, indices: list):
         """批量获取多个数据条目
