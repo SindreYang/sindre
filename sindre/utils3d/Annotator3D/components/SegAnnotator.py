@@ -128,7 +128,7 @@ class SplineSegmentAnnotator(QWidget):
         instructions = [
             "• 第一步：在左侧选择要使用的标签",
             "• 第二步：点击'开始绘制'进入绘制模式",
-            "• 第三步：鼠标左键点击模型添加点",
+            "• 第三步：鼠标左键点击模型添加点(DEL删除)",
             "• 第四步：右键点击完成当前曲线绘制",
             "• 注意：每个标签只能使用一次，按U可以反向选择;",
         ]
@@ -192,12 +192,15 @@ class SplineSegmentAnnotator(QWidget):
                     if len(self.current_spline_points)==0:
                         self.signals.signal_info("当前信息保存的曲线为空,无法编辑")
                         return
+
+                    color_name=vedo.get_color_name(selected_data['color'])
                     self.spline_tool = self.plt.add_spline_tool(
                         self.current_spline_points,
                         closed=True,
-                        lc=vedo.get_color_name(selected_data['color']),
-                        pc="red",
+                        lc=color_name,
+                        pc="red" if "r" not in color_name else "green",
                     )
+                    self.spline_tool.add_observer("end interaction", self.on_spline_callback)
                     self.spline_tool.on()
                     self.drawmode=True
                     self.signals.signal_info.emit(f"进入{current_label_name}曲线编辑模式 ")
@@ -321,6 +324,11 @@ class SplineSegmentAnnotator(QWidget):
         callback2=plt.add_callback('on right click', self.on_right_click)
         callback3=plt.add_callback('on key press', self.on_key_press)
         self.callback_cid+=[callback1,callback2,callback3]
+
+    def on_spline_callback(self,sptool,evt):
+        nodes =sptool.nodes()
+        for i,pts in enumerate(nodes):
+            sptool.representation.SetNthNodeWorldPosition(i, self.vdmesh.closest_point(pts))
     
     def on_left_click(self, evt):
         """左键点击添加点"""
@@ -341,11 +349,12 @@ class SplineSegmentAnnotator(QWidget):
                         self.plt.remove(self.temp_points_actor)
                     if self.spline_tool is None:
                         self.spline_tool = self.plt.add_spline_tool(
-                            self.current_spline_points, 
+                            self.current_spline_points,
                             closed=False,
                             lc=vedo.get_color_name(color),
                             lw=3,
                         )
+                        self.spline_tool.add_observer("end interaction", self.on_spline_callback)
                         self.spline_closed=False
                     else:
                         if  not self.spline_closed and np.linalg.norm(pts-self.current_spline_points[0])<2:
@@ -353,11 +362,12 @@ class SplineSegmentAnnotator(QWidget):
                             self.plt.remove("SplineTool")
                             self.spline_tool=None
                             self.spline_tool = self.plt.add_spline_tool(
-                                self.current_spline_points, 
+                                self.current_spline_points,
                                 closed=True,
                                 lc=vedo.get_color_name(color),
                                 lw=3,
                             )
+                            self.spline_tool.add_observer("end interaction", self.on_spline_callback)
                             self.spline_closed=True
                         else:
                             self.spline_tool.add(pts)
