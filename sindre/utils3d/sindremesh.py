@@ -1,6 +1,9 @@
 import logging
+import os
 from functools import cached_property,lru_cache
 import numpy as np
+
+from sindre.general import save_json
 from sindre.utils3d.algorithm import *
 from sindre.general.logs import CustomLogger
 
@@ -175,9 +178,9 @@ class SindreMesh:
     def compute_normals(self,force=False):
         """计算顶点法线及面片法线.force代表是否强制重新计算"""
         if force or self.vertex_normals is None:
-            self.vertex_normals = compute_vertex_normals(self.vertices, self.faces)
+            self.vertex_normals = get_vertex_normals(self.vertices, self.faces)
         if force or self.face_normals is None:
-            self.face_normals = compute_face_normals(self.vertices, self.faces)
+            self.face_normals = get_face_normals(self.vertices, self.faces)
 
     def apply_transform_normals(self,mat):
         """处理顶点法线的变换（支持非均匀缩放和反射变换）---废弃，在复杂非正定矩阵，重新计算法线比变换更快，更加准确"""
@@ -245,9 +248,9 @@ class SindreMesh:
         """按照给定xyz角度列表进行xyz对应旋转"""
         # 将角度转换为弧度
         angles_xyz_rad = np.radians(angles_xyz)
-        Rx = angle_axis_np(angles_xyz_rad[0], np.array([1.0, 0.0, 0.0]))
-        Ry = angle_axis_np(angles_xyz_rad[1], np.array([0.0, 1.0, 0.0]))
-        Rz = angle_axis_np(angles_xyz_rad[2], np.array([0.0, 0.0, 1.0]))
+        Rx = get_rotation_by_angle(angles_xyz_rad[0], np.array([1.0, 0.0, 0.0]))
+        Ry = get_rotation_by_angle(angles_xyz_rad[1], np.array([0.0, 1.0, 0.0]))
+        Rz = get_rotation_by_angle(angles_xyz_rad[2], np.array([0.0, 0.0, 1.0]))
         rotation_matrix = np.matmul(np.matmul(Rz, Ry), Rx)
         if return_mat:
             return rotation_matrix
@@ -548,7 +551,7 @@ class SindreMesh:
     @property
     def to_json(self):
         """转换成json"""
-        return json.dumps(self.to_dict,cls=NpEncoder)
+        return save_json(self.to_dict)
 
 
 
@@ -938,7 +941,7 @@ class SindreMesh:
 
         """
 
-        return resample_mesh(vertices=self.vertices,faces=self.faces,density=density,num_samples=num_samples)
+        return sample_mesh_surface(vertices=self.vertices,faces=self.faces,density=density,num_samples=num_samples)
 
     def cut_mesh(self,loop_points,get_bigger_part: bool = False,smooth_boundary: bool = False):
         """
@@ -954,7 +957,7 @@ class SindreMesh:
         """
 
         loop_points=np.array(loop_points).reshape(-1,3)
-        v,f,_,_=cut_mesh_with_meshlib(self.vertices,self.faces, loop_points,get_bigger_part, smooth_boundary)
+        v,f,_,_=cut_mesh_by_meshlib(self.vertices,self.faces, loop_points,get_bigger_part, smooth_boundary)
         sm_clone = self.clone()
         sm_clone.update_geometry(v,f)
         return sm_clone
@@ -1030,7 +1033,7 @@ class SindreMesh:
 
     def homogenize(self,n=10000):
         """ 均匀化网格到指定点数，采用聚类"""
-        vd_ms=isotropic_remeshing_by_acvd(self.to_vedo, target_num=n)
+        vd_ms=simplify_isotropic_by_acvd(self.to_vedo, target_num=n)
         self.update_geometry(np.asarray(vd_ms.vertices),np.asarray(vd_ms.cells))
         return self
 
@@ -1149,7 +1152,7 @@ class SindreMesh:
         if self._count_degenerate_faces()>0:
             log.warning("网格存在退化面片，执行删除面片")
             self.remove_degenerate_faces()
-        self.vertex_curvature =compute_curvature_by_igl(self.vertices,self.faces)
+        self.vertex_curvature =get_curvature_by_igl(self.vertices,self.faces)
         self.vertex_colors =self.get_color_mapping(self.vertex_curvature)
         return self
 
@@ -1558,7 +1561,7 @@ class SindreMesh:
     @lru_cache(maxsize=None)
     def get_uv(self,return_circle=False):
         """ 获取uv映射 与顶点一致(npoinst,2) """
-        uv,_= harmonic_by_igl(self.vertices,self.faces,map_vertices_to_circle=return_circle)
+        uv,_=get_harmonic_by_igl(self.vertices,self.faces,map_vertices_to_circle=return_circle)
         return uv
 
     @cached_property

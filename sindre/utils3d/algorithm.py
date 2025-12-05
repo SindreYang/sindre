@@ -25,17 +25,15 @@
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 """
 __author__ = 'sindre'
-import json
 
-import trimesh
 import vedo
 import numpy as np
 from typing import *
 import vtk
-import os
 from sindre.general.logs import CustomLogger
-from numba import njit, prange
 from scipy.spatial import KDTree
+from sindre.utils3d.sample import *
+from sindre.utils3d.dental_tools import *
 log = CustomLogger(logger_name="algorithm").get_logger()
 
 
@@ -158,6 +156,48 @@ def labels2colors(labels:np.array):
         color_labels[mask] = color_dict[label]
     
     return color_labels
+
+def labels_mapping(old_vertices,old_faces, new_vertices, old_labels,fast=True):
+    """
+    将原始网格的标签属性精确映射到新网格
+
+    参数:
+        old_mesh(vedo) : 原始网格对象
+        new_mesh(vedo): 重网格化后的新网格对象
+        old_labels (np.ndarray): 原始顶点标签数组，形状为 (N,)
+
+    返回:
+        new_labels (np.ndarray): 映射后的新顶点标签数组，形状为 (M,)
+    """
+    if len(old_labels) != len(old_vertices):
+        raise ValueError(f"标签数量 ({len(old_labels)}) 必须与原始顶点数 ({len(old_vertices)}) 一致")
+
+    if fast:
+        tree= KDTree( old_vertices)
+        _,idx = tree.query(new_vertices,workers=-1)
+        return old_labels[idx]
+
+    else:
+        import trimesh
+        old_mesh  = trimesh.Trimesh(old_vertices,old_faces)
+        # 步骤1: 查询每个新顶点在原始网格上的最近面片信息
+        closest_points, distances, tri_ids = trimesh.proximity.closest_point(old_mesh, new_vertices)
+        # 步骤2: 计算每个投影点的重心坐标
+        tri_vertices = old_mesh.faces[tri_ids]
+        tri_points = old_mesh.vertices[tri_vertices]
+        # 计算重心坐标 (M,3)
+        bary_coords = trimesh.triangles.points_to_barycentric(
+            triangles=tri_points,
+            points=closest_points
+        )
+        # 步骤3: 确定最大重心坐标对应的顶点
+        max_indices = np.argmax(bary_coords, axis=1)
+        # 根据最大分量索引选择顶点编号
+        nearest_vertex_indices = tri_vertices[np.arange(len(max_indices)), max_indices]
+        # 步骤4: 映射标签
+        new_labels = np.array(old_labels)[nearest_vertex_indices]
+        return new_labels
+
 
 
 
@@ -410,37 +450,6 @@ def restore_transform(vertices: np.array, transform: np.array) -> np.array:
 
 
 
-class NpEncoder(json.JSONEncoder):
-    """
-    Notes:
-        将numpy类型编码成json格式
-
-
-    """
-
-    def default(self, obj):
-        if isinstance(obj, np.integer):
-            return int(obj)
-        if isinstance(obj, np.floating):
-            return float(obj)
-        if isinstance(obj, np.ndarray):
-            return obj.tolist()
-        return super(NpEncoder, self).default(obj)
-
-
-def save_np_json(output_path: str, obj) -> None:
-    """
-    保存np形式的json
-
-    Args:
-        output_path: 保存路径
-        obj: 保存对象
-
-
-    """
-
-    with open(output_path, 'w',encoding="utf-8") as fp:
-        json.dump(obj, fp, cls=NpEncoder,ensure_ascii=False)
 
 
 def get_obb_box(x_pts: np.array, z_pts: np.array, vertices: np.array) -> Tuple[list, list, np.array]:
@@ -613,49 +622,456 @@ def get_obb_box_max_min(x_pts: np.array,
     return verts, faces, R
 
 
-def create_voxels(vertices, resolution: int = 256):
-    """
-        通过顶点创建阵列方格体素
+
+def get_mesh_uv(mesh):
+    """对3D网格进行UV展开处理，使用xatlas库生成优化的UV坐标。
+
+    该函数接收一个trimesh网格或场景对象，将其转换为单个网格后，
+    使用xatlas算法进行参数化处理以生成UV坐标，最终返回带有UV信息的网格。
+
     Args:
-        vertices: 顶点
-        resolution:  分辨率
+        mesh (trimesh.Trimesh or trimesh.Scene or str): 输入的3D网格或mesh路径或场景对象。
+            如果是场景对象，会先合并为单个网格。
 
     Returns:
-        返回 res**3 的顶点 , mc重建需要的缩放及位移
+        trimesh.Trimesh: 带有生成的UV坐标的网格对象，顶点和面可能经过重新索引。
+
+    Raises:
+        ValueError: 当输入网格的面数超过500,000,000时抛出，不支持过大的网格处理。
+
+    Note:
+        处理过程中会使用xatlas.parametrize()进行UV展开，这可能会重新组织顶点和 faces索引。
+        生成的UV坐标会存储在网格的visual.uv属性中，可用于纹理映射等后续处理。
+    """
+    # 局部导入模块，避免在不需要该功能时加载依赖
+    import trimesh
+    import xatlas
+    # 如果输入是路径，则合并为单个网格
+    if isinstance(mesh, str):
+        mesh =trimesh.load_mesh(mesh)
+
+    # 如果输入是场景，则合并为单个网格
+    if isinstance(mesh, trimesh.Scene):
+        mesh = mesh.dump(concatenate=True)
+
+    # 检查网格面数是否在支持范围内
+    if len(mesh.faces) > 500_000_000:  # 使用下划线提高可读性
+        raise ValueError("The mesh has more than 500,000,000 faces, which is not supported.")
+
+    # 使用xatlas进行UV参数化
+    vmapping, indices, uvs = xatlas.parametrize(mesh.vertices, mesh.faces)
+
+    # 更新网格的顶点、面和UV坐标
+    mesh.vertices = mesh.vertices[vmapping]
+    mesh.faces = indices
+    mesh.visual.uv = uvs
+
+    return mesh
+
+
+def get_color_by_normal(normal):
+    """
+    将normal转换成颜色
+    Args:
+        normal: 网格的法线
+
+    Returns:
+        (0-255)颜色
+
+    """
+    rgb = (normal*0.5 + 0.5)*255.0
+    return rgb
+
+
+def get_color_by_depth(depth: np.ndarray,bg_color=None) -> np.ndarray:
+    """
+    将深度值转换为彩色图像
+
+    Args:
+        depth: 深度值
+
+    Returns:
+        彩色深度图像，形状为(H, W, 3)
+    """
+    import matplotlib.colors as mcolors
+    from matplotlib import colormaps
+    cmap = colormaps['jet']
+    norm = mcolors.Normalize(vmin=depth.min(), vmax=depth.max())
+    value = norm(depth) # 0~1
+    rgb = cmap(value)[:, :, :3]
+    if bg_color is not  None:
+        # 替换最大值区域为指定颜色
+        rgb[value>1-1e-6] = bg_color
+    return (rgb * 255).astype(np.uint8)
+
+
+def get_line_project_mesh(v: np.ndarray, f: np.ndarray, loop_points,gen_new_edge=False):
+    """
+    将输入的3D点环投影到网格表面，根据参数决定是生成新的切割边还是仅提取投影轮廓。
+
+    Args:
+        v (np.ndarray): 网格顶点数组，形状为(N, 3)的浮点数组。
+        f (np.ndarray): 网格面索引数组，形状为(M, 3)的整数数组。
+        loop_points (iterable): 3D点列表/数组，定义要投影到网格上的环状路径。
+        gen_new_edge (bool, optional): 是否生成新切割边。默认为True。
+            True: 在网格上生成新边并分割网格
+            False: 仅提取投影轮廓
+
+    Returns:
+        tuple: 包含四个元素的元组:
+            - res_pts (list): 投影轮廓的3D点列表，每个点为[x, y, z]
+            - res_pts_idx (list): 新生成边的顶点索引列表(仅当gen_new_edge=True时有效)
+            - res_v (np.ndarray): 处理后网格顶点数组(仅当gen_new_edge=True时返回新网格)
+            - res_f (np.ndarray): 处理后网格面索引数组(仅当gen_new_edge=True时返回新网格)
+    """
+
+    import meshlib.mrmeshnumpy as mrmeshnumpy
+    from meshlib.mrmeshpy import ( Vector3f, findProjection, convertMeshTriPointsToClosedContour, extractMeshContours,cutMesh,func_float_from_Id_EdgeTag)
+    # 验证输入数组格式
+    if v.ndim != 2 or v.shape[1] != 3:
+        raise ValueError("顶点数组必须是 (N, 3) 的形状")
+    if f.ndim != 2 or f.shape[1] != 3:
+        raise ValueError("面索引数组必须是 (M, 3) 的形状")
+    if len(loop_points) < 3:
+        raise ValueError("切割环必须包含至少3个点")
+
+    # 从输入的顶点和面创建网格
+    mesh_clone = mrmeshnumpy.meshFromFacesVerts(f, v)
+
+    # 将环上的点投影到网格表面
+    tri_points = []
+    for p in loop_points:
+        v3 = Vector3f(p[0], p[1], p[2])
+        projection = findProjection(v3, mesh_clone)
+        tri_points.append(projection.mtp)
+
+
+
+    # 从投影点创建闭合轮廓
+    contour = convertMeshTriPointsToClosedContour(mesh_clone, tri_points)
+
+    res_v = v
+    res_f = f
+    res_pts_idx = []
+    res_pts = []
+
+    if gen_new_edge:
+        # 基于投影生成新边
+        cut_result = cutMesh(mesh_clone, [contour])
+        res_v ,res_f =  mrmeshnumpy.getNumpyVerts(mesh_clone), mrmeshnumpy.getNumpyFaces(mesh_clone.topology)
+        for i in cut_result.resultCut[0]:
+            res_pts_idx.append(int(i))
+    else:
+        for pts in extractMeshContours([contour])[0]:
+            res_pts.append([pts.x,pts.y,pts.z])
+
+
+    return res_pts,res_pts_idx,res_v ,res_f
+
+
+
+
+
+def get_boundary_by_pcd(points, labels, config=None):
+    """
+    基于局部标签一致性的边界点检测函数
+
+    Args:
+        points (np.ndarray): 点云坐标，形状为 (N, 3)
+        labels (np.ndarray): 点云标签，形状为 (N,)
+        config (dict): 配置参数，包含:
+            - knn_k: KNN查询的邻居数（默认40）
+            - bdl_ratio: 边界判定阈值（默认0.8）
+
+    Returns:
+        np.ndarray: 边界点掩码，形状为 (N,)，边界点为True，非边界点为False
+    """
+    from sklearn.neighbors import KDTree
+    from scipy.stats import mode
+    labels = labels.reshape(-1)
+    # 设置默认配置
+    default_config = {
+        "knn_k": 40,
+        "bdl_ratio": 0.8
+    }
+    if config:
+        default_config.update(config)
+    config = default_config
+
+    # 构建KD树
+    tree = KDTree(points, leaf_size=2)
+
+    # 查询k近邻索引
+    near_points_indices = tree.query(points, k=config["knn_k"], return_distance=False)
+
+    # 获取邻居标签
+    neighbor_labels = np.asarray(labels[near_points_indices], dtype=np.int32)  # 形状: (N, knn_k)
+
+    # 统计每个点的邻居中主要标签的出现次数
+    # def count_dominant_label(row):
+    #     return np.bincount(row).max() if len(row) > 0 else 0
+    # label_counts = np.apply_along_axis(count_dominant_label, axis=1, arr=neighbor_labels)
+    if neighbor_labels.size == 0:
+        label_counts = np.zeros(len(points), dtype=int)
+    else:
+        label_counts = mode(neighbor_labels, axis=1, keepdims=False).count
+
+    # 计算主要标签比例并生成边界掩码
+    label_ratio = label_counts / config["knn_k"]
+    boundary_mask = label_ratio < config["bdl_ratio"]
+    # print(neighbor_labels.shape,np.unique(neighbor_labels))
+    # print(f"标签比例范围: [{label_ratio.min():.2f}, {label_ratio.max():.2f}]")
+    # print(f"边界点数量: {boundary_mask.sum()}")
+
+    return boundary_mask
+
+
+
+
+def get_collision_depth(mesh1, mesh2) -> float:
+    """计算两个网格间的碰撞深度或最小间隔距离。
+
+    使用VTK的带符号距离算法检测碰撞状态：
+    - 正值：两网格分离，返回值为最近距离
+    - 零值：表面恰好接触
+    - 负值：发生穿透，返回值为最大穿透深度（绝对值）
+
+    Args:
+        mesh1 (vedo.Mesh): 第一个网格对象，需包含顶点数据
+        mesh2 (vedo.Mesh): 第二个网格对象，需包含顶点数据
+
+    Returns:
+        float: 带符号的距离值，符号表示碰撞状态，绝对值表示距离量级
+
+    Raises:
+        RuntimeError: 当VTK计算管道出现错误时抛出
 
     Notes:
-        v, f = mcubes.marching_cubes(data.reshape(256, 256, 256), 0)
+        1. 当输入网格顶点数>1000时会产生性能警告
+        2. 返回float('inf')表示计算异常或无限远距离
 
-        m=vedo.Mesh([v*scale+translation, f])
+    """
+    # 性能优化提示
+    if mesh1.npoints > 1000 or mesh2.npoints > 1000:
+        log.info("[性能警告] 检测到高精度网格(顶点数>1000)，建议执行 mesh.decimate(n=500) 进行降采样")
+
+    try:
+        # 初始化VTK距离计算器
+        distance_filter = vtk.vtkDistancePolyDataFilter()
+        distance_filter.SetInputData(0, mesh1.dataset)
+        distance_filter.SetInputData(1, mesh2.dataset)
+        distance_filter.SignedDistanceOn()
+        distance_filter.Update()
+
+        # 提取距离数据
+        distance_array = distance_filter.GetOutput().GetPointData().GetScalars("Distance")
+        if not distance_array:
+            return float('inf')
+
+        return distance_array.GetRange()[0]
+
+    except Exception as e:
+        raise RuntimeError(f"VTK距离计算失败: {str(e)}") from e
+
+def get_curvature_by_meshlab(ms):
+    """
+    使用 MeshLab 计算网格的曲率和顶点颜色。
+
+    该函数接收一个顶点矩阵和一个面矩阵作为输入，创建一个 MeshLab 的 MeshSet 对象，
+    并将输入的顶点和面添加到 MeshSet 中。然后，计算每个顶点的主曲率方向，
+    最后获取顶点颜色矩阵和顶点曲率数组。
+
+    Args:
+        ms: pymeshlab格式mesh;
+
+    Returns:
+        - vertex_colors (numpy.ndarray): 顶点颜色矩阵，形状为 (n, 3)，其中 n 是顶点的数量。
+            每个元素的范围是 [0, 255]，表示顶点的颜色。
+        - vertex_curvature (numpy.ndarray): 顶点曲率数组，形状为 (n,)，其中 n 是顶点的数量。
+            每个元素表示对应顶点的曲率。
+        - new_vertex (numpy.ndarray): 新的顶点数组，形状为 (n,)，其中 n 是顶点的数量。
 
 
     """
-    vertices = np.array(vertices)
-    x_min, x_max = vertices[:, 0].min(), vertices[:, 0].max()
-    y_min, y_max = vertices[:, 1].min(), vertices[:, 1].max()
-    z_min, z_max = vertices[:, 2].min(), vertices[:, 2].max()
+    ms.compute_curvature_principal_directions_per_vertex()
+    curr_ms = ms.current_mesh()
+    vertex_colors =curr_ms.vertex_color_matrix()*255
+    vertex_curvature=curr_ms.vertex_scalar_array()
+    new_vertex  =curr_ms.vertex_matrix()
+    return vertex_colors,vertex_curvature,new_vertex
 
-    # 使用np.mgrid生成网格索引
-    i, j, k = np.mgrid[0:resolution, 0:resolution, 0:resolution]
+def get_curvature_by_igl(v,f,method="Mean"):
+    """
+    用igl计算平均曲率并归一化
 
-    # 计算步长（即网格单元的大小）
-    dx = (x_max - x_min) / resolution
-    dy = (y_max - y_min) / resolution
-    dz = (z_max - z_min) / resolution
-    scale = np.array([dx, dy, dz])
+    Args:
+        v: 顶点;
+        f: 面片:
+        method:返回曲率类型
 
-    # 将索引转换为坐标值
-    x = x_min + i * dx
-    y = y_min + j * dy
-    z = z_min + k * dz
-    translation = np.array([x_min, y_min, z_min])
+    Returns:
+        - vertex_curvature (numpy.ndarray): 顶点曲率数组，形状为 (n,)，其中 n 是顶点的数量。
+            每个元素表示对应顶点的曲率。
 
-    verts = np.stack((x.ravel(), y.ravel(), z.ravel()), axis=-1)
-    # log.info(verts.shape)
-    # vedo.show(vedo.Points(verts[::30]),self.crown).close()
-    return verts, scale, translation
+    Notes:
 
-def compute_face_normals(vertices, faces):
+        输出: PD1 (主方向1), PD2 (主方向2), PV1 (主曲率1), PV2 (主曲率2)
+
+        pd1 : #v by 3 maximal curvature direction for each vertex
+        pd2 : #v by 3 minimal curvature direction for each vertex
+        pv1 : #v by 1 maximal curvature value for each vertex
+        pv2 : #v by 1 minimal curvature value for each vertex
+
+
+    """
+    try:
+        import igl
+    except ImportError:
+        log.info("请安装igl, pip install libigl>=2.6.1")
+    PD1, PD2, PV1, PV2,_  = igl.principal_curvature(v, f)
+
+    if "Gaussian" in method:
+        # 计算高斯曲率（Gaussian Curvature）
+        K = PV1 * PV2
+    elif "Mean" in method:
+        # 计算平均曲率（Mean Curvature）
+        K = 0.5 * (PV1 + PV2)
+    else:
+        K=[PD1, PD2, PV1, PV2]
+    return K
+
+def get_harmonic_by_igl(v,f,map_vertices_to_circle=True):
+    """
+    谐波参数化后的2D网格
+
+    Args:
+        v (_type_): 顶点
+        f (_type_): 面片
+        map_vertices_to_circle: 是否映射到圆形（正方形)
+
+    Returns:
+        uv,v_p: 创建参数化后的2D网格,3D坐标
+
+    Note:
+
+        ```
+
+        # 创建空间索引
+        uv_kdtree = KDTree(uv)
+
+        # 初始化可视化系统
+        plt = Plotter(shape=(1, 2), axes=False, title="Interactive Parametrization")
+
+        # 创建网格对象
+        mesh_3d = Mesh([v, f]).cmap("jet", calculate_curvature(v, f)).lighting("glossy")
+        mesh_2d = Mesh([v_p, f]).wireframe(True).cmap("jet", calculate_curvature(v, f))
+
+        # 存储选中标记
+        markers_3d = []
+        markers_2d = []
+
+        def on_click(event):
+            if not event.actor or event.actor not in [mesh_2d, None]:
+                return
+            if not hasattr(event, 'picked3d') or event.picked3d is None:
+                return
+
+            try:
+                # 获取点击坐标
+                uv_click = np.array(event.picked3d[:2])
+
+                # 查找最近顶点
+                _, idx = uv_kdtree.query(uv_click)
+                v3d = v[idx]
+                uv_point = uv[idx]  # 获取对应2D坐标
+
+
+                # 创建3D标记（使用球体）
+                marker_3d = Sphere(v3d, r=0.1, c='cyan', res=12)
+                markers_3d.append(marker_3d)
+
+                # 创建2D标记（使用大号点）
+                marker_2d = Point(uv_point, c='magenta', r=10, alpha=0.8)
+                markers_2d.append(marker_2d)
+
+                # 更新视图
+                plt.at(0).add(marker_3d)
+                plt.at(1).add(marker_2d)
+                plt.render()
+
+            except Exception as e:
+                log.info(f"Error processing click: {str(e)}")
+
+        plt.at(0).show(mesh_3d, "3D Visualization", viewup="z")
+        plt.at(1).show(mesh_2d, "2D Parametrization").add_callback('mouse_click', on_click)
+        plt.interactive().close()
+
+
+        ```
+
+    """
+    try:
+        import igl
+    except ImportError:
+        log.info("请安装igl, pip install libigl")
+    v=np.array(v,dtype=np.float32)
+    # 正方形边界映射）
+    def map_to_square(bnd):
+        n = len(bnd)
+        quarter = n // 4
+        uv = np.zeros((n, 2))
+        for i in range(n):
+            idx = i % quarter
+            side = i // quarter
+            t = idx / (quarter-1)
+            if side == 0:   uv[i] = [1, t]
+            elif side == 1: uv[i] = [1-t, 1]
+            elif side == 2: uv[i] = [0, 1-t]
+            else:           uv[i] = [t, 0]
+        return uv
+    try:
+        # 参数化
+        bnd = igl.boundary_loop(f)
+        if map_vertices_to_circle:
+            bnd_uv = igl.map_vertices_to_circle(v, bnd)  # 圆形参数化
+        else:
+            bnd_uv = map_to_square(bnd)                # 正方形参数化
+        uv = igl.harmonic(v, f, bnd, bnd_uv, 1)
+    except Exception as e:
+        log.info(f"生成错误，请检测连通体数量，{e}")
+    # 创建参数化后的2D网格（3D坐标）
+    v_p = np.hstack([uv, np.zeros((uv.shape[0], 1))])
+
+    return uv,v_p
+
+
+
+
+
+def get_rotation_by_angle(angle, axis):
+    """
+    计算绕给定轴旋转指定角度的旋转矩阵。
+
+    Args:
+        angle (float): 旋转角度（弧度）。
+        axis (np.ndarray): 旋转轴，形状为 (3,) 的 numpy 数组。
+
+    Returns:
+        np.array: 3x3 的旋转矩阵，数据类型为 np.float32。
+    """
+    u = axis / np.linalg.norm(axis)
+    cosval, sinval = np.cos(angle), np.sin(angle)
+    cross_prod_mat = np.array([[0.0, -u[2], u[1]],
+                               [u[2], 0.0, -u[0]],
+                               [-u[1], u[0], 0.0]])
+    R =cosval * np.eye(3)+ sinval * cross_prod_mat+ (1.0 - cosval) * np.outer(u, u)
+    return R
+
+
+
+
+
+def get_face_normals(vertices, faces):
     """
     计算三角形网格中每个面的法线
     Args:
@@ -681,7 +1097,7 @@ def compute_face_normals(vertices, faces):
     
     return face_normals
 
-def compute_vertex_normals(vertices, faces):
+def get_vertex_normals(vertices, faces):
     """
     计算三角形网格中每个顶点的法线
     Args:
@@ -754,6 +1170,110 @@ def cut_mesh_point_loop(mesh,pts:vedo.Points,invert=False):
     return cut_mesh
 
 
+def cut_mesh_by_meshlib(v: np.ndarray, f: np.ndarray, loop_points,
+                        get_bigger_part: bool = False, smooth_boundary: bool = False) -> tuple:
+    """沿指定的点环切割网格并返回选定的部分
+
+    给定的点环投影到网格表面，创建闭合轮廓，沿此轮廓切割网格，
+    并返回网格的较大或较小部分。可选择对切割边界进行平滑处理。
+
+    Args:
+        v: 输入网格的顶点坐标，形状为 (N, 3)
+        f: 输入网格的面索引，形状为 (M, 3)
+        loop_points: 定义切割环的3D点列表，每个点为 [x, y, z],，形状为 (B, 3)
+        get_bigger_part: 如果为True，返回切割后较大的部分；否则返回较小的部分
+        smooth_boundary: 如果为True，对切割边界进行平滑处理
+
+    Returns:
+        tuple: 包含:
+            kept_mesh_v: 切割后网格的顶点坐标，形状为 (P, 3)
+            kept_mesh_f: 切割后网格的面索引，形状为 (Q, 3)
+            removed_mesh_v: 其他网格的顶点坐标，形状为 (P, 3)
+            removed_mesh_f: 其他网格的面索引，形状为 (Q, 3)
+
+    Raises:
+        RuntimeError: 如果切割操作失败或产生无效结果
+
+    Example:
+         kept_mesh_v,kept_mesh_f,removed_mesh_v,removed_mesh_f = cut_mesh(vertices, faces, margin_points, get_bigger_part=True, smooth_boundary=True)
+    """
+
+    import meshlib.mrmeshnumpy as mrmeshnumpy
+    from meshlib.mrmeshpy import (smoothRegionBoundary, edgeCurvMetric,
+                                  fillContourLeftByGraphCut, Mesh, Vector3f,
+                                  findProjection, convertMeshTriPointsToClosedContour,
+                                  cutMesh)
+    from importlib.metadata import version
+    assert version("meshlib")=='3.0.6.229'
+    # 验证输入数组格式
+    if v.ndim != 2 or v.shape[1] != 3:
+        raise ValueError("顶点数组必须是 (N, 3) 的形状")
+    if f.ndim != 2 or f.shape[1] != 3:
+        raise ValueError("面索引数组必须是 (M, 3) 的形状")
+    if len(loop_points) < 3:
+        raise ValueError("切割环必须包含至少3个点")
+
+    # 从输入的顶点和面创建网格
+    mesh_clone = mrmeshnumpy.meshFromFacesVerts(f, v)
+
+    # 将环上的点投影到网格表面
+    tri_points = []
+    for p in loop_points:
+        v3 = Vector3f(p[0], p[1], p[2])
+        projection = findProjection(v3, mesh_clone)
+        tri_points.append(projection.mtp)
+
+    # 从投影点创建闭合轮廓
+    contour = convertMeshTriPointsToClosedContour(mesh_clone, tri_points)
+
+
+    # 沿轮廓切割网格
+    cut_result = cutMesh(mesh_clone, [contour])
+
+    # 使用图割方法选择网格部分
+    edge_path = cut_result.resultCut[0]
+    one_part = fillContourLeftByGraphCut(
+        mesh_clone.topology,
+        edge_path,
+        edgeCurvMetric(mesh_clone)
+    )
+
+    # 如果需要，平滑边界
+    if smooth_boundary:
+        smoothRegionBoundary(mesh_clone, one_part)
+
+    # 确定要保留的部分
+    other_part = mesh_clone.topology.getValidFaces() - one_part
+    # 计算两个部分的面积
+    area_one = mesh_clone.area(one_part)
+    area_other = mesh_clone.area(other_part)
+    # one_part_bool_np =mrmeshnumpy.getNumpyBitSet(one_part)
+    # 根据面积选择保留部分
+    if get_bigger_part:
+        kept_part = one_part if area_one > area_other else other_part
+        removed_part = other_part if kept_part == one_part else one_part
+    else:
+        kept_part = one_part if area_one < area_other else other_part
+        removed_part = other_part if kept_part == one_part else one_part
+
+    # 创建输出网格
+    kept_mesh = Mesh()
+    kept_mesh.addPartByMask(mesh_clone, kept_part)
+    # 清理未使用的顶点，优化网格
+    kept_mesh.pack()
+
+    # 其他网格
+    removed_mesh = Mesh()
+    removed_mesh.addPartByMask(mesh_clone, removed_part)
+    removed_mesh.pack()
+
+    # 提取numpy数组
+    kept_mesh_v = mrmeshnumpy.getNumpyVerts(kept_mesh)
+    kept_mesh_f = mrmeshnumpy.getNumpyFaces(kept_mesh.topology)
+    removed_mesh_v = mrmeshnumpy.getNumpyVerts(removed_mesh)
+    removed_mesh_f = mrmeshnumpy.getNumpyFaces(removed_mesh.topology)
+
+    return kept_mesh_v,kept_mesh_f,removed_mesh_v,removed_mesh_f
 
 
 
@@ -787,12 +1307,7 @@ def simplify_by_meshlab(vertices,faces, max_facenum: int = 30000) ->vedo.Mesh:
     )
     return vedo.Mesh(mesh.current_mesh())
 
-
-
-
-
-
-def isotropic_remeshing_by_acvd(vedo_mesh, target_num=10000,clean=True):
+def simplify_isotropic_by_acvd(vedo_mesh, target_num=10000,clean=True):
     """
     对给定的 vedo 网格进行均质化处理，使其达到指定的目标面数。
 
@@ -825,7 +1340,7 @@ def isotropic_remeshing_by_acvd(vedo_mesh, target_num=10000,clean=True):
     else:
         return vedo.Mesh(clus.create_mesh())
 
-def isotropic_remeshing_by_meshlab(mesh, target_edge_length=0.5, iterations=1)-> vedo.Mesh:
+def simplify_isotropic_by_meshlab(mesh, target_edge_length=0.5, iterations=1)-> vedo.Mesh:
     """
     使用 PyMeshLab 实现网格均匀化。
 
@@ -886,8 +1401,6 @@ def fix_invalid_by_meshlab(ms):
     ms.apply_filter("meshing_remove_unreferenced_vertices")
     return ms
 
-
-
 def fix_component_by_meshlab(ms):
     """
     移除低质量的组件，如小的连通分量,移除网格中的浮动小组件（小面积不连通部分）。
@@ -920,48 +1433,444 @@ def fix_topology_by_meshlab(ms):
     return ms
 
 
-
-
-def labels_mapping(old_vertices,old_faces, new_vertices, old_labels,fast=True):
+def create_voxels_by_pcd(vertices, resolution: int = 256):
     """
-    将原始网格的标签属性精确映射到新网格
-    
-    参数:
-        old_mesh(vedo) : 原始网格对象
-        new_mesh(vedo): 重网格化后的新网格对象
-        old_labels (np.ndarray): 原始顶点标签数组，形状为 (N,) 
-    
-    返回:
-        new_labels (np.ndarray): 映射后的新顶点标签数组，形状为 (M,)
-    """
-    if len(old_labels) != len(old_vertices):
-        raise ValueError(f"标签数量 ({len(old_labels)}) 必须与原始顶点数 ({len(old_vertices)}) 一致")
+        通过顶点创建阵列方格体素
+    Args:
+        vertices: 顶点
+        resolution:  分辨率
 
-    if fast:
-        tree= KDTree( old_vertices)
-        _,idx = tree.query(new_vertices,workers=-1)
-        return old_labels[idx]
-        
+    Returns:
+        返回 res**3 的顶点 , mc重建需要的缩放及位移
+
+    Notes:
+        v, f = mcubes.marching_cubes(data.reshape(256, 256, 256), 0)
+
+        m=vedo.Mesh([v*scale+translation, f])
+
+
+    """
+    vertices = np.array(vertices)
+    x_min, x_max = vertices[:, 0].min(), vertices[:, 0].max()
+    y_min, y_max = vertices[:, 1].min(), vertices[:, 1].max()
+    z_min, z_max = vertices[:, 2].min(), vertices[:, 2].max()
+
+    # 使用np.mgrid生成网格索引
+    i, j, k = np.mgrid[0:resolution, 0:resolution, 0:resolution]
+
+    # 计算步长（即网格单元的大小）
+    dx = (x_max - x_min) / resolution
+    dy = (y_max - y_min) / resolution
+    dz = (z_max - z_min) / resolution
+    scale = np.array([dx, dy, dz])
+
+    # 将索引转换为坐标值
+    x = x_min + i * dx
+    y = y_min + j * dy
+    z = z_min + k * dz
+    translation = np.array([x_min, y_min, z_min])
+
+    verts = np.stack((x.ravel(), y.ravel(), z.ravel()), axis=-1)
+    return verts, scale, translation
+def create_mesh_base(vd_mesh,value_z=-20,close_base=True,return_strips=False):
+    """给网格边界z方向添加底座
+
+    Args:
+        vd_mesh (_type_):vedo.mesh
+        value_z (int, optional): 底座长度. Defaults to -20.
+        close_base (bool, optional): 底座是否闭合. Defaults to True.
+        return_strips (bool, optional): 是否返回添加的网格. Defaults to False.
+
+    Returns:
+        _type_: 添加底座的网格
+    """
+
+    # 开始边界
+    boundarie_start = vd_mesh.clone().boundaries()
+    boundarie_start =boundarie_start.generate_delaunay2d(mode="fit").boundaries()
+    # TODO:补充边界损失
+    # 底座边界
+    boundarie_end= boundarie_start.copy()
+    boundarie_end.vertices[...,2:]=value_z
+    strips = boundarie_start.join_with_strips(boundarie_end)
+    merge_list=[vd_mesh,strips]
+    if return_strips:
+        return strips
+    if close_base:
+        merge_list.append(boundarie_end.generate_delaunay2d(mode="fit"))
+    out_mesh = vedo.merge(merge_list).clean()
+    return out_mesh
+
+
+def create_mesh_equidistant(mesh, d=-0.01,merge=True):
+    """
+
+    此函数用于创建一个与输入网格等距的新网格，可选择将新网格与原网格合并。
+
+
+    Args:
+        mesh (vedo.Mesh): 输入的三维网格对象。
+        d (float, 可选): 顶点偏移的距离，默认为 -0.01。负值表示向内偏移，正值表示向外偏移。
+        merge (bool, 可选): 是否将原网格和偏移后的网格合并，默认为 True。
+
+    Returns:
+        vedo.Mesh 或 vedo.Assembly: 如果 merge 为 True，则返回合并后的网格；否则返回偏移后的网格。
+    """
+    mesh.compute_normals().clean()
+    cells = np.asarray(mesh.cells)
+    original_vertices = mesh.vertices
+    vertex_normals = mesh.vertex_normals
+    pts_id =mesh.boundaries(return_point_ids=True)
+
+    # 创建边界掩码
+    boundary_mask = np.zeros(len(original_vertices), dtype=bool)
+    boundary_mask[pts_id] = True
+
+    # 仅对非边界顶点应用偏移
+    pts = original_vertices.copy()
+    pts[~boundary_mask] += vertex_normals[~boundary_mask] * d
+
+    # 构建新网格
+    offset_mesh = vedo.Mesh([pts, cells]).clean()
+    if merge:
+        return vedo.merge([mesh,offset_mesh])
     else:
-        import trimesh
-        old_mesh  = trimesh.Trimesh(old_vertices,old_faces)
-        # 步骤1: 查询每个新顶点在原始网格上的最近面片信息
-        closest_points, distances, tri_ids = trimesh.proximity.closest_point(old_mesh, new_vertices)
-        # 步骤2: 计算每个投影点的重心坐标
-        tri_vertices = old_mesh.faces[tri_ids]
-        tri_points = old_mesh.vertices[tri_vertices]
-        # 计算重心坐标 (M,3)
-        bary_coords = trimesh.triangles.points_to_barycentric(
-            triangles=tri_points, 
-            points=closest_points
-        )
-        # 步骤3: 确定最大重心坐标对应的顶点
-        max_indices = np.argmax(bary_coords, axis=1)
-        # 根据最大分量索引选择顶点编号
-        nearest_vertex_indices = tri_vertices[np.arange(len(max_indices)), max_indices]
-        # 步骤4: 映射标签
-        new_labels = np.array(old_labels)[nearest_vertex_indices]
-        return new_labels
+        return offset_mesh
+
+
+def voxel_indices_to_occupancy_grid(grid_index_array, voxel_size=32):
+    """
+    将体素网格索引数组转换为三维体素占用网格（二值数组）。
+
+    输入体素网格索引（表示被占用的体素位置），输出一个固定尺寸的三维数组，
+    被占用的体素位置设为1，未占用位置设为0，直观表示体素网格的空间占用情况。
+
+    Args:
+        grid_index_array (numpy.ndarray): 形状为 (N, 3) 的整数数组，
+            每个元素是三维体素网格的索引坐标 (x, y, z)，通常来自 Open3D VoxelGrid 的网格索引。
+        voxel_grid_size (int, optional): 输出三维占用网格的边长（立方体尺寸），默认为 32。
+
+    Returns:
+        numpy.ndarray: 形状为 (voxel_grid_size, voxel_grid_size, voxel_grid_size) 的二值数组，
+            被占用的体素位置值为1，其余为0。
+
+    Example:
+        ```python
+        # 获取 grid_index_array
+        voxel_list = voxel_grid.get_voxels()
+        grid_index_array = list(map(lambda x: x.grid_index, voxel_list))
+        grid_index_array = np.array(grid_index_array)
+        voxel_grid_array = voxel2array(grid_index_array, voxel_size=32)
+        grid_index_array = array2voxel(voxel_grid_array)
+        pointcloud_array = grid_index_array  # 0.03125 是体素大小
+        pc = o3d.geometry.PointCloud()
+        pc.points = o3d.utility.Vector3dVector(pointcloud_array)
+        o3d_voxel = o3d.geometry.VoxelGrid.create_from_point_cloud(pc, voxel_size=0.05)
+        o3d.visualization.draw_geometries([pcd, cc, o3d_voxel])
+        ```
+    """
+    array_voxel = np.zeros((voxel_size, voxel_size, voxel_size))
+    array_voxel[grid_index_array[:, 0], grid_index_array[:, 1], grid_index_array[:, 2]] = 1
+    return array_voxel
+
+
+def occupancy_grid_to_voxel_indices(occupancy_grid: np.ndarray) -> np.ndarray:
+    """
+    从三维体素占用网格提取被占用体素的网格索引数组。
+
+    输入二值化的体素占用网格（1表示占用、0表示空闲），找出所有值为1的位置的三维索引，
+    组合成形状为(N, 3)的索引数组，格式与Open3D VoxelGrid的网格索引完全兼容。
+
+    Args:
+        occupancy_grid (numpy.ndarray): 形状为(S, S, S)的二值数组（S为体素网格边长），
+            其中值为1的位置对应被占用的体素，值为0的位置为空闲体素。
+
+    Returns:
+        numpy.ndarray: 形状为(N, 3)的整数数组，每行表示一个被占用体素的三维网格索引(x, y, z)，
+            可直接用于Open3D体素网格相关操作。
+    Example:
+
+        ```python
+
+        # 获取 grid_index_array
+        voxel_list = voxel_grid.get_voxels()
+        grid_index_array = list(map(lambda x: x.grid_index, voxel_list))
+        grid_index_array = np.array(grid_index_array)
+        voxel_grid_array = voxel2array(grid_index_array, voxel_size=32)
+        grid_index_array = array2voxel(voxel_grid_array)
+        pointcloud_array = grid_index_array  # 0.03125 是体素大小
+        pc = o3d.geometry.PointCloud()
+        pc.points = o3d.utility.Vector3dVector(pointcloud_array)
+        o3d_voxel = o3d.geometry.VoxelGrid.create_from_point_cloud(pc, voxel_size=0.05)
+        o3d.visualization.draw_geometries([pcd, cc, o3d_voxel])
+
+
+        ```
+
+    """
+    x, y, z = np.where(occupancy_grid == 1)
+    index_voxel = np.vstack((x, y, z))
+    grid_index_array = index_voxel.T
+    return grid_index_array
+
+
+
+def fix_hole_by_center(mesh,boundaries,return_vf=False):
+    """
+        用中心点方式强制补洞
+
+    Args:
+        mesh (_type_): vedo.Mesh
+        boundaries:vedo.boundaries
+        return_vf: 是否返回补洞的mesh
+
+
+    """
+    mesh=vedo.Mesh([])
+    vertices = mesh.vertices.copy()
+    cells = mesh.cells
+
+    # 获取孔洞边界的顶点坐标
+    boundaries = boundaries.join(reset=True)
+    if not boundaries:
+        return mesh  # 没有孔洞
+    pts_coords = boundaries.vertices
+
+    # 将孔洞顶点坐标转换为原始顶点的索引
+    hole_indices = []
+    for pt in pts_coords:
+        distances = np.linalg.norm(vertices - pt, axis=1)
+        idx = np.argmin(distances)
+        if distances[idx] < 1e-6:
+            hole_indices.append(idx)
+        else:
+            raise ValueError("顶点坐标未找到")
+
+    n = len(hole_indices)
+    if n < 3:
+        return mesh  # 无法形成面片
+
+    # 计算中心点并添加到顶点
+    center = np.mean(pts_coords, axis=0)
+    new_vertices = np.vstack([vertices, center])
+    center_idx = len(vertices)
+
+    # 生成新的三角形面片
+    new_faces = []
+    for i in range(n):
+        v1 = hole_indices[i]
+        v2 = hole_indices[(i + 1) % n]
+        new_faces.append([v1, v2, center_idx])
+
+    if return_vf:
+        return vedo.Mesh([new_vertices, new_faces]).clean().compute_normals()
+    # 合并面片并创建新网格
+    updated_cells = np.vstack([cells, new_faces])
+    new_mesh = vedo.Mesh([new_vertices, updated_cells])
+    return new_mesh.clean().compute_normals()
+
+def fix_hole_by_radial(boundary_coords):
+    """
+    参考
+
+    [https://www.cnblogs.com/shushen/p/5759679.html]
+
+    实现的最小角度法补洞法；
+
+    Args:
+        boundary_coords (_type_): 有序边界顶点
+
+    Returns:
+        v,f: 修补后的曲面
+
+
+    Note:
+        ```python
+
+        # 创建带孔洞的简单网格
+        s = vedo.load(r"J10166160052_16.obj")
+        # 假设边界点即网格边界点
+        boundary =vedo.Spline((s.boundaries().join(reset=True).vertices),res=100)
+        # 通过边界点进行补洞
+        filled_mesh =vedo.Mesh(hole_filling(boundary.vertices))
+        # 渲染补洞后的曲面
+        vedo.show([filled_mesh,boundary,s.alpha(0.8)], bg='white').close()
+
+        ```
+
+    """
+    # 初始化顶点列表和边界索引
+    vertex_list = np.array(boundary_coords.copy())
+    boundary = list(range(len(vertex_list)))  # 存储顶点在vertex_list中的索引
+    face_list = []
+
+    while len(boundary) >= 3:
+        # 1. 计算平均边长
+        avg_length = 0.0
+        n_edges = len(boundary)
+        for i in range(n_edges):
+            curr_idx = boundary[i]
+            next_idx = boundary[(i+1)%n_edges]
+            avg_length += np.linalg.norm(vertex_list[next_idx] - vertex_list[curr_idx])
+        avg_length /= n_edges
+
+        # 2. 寻找最小内角顶点在边界列表中的位置
+        min_angle = float('inf')
+        min_idx = 0  # 默认取第一个顶点
+        for i in range(len(boundary)):
+            prev_idx = boundary[(i-1)%len(boundary)]
+            curr_idx = boundary[i]
+            next_idx = boundary[(i+1)%len(boundary)]
+
+            v1 = vertex_list[prev_idx] - vertex_list[curr_idx]
+            v2 = vertex_list[next_idx] - vertex_list[curr_idx]
+            # 检查向量长度避免除以零
+            v1_norm = np.linalg.norm(v1)
+            v2_norm = np.linalg.norm(v2)
+            if v1_norm == 0 or v2_norm==0:
+                continue  # 跳过无效顶点
+            cos_theta = np.dot(v1, v2) / (v1_norm * v2_norm)
+            angle = np.arccos(np.clip(cos_theta, -1, 1))
+            if angle < min_angle:
+                min_angle = angle
+                min_idx = i  # 记录边界列表中的位置
+
+        # 3. 获取当前处理的三个顶点索引
+        curr_pos = min_idx
+        prev_pos = (curr_pos - 1) % len(boundary)
+        next_pos = (curr_pos + 1) % len(boundary)
+
+        prev_idx = boundary[prev_pos]
+        curr_idx = boundary[curr_pos]
+        next_idx = boundary[next_pos]
+
+        # 计算前驱和后继顶点的距离
+        dist = np.linalg.norm(vertex_list[next_idx] - vertex_list[prev_idx])
+
+        # 4. 根据距离决定添加三角形的方式
+        if dist < 2 * avg_length:
+            # 添加单个三角形
+            face_list.append([prev_idx, curr_idx, next_idx])
+            # 从边界移除当前顶点
+            boundary.pop(curr_pos)
+        else:
+            # 创建新顶点并添加到顶点列表
+            new_vertex = (vertex_list[prev_idx] + vertex_list[next_idx]) / 2
+            vertex_list = np.vstack([vertex_list, new_vertex])
+            new_idx = len(vertex_list) - 1
+
+            # 添加两个三角形
+            face_list.append([prev_idx, curr_idx, new_idx])
+            face_list.append([curr_idx, next_idx, new_idx])
+
+            # 更新边界：替换当前顶点为新顶点
+            boundary.pop(curr_pos)
+            boundary.insert(curr_pos, new_idx)
+
+    return vertex_list, face_list
+
+
+
+
+
+
+def mesh2voxels(v, f, size=64):
+    """
+    体素化网格，该函数适用于非水密网格（带孔的网格）、自相交网格、具有非流形几何体的网格以及具有方向不一致的面的网格。
+
+    Args:
+        v (array-like): 网格的顶点数组。
+        f (array-like): 网格的面数组。
+        size (int, optional): 体素化的大小，默认为 64。
+
+    Returns:
+        array: 体素化后的数组。
+
+    Raises:
+        ImportError: 如果未安装 'mesh-to-sdf' 库，会提示安装。
+    """
+    import trimesh
+    try:
+        from mesh_to_sdf import mesh_to_voxels
+    except ImportError:
+        log.info("请安装依赖库：pip install mesh-to-sdf")
+
+    mesh = trimesh.Trimesh(v, f)
+
+    voxels = mesh_to_voxels(mesh, size, pad=True)
+    return voxels
+
+
+
+
+
+
+
+
+
+
+def subdivide_loop_by_trimesh(
+        vertices,
+        faces,
+        iterations=5,
+        max_face_num=100000,
+        face_mask=None,
+):
+    """
+
+    对给定的顶点和面片进行 Loop 细分。
+
+    Args:
+        vertices (array-like): 输入的顶点数组，形状为 (n, 3)，其中 n 是顶点数量。
+        faces (array-like): 输入的面片数组，形状为 (m, 3)，其中 m 是面片数量。
+        iterations (int, optional): 细分的迭代次数，默认为 5。
+        max_face_num (int, optional): 细分过程中允许的最大面片数量，达到此数量时停止细分，默认为 100000。
+        face_mask (array-like, optional): 面片掩码数组，用于指定哪些面片需要进行细分，默认为 None。
+
+    Returns:
+        tuple: 包含细分后的顶点数组、细分后的面片数组和面片掩码数组的元组。
+
+    Notes:
+        以下是一个示例代码，展示了如何使用该函数：
+        ```python
+        # 1. 获取每个点的最近表面点及对应面
+        face_indices = set()
+        kdtree = cKDTree(mesh.vertices)
+        for p in pts:
+            # 查找半径2mm内的顶点
+            vertex_indices = kdtree.query_ball_point(p, r=1.0)
+            for v_idx in vertex_indices:
+                # 获取包含这些顶点的面片
+                faces = mesh.vertex_faces[v_idx]
+                faces = faces[faces != -1]  # 去除无效索引
+                face_indices.update(faces.tolist())
+        face_indices = np.array([[i] for i in list(face_indices)])
+        new_vertices, new_face, _ = subdivide_loop(v, f, face_mask=face_indices)
+        ```
+
+
+    """
+    import trimesh
+    current_v = np.asarray(vertices)
+    current_f = np.asarray(faces)
+    if face_mask is not None:
+        face_mask = np.asarray(face_mask).reshape(-1)
+
+    for _ in range(iterations):
+        current_v, current_f,face_mask_dict=trimesh.remesh.subdivide(current_v,current_f,face_mask, return_index=True)
+        face_mask = np.asarray(np.concatenate(list(face_mask_dict.values()))).reshape(-1)
+        # 检查停止条件
+        if len(current_f)>max_face_num:
+            log.info(f"subdivide: {len(current_f)} >{ max_face_num},break")
+            break
+
+    return current_v, current_f,face_mask
+
+
+
+
+
+
 
 
 
@@ -1283,11 +2192,6 @@ class GraphCutWithMesh:
         return optimized_labels
 
 
-
-
-
-
-
 class UnifiedLabelRefiner:
     def __init__(self, vertices, faces, labels, class_num, smooth_factor=None, temperature=None):
         """
@@ -1477,751 +2381,6 @@ class UnifiedLabelRefiner:
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-@njit(nogil=True, fastmath=True, cache=True, parallel=True)
-def furthestsampling_jit(xyz: np.ndarray, offset: np.ndarray, new_offset: np.ndarray) -> np.ndarray:
-    """使用并行批次处理的最远点采样算法实现
-    
-    该方法将输入点云划分为多个批次，每个批次独立进行最远点采样。通过维护最小距离数组，
-    确保每次迭代选择距离已选点集最远的新点，实现高效采样。
-
-    Args:
-        xyz (np.ndarray): 输入点云坐标，形状为(N, 3)的C连续float32数组
-        offset (np.ndarray): 原始点云的分段偏移数组，表示每个批次的结束位置。例如[1000, 2000]表示两个批次
-        new_offset (np.ndarray): 采样后的分段偏移数组，表示每个批次的目标采样数。例如[200, 400]表示每批采200点
-
-    Returns:
-        np.ndarray: 采样点索引数组，形状为(total_samples,)，其中total_samples = new_offset[-1]
-
-    Notes:
-        实现特点:
-        - 使用Numba并行加速，支持多核并行处理不同批次
-        - 采用平方距离计算避免开方运算
-        - 每批次独立初始化距离数组，避免跨批次干扰
-        - 自动处理边界情况（空批次或零采样批次）
-
-        典型调用流程:
-        >>> n_total = 10000
-        >>> offset = np.array([1000, 2000, ..., 10000], dtype=np.int32)
-        >>> new_offset = np.array([200, 400, ..., 2000], dtype=np.int32)
-        >>> sampled_indices = furthestsampling_jit(xyz, offset, new_offset)
-    """
-    # 确保输入为C连续的float32数组
-    total_samples = new_offset[-1]
-    indices = np.empty(total_samples, dtype=np.int32)
-    
-    # 并行处理每个批次
-    for bid in prange(len(new_offset)):
-        # 确定批次边界
-        if bid == 0:
-            n_start, n_end = 0, offset[0]
-            m_start, m_end = 0, new_offset[0]
-        else:
-            n_start = offset[bid-1]
-            n_end = offset[bid]
-            m_start = new_offset[bid-1]
-            m_end = new_offset[bid]
-        
-        batch_size = n_end - n_start
-        sample_size = m_end - m_start
-        
-        if batch_size == 0 or sample_size == 0:
-            continue
-        
-        # 提取当前批次的点坐标（三维）
-        batch_xyz = xyz[n_start:n_end]
-        x = batch_xyz[:, 0]  # x坐标数组
-        y = batch_xyz[:, 1]  # y坐标数组
-        z = batch_xyz[:, 2]  # z坐标数组
-        
-        # 初始化最小距离数组
-        min_dists = np.full(batch_size, np.finfo(np.float32).max, dtype=np.float32)
-        
-        # 首点选择批次内的第一个点
-        current_local_idx = 0
-        indices[m_start] = n_start + current_local_idx  # 转换为全局索引
-        
-        # 初始化最新点坐标
-        last_x = x[current_local_idx]
-        last_y = y[current_local_idx]
-        last_z = z[current_local_idx]
-        
-        # 主采样循环
-        for j in range(1, sample_size):
-            max_dist = -1.0
-            best_local_idx = 0
-            
-            # 遍历所有点更新距离并寻找最大值
-            for k in range(batch_size):
-                # 计算到最新点的平方距离
-                dx = x[k] - last_x
-                dy = y[k] - last_y
-                dz = z[k] - last_z
-                dist = dx*dx + dy*dy + dz*dz
-                
-                # 更新最小距离
-                if dist < min_dists[k]:
-                    min_dists[k] = dist
-                
-                # 跟踪当前最大距离
-                if min_dists[k] > max_dist:
-                    max_dist = min_dists[k]
-                    best_local_idx = k
-            
-            # 更新当前最优点的索引和坐标
-            current_local_idx = best_local_idx
-            indices[m_start + j] = n_start + current_local_idx  # 转换为全局索引
-            last_x = x[current_local_idx]
-            last_y = y[current_local_idx]
-            last_z = z[current_local_idx]
-    
-    return indices
-
-def farthest_point_sampling(vertices: np.ndarray, n_sample: int = 2000, auto_seg: bool = False, n_batches: int = 10) -> np.ndarray:
-    """
-    最远点采样，支持自动分批处理
-    
-    根据参数配置，自动决定是否将输入点云分割为多个批次进行处理。当处理大规模数据时，
-    建议启用auto_seg以降低内存需求并利用并行加速。
-
-    Args:
-        vertices (np.ndarray): 输入点云坐标，形状为(N, 3)的浮点数组
-        n_sample (int, optional): 总采样点数，当auto_seg=False时生效。默认2000
-        auto_seg (bool, optional): 是否启用自动分批处理(提速，但会丢失全局距离信息)。默认False
-        n_batches (int, optional): 自动分批时的批次数量。默认10
-
-    Returns:
-        np.ndarray: 采样点索引数组，形状为(n_sample,)
-
-    Raises:
-        ValueError: 当输入数组维度不正确时抛出
-
-    Notes:
-        典型场景:
-        - 小规模数据（如5万点以下）: auto_seg=False，单批次处理
-        - 大规模数据（如百万级点）: auto_seg=True，分10批处理，每批采样2000点
-
-        示例:
-        >>> vertices = np.random.rand(100000, 3).astype(np.float32)
-        >>> # 自动分10批，每批采2000点
-        >>> indices = farthest_point_sampling(vertices, auto_seg=True)
-        >>> # 单批采5000点
-        >>> indices = farthest_point_sampling(vertices, n_sample=5000)
-    """
-    if vertices.ndim != 2 or vertices.shape[1] != 3:
-        raise ValueError("输入点云必须是形状为(N, 3)的二维数组")
-    xyz =np.ascontiguousarray(vertices, dtype=np.float32) 
-    n_total = xyz.shape[0]
-    if auto_seg:
-         # 计算批次采样数分配
-        base_samples = n_sample // n_batches
-        remainder = n_sample % n_batches
-        # 创建采样数数组，前remainder个批次多采1点
-        batch_samples = [base_samples + 1 if i < remainder else base_samples 
-                        for i in range(n_batches)]
-        # 生成偏移数组（累加形式）
-        new_offset = np.cumsum(batch_samples).astype(np.int32)
-        # 原始点云分批偏移（均匀分配）
-        batch_size = n_total // n_batches
-        offset = np.array([batch_size*(i+1) for i in range(n_batches)], dtype=np.int32)
-        offset[-1] = n_total  # 最后一批包含余数点
-        
-    else:
-        offset = np.array([n_total], dtype=np.int32)
-        new_offset = np.array([n_sample], dtype=np.int32)
-    return  furthestsampling_jit(xyz,offset,new_offset)
-
-
-def farthest_point_sampling_by_open3d(vertices: np.ndarray, n_sample: int = 2000,device ="CPU:0") -> np.ndarray:
-    """
-    基于Open3D的最远点采样算法，返回采样点的索引数组
-
-   该函数利用Open3D库的高效实现，从输入的点云中按最远点策略采样指定数量的点，
-   并返回这些采样点在原始点云中的索引，便于后续还原采样前的点云数据。
-
-   Args:
-       vertices: 输入点云数据，形状为[N, 3]的numpy数组，其中N为点的数量，3对应xyz坐标
-       n_sample: 期望采样的点数量，默认值为2000
-       device: 计算设备，可选"CPU:0"或"CUDA:1"等，默认使用CPU
-
-   Returns:
-       采样点的索引数组，形状为[n_sample]的numpy数组，元素为原始点云的索引值
-
-   Raises:
-       若输入点云数量小于n_sample，可能会抛出Open3D内部异常
-       若设备指定无效（如CUDA不可用时指定"CUDA:1"），会抛出设备初始化错误
-   """
-    import open3d as o3d
-    device = o3d.core.Device(device)
-    dtype = o3d.core.float32
-    pcd = o3d.t.geometry.PointCloud(device)
-    pcd.point.positions =o3d.core.Tensor(np.ascontiguousarray(vertices,dtype=np.float32), dtype, device)
-    # 用索引代替标签，方便还原
-    pcd.point.labels = o3d.core.Tensor(np.arange(len(vertices)) ,o3d.core.int32, device)
-    downpcd_farthest = pcd.farthest_point_down_sample(n_sample)
-    idx= downpcd_farthest.point.labels.cpu().numpy()
-    return idx
-
-    
-
-
-def add_base(vd_mesh,value_z=-20,close_base=True,return_strips=False):
-    """给网格边界z方向添加底座
-
-    Args:
-        vd_mesh (_type_):vedo.mesh
-        value_z (int, optional): 底座长度. Defaults to -20.
-        close_base (bool, optional): 底座是否闭合. Defaults to True.
-        return_strips (bool, optional): 是否返回添加的网格. Defaults to False.
-
-    Returns:
-        _type_: 添加底座的网格
-    """
-    
-    # 开始边界
-    boundarie_start = vd_mesh.clone().boundaries()
-    boundarie_start =boundarie_start.generate_delaunay2d(mode="fit").boundaries()
-    # TODO:补充边界损失
-    # 底座边界
-    boundarie_end= boundarie_start.copy()
-    boundarie_end.vertices[...,2:]=value_z
-    strips = boundarie_start.join_with_strips(boundarie_end)
-    merge_list=[vd_mesh,strips]
-    if return_strips:
-        return strips
-    if close_base:
-        merge_list.append(boundarie_end.generate_delaunay2d(mode="fit"))
-    out_mesh = vedo.merge(merge_list).clean()
-    return out_mesh
-
-
-def equidistant_mesh(mesh, d=-0.01,merge=True):
-    """
-
-    此函数用于创建一个与输入网格等距的新网格，可选择将新网格与原网格合并。
-
-
-    Args:
-        mesh (vedo.Mesh): 输入的三维网格对象。
-        d (float, 可选): 顶点偏移的距离，默认为 -0.01。负值表示向内偏移，正值表示向外偏移。
-        merge (bool, 可选): 是否将原网格和偏移后的网格合并，默认为 True。
-
-    Returns:
-        vedo.Mesh 或 vedo.Assembly: 如果 merge 为 True，则返回合并后的网格；否则返回偏移后的网格。
-    """
-    mesh.compute_normals().clean() 
-    cells = np.asarray(mesh.cells)
-    original_vertices = mesh.vertices
-    vertex_normals = mesh.vertex_normals
-    pts_id =mesh.boundaries(return_point_ids=True)
-    
-    # 创建边界掩码
-    boundary_mask = np.zeros(len(original_vertices), dtype=bool)
-    boundary_mask[pts_id] = True
-    
-    # 仅对非边界顶点应用偏移
-    pts = original_vertices.copy()
-    pts[~boundary_mask] += vertex_normals[~boundary_mask] * d
-    
-    # 构建新网格
-    offset_mesh = vedo.Mesh([pts, cells]).clean()
-    if merge:
-        return vedo.merge([mesh,offset_mesh])
-    else:
-        return offset_mesh
-    
-
-def voxel2array(grid_index_array, voxel_size=32):
-    """
-    将 voxel_grid_index 数组转换为固定大小的三维数组。
-
-    该函数接收一个形状为 (N, 3) 的 voxel_grid_index 数组，
-    并将其转换为形状为 (voxel_size, voxel_size, voxel_size) 的三维数组。
-    其中，原 voxel_grid_index 数组中每个元素代表三维空间中的一个网格索引，
-    在转换后的三维数组中对应位置的值会被设为 1，其余位置为 0。
-
-    Args:
-        grid_index_array (numpy.ndarray): 形状为 (N, 3) 的数组，
-            通常从 open3d 的 o3d.voxel_grid.get_voxels() 方法获取，
-            表示三维空间中每个体素的网格索引。
-        voxel_size (int, optional): 转换后三维数组的边长，默认为 32。
-
-    Returns:
-        numpy.ndarray: 形状为 (voxel_size, voxel_size, voxel_size) 的三维数组，
-            其中原 voxel_grid_index 数组对应的网格索引位置值为 1，其余为 0。
-
-    Example:
-        ```python
-        # 获取 grid_index_array
-        voxel_list = voxel_grid.get_voxels()
-        grid_index_array = list(map(lambda x: x.grid_index, voxel_list))
-        grid_index_array = np.array(grid_index_array)
-        voxel_grid_array = voxel2array(grid_index_array, voxel_size=32)
-        grid_index_array = array2voxel(voxel_grid_array)
-        pointcloud_array = grid_index_array  # 0.03125 是体素大小
-        pc = o3d.geometry.PointCloud()
-        pc.points = o3d.utility.Vector3dVector(pointcloud_array)
-        o3d_voxel = o3d.geometry.VoxelGrid.create_from_point_cloud(pc, voxel_size=0.05)
-        o3d.visualization.draw_geometries([pcd, cc, o3d_voxel])
-        ```
-    """
-    array_voxel = np.zeros((voxel_size, voxel_size, voxel_size))
-    array_voxel[grid_index_array[:, 0], grid_index_array[:, 1], grid_index_array[:, 2]] = 1
-    return array_voxel
-
-    
-def array2voxel(voxel_array):
-    """
-        将固定大小的三维数组转换为 voxel_grid_index 数组。
-        该函数接收一个形状为 (voxel_size, voxel_size, voxel_size) 的三维数组，
-        找出其中值为 1 的元素的索引，将这些索引组合成一个形状为 (N, 3) 的数组，
-        类似于从 open3d 的 o3d.voxel_grid.get_voxels () 方法获取的结果。
-        
-    Args:
-        voxel_array (numpy.ndarray): 形状为 (voxel_size, voxel_size, voxel_size) 的三维数组，数组中值为 1 的位置代表对应的体素网格索引。
-    
-    Returns:
-    
-        numpy.ndarray: 形状为 (N, 3) 的数组，表示三维空间中每个体素的网格索引，类似于从 o3d.voxel_grid.get_voxels () 方法获取的结果。
-    
-    Example:
-    
-        ```python
-        
-        # 获取 grid_index_array
-        voxel_list = voxel_grid.get_voxels()
-        grid_index_array = list(map(lambda x: x.grid_index, voxel_list))
-        grid_index_array = np.array(grid_index_array)
-        voxel_grid_array = voxel2array(grid_index_array, voxel_size=32)
-        grid_index_array = array2voxel(voxel_grid_array)
-        pointcloud_array = grid_index_array  # 0.03125 是体素大小
-        pc = o3d.geometry.PointCloud()
-        pc.points = o3d.utility.Vector3dVector(pointcloud_array)
-        o3d_voxel = o3d.geometry.VoxelGrid.create_from_point_cloud(pc, voxel_size=0.05)
-        o3d.visualization.draw_geometries([pcd, cc, o3d_voxel])
-                
-        
-        ```
-    
-    """
-    x, y, z = np.where(voxel_array == 1)
-    index_voxel = np.vstack((x, y, z))
-    grid_index_array = index_voxel.T
-    return grid_index_array
-
-
-
-
-
-
-
-
-
-def fill_hole_with_center(mesh,boundaries,return_vf=False):
-    """
-        用中心点方式强制补洞
-
-    Args:
-        mesh (_type_): vedo.Mesh
-        boundaries:vedo.boundaries
-        return_vf: 是否返回补洞的mesh
-
-
-    """
-    vertices = mesh.vertices.copy()
-    cells = mesh.cells
-
-    # 获取孔洞边界的顶点坐标
-    boundaries = boundaries.join(reset=True)
-    if not boundaries:
-        return mesh  # 没有孔洞
-    pts_coords = boundaries.vertices
-
-    # 将孔洞顶点坐标转换为原始顶点的索引
-    hole_indices = []
-    for pt in pts_coords:
-        distances = np.linalg.norm(vertices - pt, axis=1)
-        idx = np.argmin(distances)
-        if distances[idx] < 1e-6:
-            hole_indices.append(idx)
-        else:
-            raise ValueError("顶点坐标未找到")
-
-    n = len(hole_indices)
-    if n < 3:
-        return mesh  # 无法形成面片
-
-    # 计算中心点并添加到顶点
-    center = np.mean(pts_coords, axis=0)
-    new_vertices = np.vstack([vertices, center])
-    center_idx = len(vertices)
-
-    # 生成新的三角形面片
-    new_faces = []
-    for i in range(n):
-        v1 = hole_indices[i]
-        v2 = hole_indices[(i + 1) % n]
-        new_faces.append([v1, v2, center_idx])
-        
-    if return_vf:
-        return vedo.Mesh([new_vertices, new_faces]).clean().compute_normals()
-    # 合并面片并创建新网格
-    updated_cells = np.vstack([cells, new_faces])
-    new_mesh = vedo.Mesh([new_vertices, updated_cells])
-    return new_mesh.clean().compute_normals()
-
-
-
-
-
-
-def collision_depth(mesh1, mesh2) -> float:
-    """计算两个网格间的碰撞深度或最小间隔距离。
-
-    使用VTK的带符号距离算法检测碰撞状态：
-    - 正值：两网格分离，返回值为最近距离
-    - 零值：表面恰好接触
-    - 负值：发生穿透，返回值为最大穿透深度（绝对值）
-
-    Args:
-        mesh1 (vedo.Mesh): 第一个网格对象，需包含顶点数据
-        mesh2 (vedo.Mesh): 第二个网格对象，需包含顶点数据
-
-    Returns:
-        float: 带符号的距离值，符号表示碰撞状态，绝对值表示距离量级
-        
-    Raises:
-        RuntimeError: 当VTK计算管道出现错误时抛出
-
-    Notes:
-        1. 当输入网格顶点数>1000时会产生性能警告
-        2. 返回float('inf')表示计算异常或无限远距离
-
-    """
-    # 性能优化提示
-    if mesh1.npoints > 1000 or mesh2.npoints > 1000:
-        log.info("[性能警告] 检测到高精度网格(顶点数>1000)，建议执行 mesh.decimate(n=500) 进行降采样")
-
-    try:
-        # 初始化VTK距离计算器
-        distance_filter = vtk.vtkDistancePolyDataFilter()
-        distance_filter.SetInputData(0, mesh1.dataset)
-        distance_filter.SetInputData(1, mesh2.dataset)
-        distance_filter.SignedDistanceOn()
-        distance_filter.Update()
-
-        # 提取距离数据
-        distance_array = distance_filter.GetOutput().GetPointData().GetScalars("Distance")
-        if not distance_array:
-            return float('inf')
-            
-        return distance_array.GetRange()[0]
-        
-    except Exception as e:
-        raise RuntimeError(f"VTK距离计算失败: {str(e)}") from e
-    
-    
-    
-    
-def compute_curvature_by_meshlab(ms):
-    """
-    使用 MeshLab 计算网格的曲率和顶点颜色。
-
-    该函数接收一个顶点矩阵和一个面矩阵作为输入，创建一个 MeshLab 的 MeshSet 对象，
-    并将输入的顶点和面添加到 MeshSet 中。然后，计算每个顶点的主曲率方向，
-    最后获取顶点颜色矩阵和顶点曲率数组。
-
-    Args:
-        ms: pymeshlab格式mesh;
-
-    Returns:
-        - vertex_colors (numpy.ndarray): 顶点颜色矩阵，形状为 (n, 3)，其中 n 是顶点的数量。
-            每个元素的范围是 [0, 255]，表示顶点的颜色。
-        - vertex_curvature (numpy.ndarray): 顶点曲率数组，形状为 (n,)，其中 n 是顶点的数量。
-            每个元素表示对应顶点的曲率。
-        - new_vertex (numpy.ndarray): 新的顶点数组，形状为 (n,)，其中 n 是顶点的数量。
-        
-
-    """
-    ms.compute_curvature_principal_directions_per_vertex()
-    curr_ms = ms.current_mesh()
-    vertex_colors =curr_ms.vertex_color_matrix()*255
-    vertex_curvature=curr_ms.vertex_scalar_array()
-    new_vertex  =curr_ms.vertex_matrix()
-    return vertex_colors,vertex_curvature,new_vertex
-
-
-def compute_curvature_by_igl(v,f,method="Mean"):
-    """
-    用igl计算平均曲率并归一化
-
-    Args:
-        v: 顶点;
-        f: 面片:
-        method:返回曲率类型
-
-    Returns:
-        - vertex_curvature (numpy.ndarray): 顶点曲率数组，形状为 (n,)，其中 n 是顶点的数量。
-            每个元素表示对应顶点的曲率。
-            
-    Notes:
-    
-        输出: PD1 (主方向1), PD2 (主方向2), PV1 (主曲率1), PV2 (主曲率2)
-        
-        pd1 : #v by 3 maximal curvature direction for each vertex
-        pd2 : #v by 3 minimal curvature direction for each vertex
-        pv1 : #v by 1 maximal curvature value for each vertex
-        pv2 : #v by 1 minimal curvature value for each vertex
-
-
-    """
-    try:
-        import igl
-    except ImportError:
-        log.info("请安装igl, pip install libigl>=2.6.1")
-    PD1, PD2, PV1, PV2,_  = igl.principal_curvature(v, f)
-
-    if "Gaussian" in method:
-        # 计算高斯曲率（Gaussian Curvature）
-        K = PV1 * PV2
-    elif "Mean" in method:
-        # 计算平均曲率（Mean Curvature）
-        K = 0.5 * (PV1 + PV2)
-    else:
-        K=[PD1, PD2, PV1, PV2]
-    return K
-
-
-def harmonic_by_igl(v,f,map_vertices_to_circle=True):
-    """
-    谐波参数化后的2D网格
-
-    Args:
-        v (_type_): 顶点
-        f (_type_): 面片
-        map_vertices_to_circle: 是否映射到圆形（正方形)
-
-    Returns:
-        uv,v_p: 创建参数化后的2D网格,3D坐标
-        
-    Note:
-    
-        ```
-         
-        # 创建空间索引
-        uv_kdtree = KDTree(uv)
-        
-        # 初始化可视化系统
-        plt = Plotter(shape=(1, 2), axes=False, title="Interactive Parametrization")
-        
-        # 创建网格对象
-        mesh_3d = Mesh([v, f]).cmap("jet", calculate_curvature(v, f)).lighting("glossy")
-        mesh_2d = Mesh([v_p, f]).wireframe(True).cmap("jet", calculate_curvature(v, f))
-        
-        # 存储选中标记
-        markers_3d = []
-        markers_2d = []
-
-        def on_click(event):
-            if not event.actor or event.actor not in [mesh_2d, None]:
-                return
-            if not hasattr(event, 'picked3d') or event.picked3d is None:
-                return
-            
-            try:
-                # 获取点击坐标
-                uv_click = np.array(event.picked3d[:2])
-                
-                # 查找最近顶点
-                _, idx = uv_kdtree.query(uv_click)
-                v3d = v[idx]
-                uv_point = uv[idx]  # 获取对应2D坐标
-                
-                
-                # 创建3D标记（使用球体）
-                marker_3d = Sphere(v3d, r=0.1, c='cyan', res=12)
-                markers_3d.append(marker_3d)
-                
-                # 创建2D标记（使用大号点）
-                marker_2d = Point(uv_point, c='magenta', r=10, alpha=0.8)
-                markers_2d.append(marker_2d)
-                
-                # 更新视图
-                plt.at(0).add(marker_3d)
-                plt.at(1).add(marker_2d)
-                plt.render()
-                
-            except Exception as e:
-                log.info(f"Error processing click: {str(e)}")
-
-        plt.at(0).show(mesh_3d, "3D Visualization", viewup="z")
-        plt.at(1).show(mesh_2d, "2D Parametrization").add_callback('mouse_click', on_click)
-        plt.interactive().close()
-            
-        
-        ``` 
-        
-    """
-    try:
-        import igl
-    except ImportError:
-        log.info("请安装igl, pip install libigl")
-    v=np.array(v,dtype=np.float32)
-    # 正方形边界映射）
-    def map_to_square(bnd):
-        n = len(bnd)
-        quarter = n // 4
-        uv = np.zeros((n, 2))
-        for i in range(n):
-            idx = i % quarter
-            side = i // quarter
-            t = idx / (quarter-1)
-            if side == 0:   uv[i] = [1, t]
-            elif side == 1: uv[i] = [1-t, 1]
-            elif side == 2: uv[i] = [0, 1-t]
-            else:           uv[i] = [t, 0]
-        return uv
-    try:
-        # 参数化
-        bnd = igl.boundary_loop(f)
-        if map_vertices_to_circle:
-            bnd_uv = igl.map_vertices_to_circle(v, bnd)  # 圆形参数化
-        else:
-            bnd_uv = map_to_square(bnd)                # 正方形参数化
-        uv = igl.harmonic(v, f, bnd, bnd_uv, 1)
-    except Exception as e:
-        log.info(f"生成错误，请检测连通体数量，{e}")
-    # 创建参数化后的2D网格（3D坐标）
-    v_p = np.hstack([uv, np.zeros((uv.shape[0], 1))])
-    
-    return uv,v_p
-
-
-
-
-
-
-
-
-
-
-def hole_filling_by_Radial(boundary_coords):
-    """
-    参考 
-    
-    [https://www.cnblogs.com/shushen/p/5759679.html]
-    
-    实现的最小角度法补洞法；
-
-    Args:
-        boundary_coords (_type_): 有序边界顶点
-
-    Returns:
-        v,f: 修补后的曲面
-        
-        
-    Note:
-        ```python 
-        
-        # 创建带孔洞的简单网格
-        s = vedo.load(r"J10166160052_16.obj")
-        # 假设边界点即网格边界点
-        boundary =vedo.Spline((s.boundaries().join(reset=True).vertices),res=100)
-        # 通过边界点进行补洞
-        filled_mesh =vedo.Mesh(hole_filling(boundary.vertices))
-        # 渲染补洞后的曲面
-        vedo.show([filled_mesh,boundary,s.alpha(0.8)], bg='white').close()
-        
-        ```
-    
-    """
-    # 初始化顶点列表和边界索引
-    vertex_list = np.array(boundary_coords.copy())
-    boundary = list(range(len(vertex_list)))  # 存储顶点在vertex_list中的索引
-    face_list = []
-
-    while len(boundary) >= 3:
-        # 1. 计算平均边长
-        avg_length = 0.0
-        n_edges = len(boundary)
-        for i in range(n_edges):
-            curr_idx = boundary[i]
-            next_idx = boundary[(i+1)%n_edges]
-            avg_length += np.linalg.norm(vertex_list[next_idx] - vertex_list[curr_idx])
-        avg_length /= n_edges
-
-        # 2. 寻找最小内角顶点在边界列表中的位置
-        min_angle = float('inf')
-        min_idx = 0  # 默认取第一个顶点
-        for i in range(len(boundary)):
-            prev_idx = boundary[(i-1)%len(boundary)]
-            curr_idx = boundary[i]
-            next_idx = boundary[(i+1)%len(boundary)]
-            
-            v1 = vertex_list[prev_idx] - vertex_list[curr_idx]
-            v2 = vertex_list[next_idx] - vertex_list[curr_idx]
-            # 检查向量长度避免除以零
-            v1_norm = np.linalg.norm(v1)
-            v2_norm = np.linalg.norm(v2)
-            if v1_norm == 0 or v2_norm==0:
-                continue  # 跳过无效顶点
-            cos_theta = np.dot(v1, v2) / (v1_norm * v2_norm)
-            angle = np.arccos(np.clip(cos_theta, -1, 1))
-            if angle < min_angle:
-                min_angle = angle
-                min_idx = i  # 记录边界列表中的位置
-
-        # 3. 获取当前处理的三个顶点索引
-        curr_pos = min_idx
-        prev_pos = (curr_pos - 1) % len(boundary)
-        next_pos = (curr_pos + 1) % len(boundary)
-        
-        prev_idx = boundary[prev_pos]
-        curr_idx = boundary[curr_pos]
-        next_idx = boundary[next_pos]
-
-        # 计算前驱和后继顶点的距离
-        dist = np.linalg.norm(vertex_list[next_idx] - vertex_list[prev_idx])
-
-        # 4. 根据距离决定添加三角形的方式
-        if dist < 2 * avg_length:
-            # 添加单个三角形
-            face_list.append([prev_idx, curr_idx, next_idx])
-            # 从边界移除当前顶点
-            boundary.pop(curr_pos)
-        else:
-            # 创建新顶点并添加到顶点列表
-            new_vertex = (vertex_list[prev_idx] + vertex_list[next_idx]) / 2
-            vertex_list = np.vstack([vertex_list, new_vertex])
-            new_idx = len(vertex_list) - 1
-
-            # 添加两个三角形
-            face_list.append([prev_idx, curr_idx, new_idx])
-            face_list.append([curr_idx, next_idx, new_idx])
-
-            # 更新边界：替换当前顶点为新顶点
-            boundary.pop(curr_pos)
-            boundary.insert(curr_pos, new_idx)
-
-    return vertex_list, face_list
-
-
-
-
-
-
-
-
 class A_Star:
     def __init__(self,vertices, faces):
         """
@@ -2317,18 +2476,6 @@ class A_Star:
         # 开放队列空，无路径
         return None
 
-
-
-
-    
-    
-    
-    
-    
-    
-    
-    
-    
 
 
 
@@ -2510,642 +2657,3 @@ class MeshRandomWalks:
     
     
     
-    
-    
-    
-    
-    
-
-def mesh2sdf(v, f, size=64):
-    """
-    体素化网格，该函数适用于非水密网格（带孔的网格）、自相交网格、具有非流形几何体的网格以及具有方向不一致的面的网格。
-
-    Args:
-        v (array-like): 网格的顶点数组。
-        f (array-like): 网格的面数组。
-        size (int, optional): 体素化的大小，默认为 64。
-
-    Returns:
-        array: 体素化后的数组。
-
-    Raises:
-        ImportError: 如果未安装 'mesh-to-sdf' 库，会提示安装。
-    """
-    import trimesh
-    try:
-        from mesh_to_sdf import mesh_to_voxels
-    except ImportError:
-        log.info("请安装依赖库：pip install mesh-to-sdf")
-
-    mesh = trimesh.Trimesh(v, f)
-
-    voxels = mesh_to_voxels(mesh, size, pad=True)
-    return voxels
-
-def sample_sharp_mesh(mesh, num=20000, angle_threshold=10.0):
-    """
-    从网格的尖锐边缘采样点云,支持上采样;（阈值为角度，单位：度）
-    https://github.com/Tencent-Hunyuan/Hunyuan3D-2/blob/f8db63096c8282cb27354314d896feba5ba6ff8a/hy3dgen/shapegen/surface_loaders.py#L40
-    Args:
-        mesh (trimesh.Trimesh): 输入网格
-        num (int): 采样点数，默认16384
-        angle_threshold (float): 尖锐度角度阈值（范围0~180度），值越大识别的尖锐边越“钝”，默认10度
-
-    Returns:
-        samples (np.ndarray): (num, 3) 采样点坐标
-        normals (np.ndarray): (num, 3) 采样点法线
-
-    """
-    # 参数校验：确保角度阈值在合理范围
-    if not (0 <= angle_threshold <= 180):
-        raise ValueError(f"角度阈值angle_threshold必须在0~180度之间，当前值为{angle_threshold}")
-
-    # 将角度阈值转换为余弦值（顶点法线与面法线的点积阈值）
-    cos_threshold = np.cos(np.radians(angle_threshold))
-
-    # 提取网格基础数据
-    V = np.asarray(mesh.vertices)  # 顶点坐标 (Nv, 3)
-    N = np.asarray(mesh.face_normals)  # 面法线 (Nf, 3)
-    VN = np.asarray(mesh.vertex_normals)  # 顶点法线 (Nv, 3)
-    F = np.asarray(mesh.faces)  # 面索引 (Nf, 3)
-
-    # 计算顶点的尖锐度指标：顶点法线与所属面法线的最小点积
-    VN2 = np.ones(V.shape[0])  # 初始化尖锐度指标为1（最平滑）
-    for i in range(3):  # 遍历面的三个顶点
-        face_vertex_idx = F[:, i]  # 当前面的第i个顶点索引
-        # 顶点法线与对应面法线的点积
-        dot_product = np.sum(VN[face_vertex_idx] * N, axis=-1)
-        # 更新顶点的最小点积（保留最尖锐的情况）
-        current_vn2 = VN2[face_vertex_idx]
-        VN2[face_vertex_idx] = np.minimum(current_vn2, dot_product)
-
-    # 筛选尖锐顶点（点积小于角度对应的余弦值 → 夹角大于阈值）
-    sharp_mask = VN2 < cos_threshold
-
-    # 提取所有唯一边（避免重复边影响权重）
-    edges = mesh.edges_unique  # trimesh直接提供唯一边 (Ne, 2)
-    edge_a, edge_b = edges[:, 0], edges[:, 1]
-
-    # 筛选尖锐边（两个顶点均为尖锐顶点）
-    sharp_edge_mask = sharp_mask[edge_a] & sharp_mask[edge_b]
-    sharp_edges = edges[sharp_edge_mask]  # 尖锐边索引 (Nse, 2)
-
-    # 处理无尖锐边的情况
-    if len(sharp_edges) == 0:
-        print(f"警告：在角度阈值{angle_threshold}度下未检测到尖锐边，返回网格表面均匀采样")
-        samples, face_idx = mesh.sample(num, return_index=True)
-        normals = mesh.face_normals[face_idx]
-        return samples, normals
-
-    # 提取尖锐边的顶点坐标和法线
-    sharp_verts_a = V[sharp_edges[:, 0]]  # (Nse, 3)
-    sharp_verts_b = V[sharp_edges[:, 1]]  # (Nse, 3)
-    sharp_verts_an = VN[sharp_edges[:, 0]]  # (Nse, 3)
-    sharp_verts_bn = VN[sharp_edges[:, 1]]  # (Nse, 3)
-
-    # 计算每条尖锐边的长度作为采样权重（避免除以0）
-    edge_lengths = np.linalg.norm(sharp_verts_b - sharp_verts_a, axis=-1)
-    edge_lengths = np.maximum(edge_lengths, 1e-8)  # 防止零长度边
-    weights = edge_lengths / np.sum(edge_lengths)  # 归一化权重
-
-    # 按权重随机选择边（防止索引越界）
-    random_indices = np.searchsorted(weights.cumsum(), np.random.rand(num))
-    random_indices = np.clip(random_indices, 0, len(weights)-1)
-
-    # 在选中的边上线性插值采样
-    w = np.random.rand(num, 1)  # 插值权重 (num, 1)
-    samples = w * sharp_verts_a[random_indices] + (1 - w) * sharp_verts_b[random_indices]
-    normals = w * sharp_verts_an[random_indices] + (1 - w) * sharp_verts_bn[random_indices]
-
-    # 归一化法线（确保单位长度）
-    normals = normals / np.linalg.norm(normals, axis=-1, keepdims=True)
-
-    return samples, normals
-
-
-
-def sample_sdf_mesh(v, f, number_of_points=200000):
-    """
-    在曲面附近不均匀地采样 SDF 点，该函数适用于非水密网格（带孔的网格）、自相交网格、具有非流形几何体的网格以及具有方向不一致的面的网格。
-    这是 DeepSDF 论文中提出和使用的方法。
-
-    Args:
-        v (array-like): 网格的顶点数组。
-        f (array-like): 网格的面数组。
-        number_of_points (int, optional): 采样点的数量，默认为 200000。
-
-    Returns:
-        tuple: 包含采样点数组和对应的 SDF 值数组的元组。
-
-    Raises:
-        ImportError: 如果未安装 'mesh-to-sdf' 库，会提示安装。
-    """
-    import trimesh
-    try:
-        from mesh_to_sdf import sample_sdf_near_surface
-    except ImportError:
-        log.info("请安装依赖库：pip install mesh-to-sdf")
-
-    mesh = trimesh.Trimesh(v, f)
-
-    points, sdf = sample_sdf_near_surface(mesh, number_of_points=number_of_points)
-    return points, sdf
-    
-    
-    
-def resample_mesh(vertices, faces, density=1, num_samples=None):
-    """在由顶点和面定义的网格表面上进行点云重采样。
-    
-    1. 密度模式：根据单位面片面积自动计算总采样数
-    2. 指定数量模式：直接指定需要采样的总点数
-
-    该函数使用向量化操作高效地在网格表面进行均匀采样，采样密度由单位面积点数决定。
-    采样策略基于重心坐标系，采用分层随机抽样方法。
-
-    注意：
-        零面积三角形会被自动跳过，因为不会分配采样点。
-
-    参考实现：
-        https://chrischoy.github.io/research/barycentric-coordinate-for-mesh-sampling/
-
-    Args:
-        vertices (numpy.ndarray): 网格顶点数组，形状为(V, 3)，V表示顶点数量
-        faces (numpy.ndarray): 三角形面片索引数组，形状为(F, 3)，数据类型应为整数
-        density (float, 可选): 每单位面积的采样点数，默认为1
-        num_samples (int, 可选): 指定总采样点数，若提供则忽略density参数
-
-    Returns:
-        numpy.ndarray: 重采样后的点云数组，形状为(N, 3)，N为总采样点数
-
-    Notes:
-        采样点生成公式（重心坐标系）：
-            P = (1 - √r₁)A + √r₁(1 - r₂)B + √r₁ r₂ C
-        其中：
-        - r₁, r₂ ∈ [0, 1) 为随机数
-        - A, B, C 为三角形顶点
-        - 该公式可确保在三角形表面均匀采样
-
-        算法流程：
-        1. 计算每个面的面积并分配采样点数
-        2. 通过随机舍入处理总点数误差
-        3. 使用向量化操作批量生成采样点
-
-    References:
-        [1] Barycentric coordinate system - https://en.wikipedia.org/wiki/Barycentric_coordinate_system
-    """
-    # 计算每个面的法向量并计算面的面积
-    vec_cross = np.cross(
-        vertices[faces[:, 0], :] - vertices[faces[:, 2], :],
-        vertices[faces[:, 1], :] - vertices[faces[:, 2], :],
-    )
-    face_areas = np.sqrt(np.sum(vec_cross ** 2, 1))
-    
-    if num_samples is not None:
-        n_samples = num_samples
-        # 按面积比例分配采样数
-        ratios = face_areas / face_areas.sum()
-        n_samples_per_face = np.random.multinomial(n_samples, ratios)
-    else:
-        # 计算需要采样的总点数
-        n_samples = (np.sum(face_areas) * density).astype(int)
-        # face_areas = face_areas / np.sum(face_areas)
-
-        # 为每个面分配采样点数
-        # 首先，过度采样点并去除多余的点
-        # Bug 修复由 Yangyan (yangyan.lee@gmail.com) 完成
-        n_samples_per_face = np.ceil(density * face_areas).astype(int)
-        
-    
-    floor_num = np.sum(n_samples_per_face) - n_samples
-    if floor_num > 0:
-        indices = np.where(n_samples_per_face > 0)[0]
-        floor_indices = np.random.choice(indices, floor_num, replace=True)
-        n_samples_per_face[floor_indices] -= 1
-
-    n_samples = np.sum(n_samples_per_face)
-
-    # 创建一个包含面索引的向量
-    sample_face_idx = np.zeros((n_samples,), dtype=int)
-    acc = 0
-    for face_idx, _n_sample in enumerate(n_samples_per_face):
-        sample_face_idx[acc : acc + _n_sample] = face_idx
-        acc += _n_sample
-
-
-    # 生成随机数
-    r = np.random.rand(n_samples, 2)
-    faces_samples = faces[sample_face_idx]
-    A = vertices[faces_samples[:, 0]]
-    B = vertices[faces_samples[:, 1]]
-    C = vertices[faces_samples[:, 2]]
-
-    # 使用重心坐标公式计算采样点
-    P = (
-        (1 - np.sqrt(r[:, 0:1])) * A
-        + np.sqrt(r[:, 0:1]) * (1 - r[:, 1:]) * B
-        + np.sqrt(r[:, 0:1]) * r[:, 1:] * C
-    )
-    
-    # # 随机采样
-    # if num_samples is not None:
-    #     idx = np.random.choice(len(P), num_samples,replace=False)
-    #     P=P[idx]
-
-    return P
-    
-    
-    
-    
-    
-def subdivide_loop_by_trimesh(
-    vertices,
-    faces,
-    iterations=5,
-    max_face_num=100000,
-    face_mask=None,
-):
-    """
-    
-    对给定的顶点和面片进行 Loop 细分。
-
-    Args:
-        vertices (array-like): 输入的顶点数组，形状为 (n, 3)，其中 n 是顶点数量。
-        faces (array-like): 输入的面片数组，形状为 (m, 3)，其中 m 是面片数量。
-        iterations (int, optional): 细分的迭代次数，默认为 5。
-        max_face_num (int, optional): 细分过程中允许的最大面片数量，达到此数量时停止细分，默认为 100000。
-        face_mask (array-like, optional): 面片掩码数组，用于指定哪些面片需要进行细分，默认为 None。
-
-    Returns:
-        tuple: 包含细分后的顶点数组、细分后的面片数组和面片掩码数组的元组。
-
-    Notes:
-        以下是一个示例代码，展示了如何使用该函数：
-        ```python
-        # 1. 获取每个点的最近表面点及对应面
-        face_indices = set()
-        kdtree = cKDTree(mesh.vertices)
-        for p in pts:
-            # 查找半径2mm内的顶点
-            vertex_indices = kdtree.query_ball_point(p, r=1.0)
-            for v_idx in vertex_indices:
-                # 获取包含这些顶点的面片
-                faces = mesh.vertex_faces[v_idx]
-                faces = faces[faces != -1]  # 去除无效索引
-                face_indices.update(faces.tolist())
-        face_indices = np.array([[i] for i in list(face_indices)])
-        new_vertices, new_face, _ = subdivide_loop(v, f, face_mask=face_indices)
-        ```
-    
-    
-    """
-    import trimesh
-    current_v = np.asarray(vertices)
-    current_f = np.asarray(faces)
-    if face_mask is not None:
-        face_mask = np.asarray(face_mask).reshape(-1)
-
-    for _ in range(iterations):
-        current_v, current_f,face_mask_dict=trimesh.remesh.subdivide(current_v,current_f,face_mask, return_index=True)
-        face_mask = np.asarray(np.concatenate(list(face_mask_dict.values()))).reshape(-1)
-        # 检查停止条件
-        if len(current_f)>max_face_num:
-            log.info(f"subdivide: {len(current_f)} >{ max_face_num},break")
-            break
-        
-    return current_v, current_f,face_mask
-
-
-
-def angle_axis_np(angle, axis):
-    """
-    计算绕给定轴旋转指定角度的旋转矩阵。
-
-    Args:
-        angle (float): 旋转角度（弧度）。
-        axis (np.ndarray): 旋转轴，形状为 (3,) 的 numpy 数组。
-
-    Returns:
-        np.array: 3x3 的旋转矩阵，数据类型为 np.float32。
-    """
-    u = axis / np.linalg.norm(axis)
-    cosval, sinval = np.cos(angle), np.sin(angle)
-    cross_prod_mat = np.array([[0.0, -u[2], u[1]],
-                                        [u[2], 0.0, -u[0]],
-                                        [-u[1], u[0], 0.0]])
-    R =cosval * np.eye(3)+ sinval * cross_prod_mat+ (1.0 - cosval) * np.outer(u, u)
-    return R
-
-
-
-
-
-def detect_boundary_points(points, labels, config=None):
-    """
-    基于局部标签一致性的边界点检测函数
-    
-    Args:
-        points (np.ndarray): 点云坐标，形状为 (N, 3)
-        labels (np.ndarray): 点云标签，形状为 (N,)
-        config (dict): 配置参数，包含:
-            - knn_k: KNN查询的邻居数（默认40）
-            - bdl_ratio: 边界判定阈值（默认0.8）
-            
-    Returns:
-        np.ndarray: 边界点掩码，形状为 (N,)，边界点为True，非边界点为False
-    """
-    from sklearn.neighbors import KDTree
-    from scipy.stats import mode
-    labels = labels.reshape(-1)
-    # 设置默认配置
-    default_config = {
-        "knn_k": 40,
-        "bdl_ratio": 0.8
-    }
-    if config:
-        default_config.update(config)
-    config = default_config
-    
-    # 构建KD树
-    tree = KDTree(points, leaf_size=2)
-    
-    # 查询k近邻索引
-    near_points_indices = tree.query(points, k=config["knn_k"], return_distance=False)
-    
-    # 获取邻居标签
-    neighbor_labels = np.asarray(labels[near_points_indices], dtype=np.int32)  # 形状: (N, knn_k)
-    
-    # 统计每个点的邻居中主要标签的出现次数
-    # def count_dominant_label(row):
-    #     return np.bincount(row).max() if len(row) > 0 else 0
-    # label_counts = np.apply_along_axis(count_dominant_label, axis=1, arr=neighbor_labels)
-    if neighbor_labels.size == 0:
-        label_counts = np.zeros(len(points), dtype=int)
-    else:
-        label_counts = mode(neighbor_labels, axis=1, keepdims=False).count
-
-    # 计算主要标签比例并生成边界掩码
-    label_ratio = label_counts / config["knn_k"]
-    boundary_mask = label_ratio < config["bdl_ratio"]
-    # print(neighbor_labels.shape,np.unique(neighbor_labels))
-    # print(f"标签比例范围: [{label_ratio.min():.2f}, {label_ratio.max():.2f}]")
-    # print(f"边界点数量: {boundary_mask.sum()}")
-    
-    return boundary_mask
-
-
-
-
-
-
-def cut_mesh_with_meshlib(v: np.ndarray, f: np.ndarray, loop_points,
-                          get_bigger_part: bool = False, smooth_boundary: bool = False) -> tuple:
-    """沿指定的点环切割网格并返回选定的部分
-
-    给定的点环投影到网格表面，创建闭合轮廓，沿此轮廓切割网格，
-    并返回网格的较大或较小部分。可选择对切割边界进行平滑处理。
-
-    Args:
-        v: 输入网格的顶点坐标，形状为 (N, 3)
-        f: 输入网格的面索引，形状为 (M, 3)
-        loop_points: 定义切割环的3D点列表，每个点为 [x, y, z],，形状为 (B, 3)
-        get_bigger_part: 如果为True，返回切割后较大的部分；否则返回较小的部分
-        smooth_boundary: 如果为True，对切割边界进行平滑处理
-
-    Returns:
-        tuple: 包含:
-            kept_mesh_v: 切割后网格的顶点坐标，形状为 (P, 3)
-            kept_mesh_f: 切割后网格的面索引，形状为 (Q, 3)
-            removed_mesh_v: 其他网格的顶点坐标，形状为 (P, 3)
-            removed_mesh_f: 其他网格的面索引，形状为 (Q, 3)
-
-    Raises:
-        RuntimeError: 如果切割操作失败或产生无效结果
-
-    Example:
-         kept_mesh_v,kept_mesh_f,removed_mesh_v,removed_mesh_f = cut_mesh(vertices, faces, margin_points, get_bigger_part=True, smooth_boundary=True)
-    """
-
-    import meshlib.mrmeshnumpy as mrmeshnumpy
-    from meshlib.mrmeshpy import (smoothRegionBoundary, edgeCurvMetric,
-                                  fillContourLeftByGraphCut, Mesh, Vector3f,
-                                  findProjection, convertMeshTriPointsToClosedContour,
-                                  cutMesh)
-    from importlib.metadata import version
-    assert version("meshlib")=='3.0.6.229'
-    # 验证输入数组格式
-    if v.ndim != 2 or v.shape[1] != 3:
-        raise ValueError("顶点数组必须是 (N, 3) 的形状")
-    if f.ndim != 2 or f.shape[1] != 3:
-        raise ValueError("面索引数组必须是 (M, 3) 的形状")
-    if len(loop_points) < 3:
-        raise ValueError("切割环必须包含至少3个点")
-
-    # 从输入的顶点和面创建网格
-    mesh_clone = mrmeshnumpy.meshFromFacesVerts(f, v)
-
-    # 将环上的点投影到网格表面
-    tri_points = []
-    for p in loop_points:
-        v3 = Vector3f(p[0], p[1], p[2])
-        projection = findProjection(v3, mesh_clone)
-        tri_points.append(projection.mtp)
-
-    # 从投影点创建闭合轮廓
-    contour = convertMeshTriPointsToClosedContour(mesh_clone, tri_points)
-
-
-    # 沿轮廓切割网格
-    cut_result = cutMesh(mesh_clone, [contour])
-
-    # 使用图割方法选择网格部分
-    edge_path = cut_result.resultCut[0]
-    one_part = fillContourLeftByGraphCut(
-        mesh_clone.topology,
-        edge_path,
-        edgeCurvMetric(mesh_clone)
-    )
-
-    # 如果需要，平滑边界
-    if smooth_boundary:
-        smoothRegionBoundary(mesh_clone, one_part)
-
-    # 确定要保留的部分
-    other_part = mesh_clone.topology.getValidFaces() - one_part
-    # 计算两个部分的面积
-    area_one = mesh_clone.area(one_part)
-    area_other = mesh_clone.area(other_part)
-    # one_part_bool_np =mrmeshnumpy.getNumpyBitSet(one_part)
-    # 根据面积选择保留部分
-    if get_bigger_part:
-        kept_part = one_part if area_one > area_other else other_part
-        removed_part = other_part if kept_part == one_part else one_part
-    else:
-        kept_part = one_part if area_one < area_other else other_part
-        removed_part = other_part if kept_part == one_part else one_part
-
-    # 创建输出网格
-    kept_mesh = Mesh()
-    kept_mesh.addPartByMask(mesh_clone, kept_part)
-    # 清理未使用的顶点，优化网格
-    kept_mesh.pack()
-
-    # 其他网格
-    removed_mesh = Mesh()
-    removed_mesh.addPartByMask(mesh_clone, removed_part)
-    removed_mesh.pack()
-
-    # 提取numpy数组
-    kept_mesh_v = mrmeshnumpy.getNumpyVerts(kept_mesh)
-    kept_mesh_f = mrmeshnumpy.getNumpyFaces(kept_mesh.topology)
-    removed_mesh_v = mrmeshnumpy.getNumpyVerts(removed_mesh)
-    removed_mesh_f = mrmeshnumpy.getNumpyFaces(removed_mesh.topology)
-
-    return kept_mesh_v,kept_mesh_f,removed_mesh_v,removed_mesh_f
-
-
-def line_project_mesh(v: np.ndarray, f: np.ndarray, loop_points,gen_new_edge=False):
-    """
-    将输入的3D点环投影到网格表面，根据参数决定是生成新的切割边还是仅提取投影轮廓。
-
-    Args:
-        v (np.ndarray): 网格顶点数组，形状为(N, 3)的浮点数组。
-        f (np.ndarray): 网格面索引数组，形状为(M, 3)的整数数组。
-        loop_points (iterable): 3D点列表/数组，定义要投影到网格上的环状路径。
-        gen_new_edge (bool, optional): 是否生成新切割边。默认为True。
-            True: 在网格上生成新边并分割网格
-            False: 仅提取投影轮廓
-
-    Returns:
-        tuple: 包含四个元素的元组:
-            - res_pts (list): 投影轮廓的3D点列表，每个点为[x, y, z]
-            - res_pts_idx (list): 新生成边的顶点索引列表(仅当gen_new_edge=True时有效)
-            - res_v (np.ndarray): 处理后网格顶点数组(仅当gen_new_edge=True时返回新网格)
-            - res_f (np.ndarray): 处理后网格面索引数组(仅当gen_new_edge=True时返回新网格)
-    """
-
-    import meshlib.mrmeshnumpy as mrmeshnumpy
-    from meshlib.mrmeshpy import ( Vector3f, findProjection, convertMeshTriPointsToClosedContour, extractMeshContours,cutMesh,func_float_from_Id_EdgeTag)
-    # 验证输入数组格式
-    if v.ndim != 2 or v.shape[1] != 3:
-        raise ValueError("顶点数组必须是 (N, 3) 的形状")
-    if f.ndim != 2 or f.shape[1] != 3:
-        raise ValueError("面索引数组必须是 (M, 3) 的形状")
-    if len(loop_points) < 3:
-        raise ValueError("切割环必须包含至少3个点")
-
-    # 从输入的顶点和面创建网格
-    mesh_clone = mrmeshnumpy.meshFromFacesVerts(f, v)
-
-    # 将环上的点投影到网格表面
-    tri_points = []
-    for p in loop_points:
-        v3 = Vector3f(p[0], p[1], p[2])
-        projection = findProjection(v3, mesh_clone)
-        tri_points.append(projection.mtp)
-
-
-
-    # 从投影点创建闭合轮廓
-    contour = convertMeshTriPointsToClosedContour(mesh_clone, tri_points)
-
-    res_v = v
-    res_f = f
-    res_pts_idx = []
-    res_pts = []
-
-    if gen_new_edge:
-        # 基于投影生成新边
-        cut_result = cutMesh(mesh_clone, [contour])
-        res_v ,res_f =  mrmeshnumpy.getNumpyVerts(mesh_clone), mrmeshnumpy.getNumpyFaces(mesh_clone.topology)
-        for i in cut_result.resultCut[0]:
-            res_pts_idx.append(int(i))
-    else:
-        for pts in extractMeshContours([contour])[0]:
-            res_pts.append([pts.x,pts.y,pts.z])
-
-
-    return res_pts,res_pts_idx,res_v ,res_f
-
-
-
-
-def mesh_uv_wrap(mesh):
-    """对3D网格进行UV展开处理，使用xatlas库生成优化的UV坐标。
-
-    该函数接收一个trimesh网格或场景对象，将其转换为单个网格后，
-    使用xatlas算法进行参数化处理以生成UV坐标，最终返回带有UV信息的网格。
-
-    Args:
-        mesh (trimesh.Trimesh or trimesh.Scene or str): 输入的3D网格或mesh路径或场景对象。
-            如果是场景对象，会先合并为单个网格。
-
-    Returns:
-        trimesh.Trimesh: 带有生成的UV坐标的网格对象，顶点和面可能经过重新索引。
-
-    Raises:
-        ValueError: 当输入网格的面数超过500,000,000时抛出，不支持过大的网格处理。
-
-    Note:
-        处理过程中会使用xatlas.parametrize()进行UV展开，这可能会重新组织顶点和 faces索引。
-        生成的UV坐标会存储在网格的visual.uv属性中，可用于纹理映射等后续处理。
-    """
-    # 局部导入模块，避免在不需要该功能时加载依赖
-    import trimesh
-    import xatlas
-    # 如果输入是路径，则合并为单个网格
-    if isinstance(mesh, str):
-        mesh =trimesh.load_mesh(mesh)
-
-    # 如果输入是场景，则合并为单个网格
-    if isinstance(mesh, trimesh.Scene):
-        mesh = mesh.dump(concatenate=True)
-
-    # 检查网格面数是否在支持范围内
-    if len(mesh.faces) > 500_000_000:  # 使用下划线提高可读性
-        raise ValueError("The mesh has more than 500,000,000 faces, which is not supported.")
-
-    # 使用xatlas进行UV参数化
-    vmapping, indices, uvs = xatlas.parametrize(mesh.vertices, mesh.faces)
-
-    # 更新网格的顶点、面和UV坐标
-    mesh.vertices = mesh.vertices[vmapping]
-    mesh.faces = indices
-    mesh.visual.uv = uvs
-
-    return mesh
-
-
-def normal2color(normal):
-    """
-    将normal转换成颜色
-    Args:
-        normal: 网格的法线
-
-    Returns:
-        (0-255)颜色
-
-    """
-    rgb = (normal*0.5 + 0.5)*255.0
-    return rgb
-
-
-def depth2color(depth: np.ndarray,bg_color=None) -> np.ndarray:
-    """
-    将深度值转换为彩色图像
-
-    Args:
-        depth: 深度值
-
-    Returns:
-        彩色深度图像，形状为(H, W, 3)
-    """
-    import matplotlib.colors as mcolors
-    from matplotlib import colormaps
-    cmap = colormaps['jet']
-    norm = mcolors.Normalize(vmin=depth.min(), vmax=depth.max())
-    value = norm(depth) # 0~1
-    rgb = cmap(value)[:, :, :3]
-    if bg_color is not  None:
-        # 替换最大值区域为指定颜色
-        rgb[value>1-1e-6] = bg_color
-    return (rgb * 255).astype(np.uint8)

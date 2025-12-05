@@ -272,7 +272,7 @@ def detect_boundary(points, labels, config=None):
     # 计算每个点的众数标签及其出现次数
     # 将标签转换为one-hot编码以便于计算
     num_classes = int(labels.max() + 1)
-    one_hot_labels = F.one_hot(neighbor_labels, num_classes).float()  # (N, k, C)
+    one_hot_labels =torch.nn.functional.one_hot(neighbor_labels, num_classes).float()  # (N, k, C)
     # 统计每个类别在邻居中的出现次数
     class_counts = one_hot_labels.sum(dim=1)  # (N, C)
     # 找到每个点的众数标签的出现次数

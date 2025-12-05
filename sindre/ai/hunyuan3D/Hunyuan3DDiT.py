@@ -21,204 +21,26 @@
     x = torch.randn(2, 16, 64)   # 潜在表示
     t = torch.rand(2)            # 扩散时间步
     context = torch.randn(2, 77, 1536)  # 文本嵌入
-    
+
     output = model(x, t, contexts={'main': context})
 """
 
-import math
-import os
-from dataclasses import dataclass
-from typing import List, Tuple, Optional
 
+
+from typing import Optional, List, Tuple
 import torch
 from einops import rearrange
-from torch import Tensor, nn
-
-# 使用优化后的注意力机制（如果可用）
-scaled_dot_product_attention = nn.functional.scaled_dot_product_attention
-if os.environ.get('USE_SAGEATTN', '0') == '1':
-    try:
-        from sageattention import sageattn
-    except ImportError:
-        raise ImportError('USE_SAGEATTN启用时需要安装"sageattention"包')
-    scaled_dot_product_attention = sageattn
+from torch import nn
+from sindre.ai.attention_utils.multihead_attention import SelfAttention
+from sindre.ai.embedder import TimestepEmbedder
+from sindre.ai.layers import LastProjectLayer, Modulation, attention, QKNorm
 
 
-def attention(q: Tensor, k: Tensor, v: Tensor, **kwargs) -> Tensor:
-    """带缩放的点积注意力机制，可选位置编码
-    
-    Args:
-        q: 查询张量，形状为 (B, H, L, D)
-        k: 键张量，形状为 (B, H, S, D)
-        v: 值张量，形状为 (B, H, S, D)
-        **kwargs: 注意力计算的额外参数
-    
-    Returns:
-        注意力输出张量，形状为 (B, L, H*D)
-    """
-    x = scaled_dot_product_attention(q, k, v)
-    x = rearrange(x, "B H L D -> B L (H D)")
-    return x
-
-
-def timestep_embedding(t: Tensor, dim: int, max_period: int = 10000, 
-                      time_factor: float = 1000.0) -> Tensor:
-    """生成带频率缩放的正弦时间步嵌入
-    
-    Args:
-        t: 1D时间步张量，形状 (N,)
-        dim: 输出嵌入的维度
-        max_period: 频率计算的最大周期
-        time_factor: 时间步值的缩放因子
-    
-    Returns:
-        位置嵌入张量，形状 (N, dim)
-    """
-    t = time_factor * t
-    half = dim // 2
-    freqs = torch.exp(-math.log(max_period) * torch.arange(start=0, end=half, dtype=torch.float32) / half).to(
-        t.device
-    )
-
-    args = t[:, None].float() * freqs[None]
-    embedding = torch.cat([torch.cos(args), torch.sin(args)], dim=-1)
-    if dim % 2:
-        embedding = torch.cat([embedding, torch.zeros_like(embedding[:, :1])], dim=-1)
-    if torch.is_floating_point(t):
-        embedding = embedding.to(t)
-    return embedding
-
-
-class GELU(nn.Module):
-    """使用tanh近似的Gaussian Error Linear Unit激活函数
-    
-    Args:
-        approximate: 近似方法，'tanh' 或 'none'
-    """
-    def __init__(self, approximate: str = 'tanh'):
-        super().__init__()
-        self.approximate = approximate
-
-    def forward(self, x: Tensor) -> Tensor:
-        return nn.functional.gelu(x.contiguous(), approximate=self.approximate)
-
-
-class MLPEmbedder(nn.Module):
-    """用于条件信号嵌入的双层MLP
-    
-    Args:
-        in_dim: 输入维度
-        hidden_dim: 隐藏层维度
-    """
-    def __init__(self, in_dim: int, hidden_dim: int):
-        super().__init__()
-        self.in_layer = nn.Linear(in_dim, hidden_dim, bias=True)
-        self.silu = nn.SiLU()
-        self.out_layer = nn.Linear(hidden_dim, hidden_dim, bias=True)
-
-    def forward(self, x: Tensor) -> Tensor:
-        return self.out_layer(self.silu(self.in_layer(x)))
-
-
-class RMSNorm(torch.nn.Module):
-    """均方根层归一化
-    
-    Args:
-        dim: 归一化维度
-    """
-    def __init__(self, dim: int):
-        super().__init__()
-        self.scale = nn.Parameter(torch.ones(dim))
-
-    def forward(self, x: Tensor):
-        x_dtype = x.dtype
-        x = x.float()
-        rrms = torch.rsqrt(torch.mean(x ** 2, dim=-1, keepdim=True) + 1e-6)
-        return (x * rrms).to(dtype=x_dtype) * self.scale
-
-
-class QKNorm(torch.nn.Module):
-    """注意力机制中查询和键的归一化
-    
-    Args:
-        dim: 查询/键的向量维度
-    """
-    def __init__(self, dim: int):
-        super().__init__()
-        self.query_norm = RMSNorm(dim)
-        self.key_norm = RMSNorm(dim)
-
-    def forward(self, q: Tensor, k: Tensor, v: Tensor) -> Tuple[Tensor, Tensor]:
-        q = self.query_norm(q)
-        k = self.key_norm(k)
-        return q.to(v), k.to(v)
-
-
-class SelfAttention(nn.Module):
-    """带QK归一化的多头自注意力
-    
-    Args:
-        dim: 输入维度
-        num_heads: 注意力头数
-        qkv_bias: 是否在qkv投影中使用偏置
-    """
-    def __init__(
-        self,
-        dim: int,
-        num_heads: int = 8,
-        qkv_bias: bool = False,
-    ):
-        super().__init__()
-        self.num_heads = num_heads
-        head_dim = dim // num_heads
-
-        self.qkv = nn.Linear(dim, dim * 3, bias=qkv_bias)
-        self.norm = QKNorm(head_dim)
-        self.proj = nn.Linear(dim, dim)
-
-    def forward(self, x: Tensor, pe: Tensor) -> Tensor:
-        qkv = self.qkv(x)
-        q, k, v = rearrange(qkv, "B L (K H D) -> K B H L D", K=3, H=self.num_heads)
-        q, k = self.norm(q, k, v)
-        x = attention(q, k, v, pe=pe)
-        x = self.proj(x)
-        return x
-
-
-@dataclass
-class ModulationOut:
-    """调制参数输出容器"""
-    shift: Tensor
-    scale: Tensor
-    gate: Tensor
-
-
-class Modulation(nn.Module):
-    """基于条件向量的动态特征调制
-    
-    Args:
-        dim: 调制参数的维度
-        double: 是否生成两组调制参数
-    """
-    def __init__(self, dim: int, double: bool):
-        super().__init__()
-        self.is_double = double
-        self.multiplier = 6 if double else 3
-        self.lin = nn.Linear(dim, self.multiplier * dim, bias=True)
-
-    def forward(self, vec: Tensor) -> Tuple[ModulationOut, Optional[ModulationOut]]:
-        out = self.lin(nn.functional.silu(vec))[:, None, :]
-        out = out.chunk(self.multiplier, dim=-1)
-
-        return (
-            ModulationOut(*out[:3]),
-            ModulationOut(*out[3:]) if self.is_double else None,
-        )
 
 
 class DoubleStreamBlock(nn.Module):
     """图文交互的双流Transformer块
-    
+
     Args:
         hidden_size: 隐藏层维度
         num_heads: 注意力头数
@@ -226,17 +48,17 @@ class DoubleStreamBlock(nn.Module):
         qkv_bias: 是否在qkv投影中使用偏置
     """
     def __init__(
-        self,
-        hidden_size: int,
-        num_heads: int,
-        mlp_ratio: float,
-        qkv_bias: bool = False,
+            self,
+            hidden_size: int,
+            num_heads: int,
+            mlp_ratio: float,
+            qkv_bias: bool = False,
     ):
         super().__init__()
         mlp_hidden_dim = int(hidden_size * mlp_ratio)
         self.num_heads = num_heads
         self.hidden_size = hidden_size
-        
+
         # 图像流组件
         self.img_mod = Modulation(hidden_size, double=True)
         self.img_norm1 = nn.LayerNorm(hidden_size, elementwise_affine=False, eps=1e-6)
@@ -244,7 +66,7 @@ class DoubleStreamBlock(nn.Module):
         self.img_norm2 = nn.LayerNorm(hidden_size, elementwise_affine=False, eps=1e-6)
         self.img_mlp = nn.Sequential(
             nn.Linear(hidden_size, mlp_hidden_dim, bias=True),
-            GELU(approximate="tanh"),
+            nn.GELU(approximate="tanh"),
             nn.Linear(mlp_hidden_dim, hidden_size, bias=True),
         )
 
@@ -255,31 +77,33 @@ class DoubleStreamBlock(nn.Module):
         self.txt_norm2 = nn.LayerNorm(hidden_size, elementwise_affine=False, eps=1e-6)
         self.txt_mlp = nn.Sequential(
             nn.Linear(hidden_size, mlp_hidden_dim, bias=True),
-            GELU(approximate="tanh"),
+            nn.GELU(approximate="tanh"),
             nn.Linear(mlp_hidden_dim, hidden_size, bias=True),
         )
 
-    def forward(self, img: Tensor, txt: Tensor, vec: Tensor, pe: Tensor) -> Tuple[Tensor, Tensor]:
+    def forward(self, img: torch.Tensor, txt: torch.Tensor, vec: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
         # 图像流处理
         img_mod1, img_mod2 = self.img_mod(vec)
         img_modulated = (1 + img_mod1.scale) * self.img_norm1(img) + img_mod1.shift
-        img_q, img_k, img_v = rearrange(self.img_attn.qkv(img_modulated), 
-                                      "B L (K H D) -> K B H L D", K=3, H=self.num_heads)[:3]
-        img_q, img_k = self.img_attn.norm(img_q, img_k, img_v)
+        img_q, img_k, img_v = rearrange(self.img_attn.qkv(img_modulated),
+                                        "B L (K H D) -> K B H L D", K=3, H=self.num_heads)[:3]
+        img_q, img_k = self.img_attn.norm(img_q, img_k)
+        img_q, img_k = img_q.to(img_v), img_k.to(img_v)
 
         # 文本流处理
         txt_mod1, txt_mod2 = self.txt_mod(vec)
         txt_modulated = (1 + txt_mod1.scale) * self.txt_norm1(txt) + txt_mod1.shift
-        txt_q, txt_k, txt_v = rearrange(self.txt_attn.qkv(txt_modulated), 
-                                      "B L (K H D) -> K B H L D", K=3, H=self.num_heads)[:3]
-        txt_q, txt_k = self.txt_attn.norm(txt_q, txt_k, txt_v)
+        txt_q, txt_k, txt_v = rearrange(self.txt_attn.qkv(txt_modulated),
+                                        "B L (K H D) -> K B H L D", K=3, H=self.num_heads)[:3]
+        txt_q, txt_k = self.txt_attn.norm(txt_q, txt_k)
+        txt_q, txt_k = txt_q.to(txt_v), txt_k.to(txt_v)
 
         # 跨模态注意力
         q = torch.cat((txt_q, img_q), dim=2)
         k = torch.cat((txt_k, img_k), dim=2)
         v = torch.cat((txt_v, img_v), dim=2)
-        attn = attention(q, k, v, pe=pe)
-        
+        attn = attention(q, k, v)
+
         # 分割并处理输出
         txt_attn, img_attn = attn[:, : txt.shape[1]], attn[:, txt.shape[1]:]
 
@@ -294,7 +118,7 @@ class DoubleStreamBlock(nn.Module):
 
 class SingleStreamBlock(nn.Module):
     """带并行注意力与MLP路径的单流Transformer块
-    
+
     Args:
         hidden_size: 隐藏层维度
         num_heads: 注意力头数
@@ -302,11 +126,11 @@ class SingleStreamBlock(nn.Module):
         qk_scale: 注意力logits的可选缩放因子
     """
     def __init__(
-        self,
-        hidden_size: int,
-        num_heads: int,
-        mlp_ratio: float = 4.0,
-        qk_scale: Optional[float] = None,
+            self,
+            hidden_size: int,
+            num_heads: int,
+            mlp_ratio: float = 4.0,
+            qk_scale: Optional[float] = None,
     ):
         super().__init__()
         self.hidden_dim = hidden_size
@@ -318,51 +142,29 @@ class SingleStreamBlock(nn.Module):
         self.mlp_hidden_dim = int(hidden_size * mlp_ratio)
         self.linear1 = nn.Linear(hidden_size, hidden_size * 3 + self.mlp_hidden_dim)
         self.linear2 = nn.Linear(hidden_size + self.mlp_hidden_dim, hidden_size)
-        self.norm = QKNorm(head_dim)
+        self.norm = QKNorm(head_dim,method="RMSNorm")
         self.pre_norm = nn.LayerNorm(hidden_size, elementwise_affine=False, eps=1e-6)
-        self.mlp_act = GELU(approximate="tanh")
+        self.mlp_act = nn.GELU(approximate="tanh")
         self.modulation = Modulation(hidden_size, double=False)
 
-    def forward(self, x: Tensor, vec: Tensor, pe: Tensor) -> Tensor:
+    def forward(self, x: torch.Tensor, vec: torch.Tensor) -> torch.Tensor:
         mod, _ = self.modulation(vec)
         x_mod = (1 + mod.scale) * self.pre_norm(x) + mod.shift
-        
+
         # 并行处理注意力与MLP路径
         qkv, mlp = torch.split(self.linear1(x_mod), [3 * self.hidden_size, self.mlp_hidden_dim], dim=-1)
         q, k, v = rearrange(qkv, "B L (K H D) -> K B H L D", K=3, H=self.num_heads)
-        q, k = self.norm(q, k, v)
-        
-        attn = attention(q, k, v, pe=pe)
+        q, k = self.norm(q, k)
+        q, k =q.to(v), k.to(v)
+
+        attn = attention(q, k, v)
         output = self.linear2(torch.cat((attn, self.mlp_act(mlp)), 2))
         return x + mod.gate * output
 
 
-class LastLayer(nn.Module):
-    """带自适应调制的最终投影层
-    
-    Args:
-        hidden_size: 输入维度
-        patch_size: 输出块的空间尺寸（未使用）
-        out_channels: 输出通道维度
-    """
-    def __init__(self, hidden_size: int, patch_size: int, out_channels: int):
-        super().__init__()
-        self.norm_final = nn.LayerNorm(hidden_size, elementwise_affine=False, eps=1e-6)
-        self.linear = nn.Linear(hidden_size, out_channels, bias=True)
-        self.adaLN_modulation = nn.Sequential(
-            nn.SiLU(),
-            nn.Linear(hidden_size, 2 * hidden_size, bias=True)
-        )
-
-    def forward(self, x: Tensor, vec: Tensor) -> Tensor:
-        shift, scale = self.adaLN_modulation(vec).chunk(2, dim=1)
-        x = (1 + scale[:, None, :]) * self.norm_final(x) + shift[:, None, :]
-        return self.linear(x)
-
-
 class Hunyuan3DDiT(nn.Module):
     """Hunyuan3D扩散变换器主模型
-    
+
     Args:
         in_channels: 输入潜在通道数
         context_in_dim: 文本嵌入维度
@@ -377,7 +179,7 @@ class Hunyuan3DDiT(nn.Module):
         time_factor: 时间步嵌入缩放因子
         guidance_embed: 是否使用引导嵌入
         ckpt_path: 预训练权重的检查点路径
-    
+
     Example:
         >>> model = Hunyuan3DDiT(
         ...     in_channels=64,
@@ -395,24 +197,20 @@ class Hunyuan3DDiT(nn.Module):
         torch.Size([2, 16, 64])
     """
     def __init__(
-        self,
-        in_channels: int = 64,
-        context_in_dim: int = 1536,
-        hidden_size: int = 1024,
-        mlp_ratio: float = 4.0,
-        num_heads: int = 16,
-        depth: int = 16,
-        depth_single_blocks: int = 32,
-        axes_dim: List[int] = [64],
-        theta: int = 10_000,
-        qkv_bias: bool = True,
-        time_factor: float = 1000,
-        guidance_embed: bool = False,
-        ckpt_path: Optional[str] = None,
-        **kwargs,
+            self,
+            in_channels: int = 64,
+            context_in_dim: int = 1536,
+            hidden_size: int = 1024,
+            mlp_ratio: float = 4.0,
+            num_heads: int = 16,
+            depth: int = 16,
+            depth_single_blocks: int = 32,
+            theta: int = 10_000,
+            qkv_bias: bool = True,
+            ckpt_path: Optional[str] = None,
     ):
         super().__init__()
-        
+
         self.in_channels = in_channels
         self.context_in_dim = context_in_dim
         self.hidden_size = hidden_size
@@ -420,23 +218,21 @@ class Hunyuan3DDiT(nn.Module):
         self.num_heads = num_heads
         self.depth = depth
         self.depth_single_blocks = depth_single_blocks
-        self.axes_dim = axes_dim
         self.theta = theta
         self.qkv_bias = qkv_bias
-        self.time_factor = time_factor
         self.out_channels = self.in_channels
         # 维度约束验证
         if hidden_size % num_heads != 0:
             raise ValueError(f"隐藏维度{hidden_size}必须能被注意力头数{num_heads}整除")
-        if sum(axes_dim) != hidden_size // num_heads:
-            raise ValueError(f"轴维度{axes_dim}之和必须等于{hidden_size//num_heads}")
 
         # 初始化核心组件
         self.hidden_size = hidden_size
         self.num_heads = num_heads
         self.latent_in = nn.Linear(in_channels, hidden_size)
-        self.time_in = MLPEmbedder(256, hidden_size)
         self.cond_in = nn.Linear(context_in_dim, hidden_size)
+
+        # 时间步层
+        self.TimestepEmbedder=TimestepEmbedder(256, hidden_size)
 
         # 构建Transformer块
         self.double_blocks = nn.ModuleList([
@@ -449,7 +245,7 @@ class Hunyuan3DDiT(nn.Module):
         ])
 
         # 最终输出投影
-        self.final_layer = LastLayer(hidden_size, 1, in_channels)
+        self.final_layer = LastProjectLayer(hidden_size, self.out_channels)
 
         # 加载预训练权重
         if ckpt_path:
@@ -460,57 +256,55 @@ class Hunyuan3DDiT(nn.Module):
         print(f'正在从{ckpt_path}加载预训练权重')
         ckpt = torch.load(ckpt_path, map_location="cpu")
         state_dict = ckpt.get('state_dict', ckpt)  # 处理deepspeed检查点
-        
+
         # 适配检查点键名
         final_state_dict = {}
         for k, v in state_dict.items():
             new_k = k.replace('_forward_module.', '').replace('model.', '')
             final_state_dict[new_k] = v
-        
+
         load_info = self.load_state_dict(final_state_dict, strict=False)
         print(f'Unexpected keys: {load_info.unexpected_keys}')
         print(f'Missing keys: {load_info.missing_keys}')
 
     def forward(
-        self,
-        x: Tensor,
-        t: Tensor,
-        contexts: dict,
-        **kwargs,
-    ) -> Tensor:
+            self,
+            x: torch.Tensor,
+            t: torch.Tensor,
+            contexts: dict,
+    ) -> torch.Tensor:
         """扩散变换器的前向传播
-        
+
         Args:
             x: 输入潜在张量，形状 (B, L, C)
             t: 时间步张量，形状 (B,)
             contexts: 包含'main'键下文本嵌入的字典
-            **kwargs: 包含可选引导强度的额外参数
-        
         Returns:
             与输入同形状的预测噪声张量
         """
         # 处理输入条件
         cond = self.cond_in(contexts['main'])
         latent = self.latent_in(x)
-        
+        dtype = x.dtype
+
         # 时间与引导嵌入
-        vec = self.time_in(timestep_embedding(t, 256, self.time_factor).to(x.dtype))
+        vec=self.TimestepEmbedder(t,dtype=dtype)
 
         # 双流处理
         for block in self.double_blocks:
-            latent, cond = block(img=latent, txt=cond, vec=vec, pe=None)
-        
+            latent, cond = block(img=latent, txt=cond, vec=vec)
+
         # 单流处理
         combined = torch.cat((cond, latent), 1)
         for block in self.single_blocks:
-            combined = block(combined, vec=vec, pe=None)
-        
+            combined = block(combined, vec=vec)
+
         # 最终投影
         return self.final_layer(combined[:, cond.shape[1]:], vec)
-    
-    
-    
-    
+
+
+
+
 if __name__ =="__main__":
     # 初始化模型
     model = Hunyuan3DDiT(
@@ -526,7 +320,7 @@ if __name__ =="__main__":
     x = torch.randn(2, 16, 64)   # 潜在表示
     t = torch.rand(2)            # 扩散时间步
     context = torch.randn(2, 77, 1536)  # 文本嵌入
-    
+
     output = model(x, t, contexts={'main': context})
     print(output.shape)
     assert x.shape ==output.shape , "输出应该跟输入x形状一致"

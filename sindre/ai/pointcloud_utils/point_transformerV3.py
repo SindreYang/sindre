@@ -1548,9 +1548,8 @@ class PointTransformerV3(PointModule):
     
 if __name__ == "__main__":
     # 示例用法
-    #model = PointTransformerV3(in_channels=6 ,enable_flash=True,cls_mode=False).cuda()
-    model = PointTransformerV3(in_channels=6 ,enable_flash=True,cls_mode=True).cuda()
-    #model = PointTransformerV3(in_channels=6 ).cuda()
+    model = PointTransformerV3(in_channels=6 ,enable_flash=True,cls_mode=False).cuda()
+    #model = PointTransformerV3(in_channels=6 ,enable_flash=True,cls_mode=True).cuda()
     x = torch.randn(2, 1000, 6).cuda()  # 批次x点数x特征
     p = torch.randn(2, 1000, 3).cuda()  # 坐标
     output = model(x, p)

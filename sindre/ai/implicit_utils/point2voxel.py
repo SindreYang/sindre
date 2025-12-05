@@ -38,7 +38,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from sindre.ai.utils import sdf2mesh_by_diso
+from sindre.ai.reconstruct3d_utils.utils import sdf2mesh_by_diso
 
 class PointCloudVoxelizer(nn.Module):
     def __init__(self, grid_size=64):
@@ -108,7 +108,7 @@ class DynamicGridSampler(nn.Module):
         y = torch.linspace(-1, 1, H, device=device)
         x = torch.linspace(-1, 1, W, device=device)
         grid_z, grid_y, grid_x = torch.meshgrid([z, y, x], indexing='ij')
-        return torch.stack((grid_x, grid_y, grid_z), dim=-1)  # [D,H,W,3]
+        return torch.stack((grid_z, grid_y, grid_x), dim=-1)  # [D,H,W,3]
 
 class PointCloud2Mesh(nn.Module):
     def __init__(self, grid_size=64):

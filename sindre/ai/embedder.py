@@ -8,7 +8,246 @@ import torch
 import torch.nn as nn
 from typing import Union, Optional, Tuple
 
+from sindre.ai.layers import Sine
 
+
+def timestep_embedding(t: torch.Tensor,
+                       dim: int,
+                       max_period: int = 10000,
+                       time_factor: float = 1000.0) -> torch.Tensor:
+    """生成带频率缩放的正弦时间步嵌入
+
+    Args:
+        t: 1D时间步张量，形状 (N,)
+        dim: 输出嵌入的维度
+        max_period: 频率计算的最大周期
+        time_factor: 时间步值的缩放因子
+
+    Returns:
+        位置嵌入张量，形状 (N, dim)
+    """
+    t = time_factor * t
+    half = dim // 2
+    freqs = torch.exp(-math.log(max_period) * torch.arange(start=0, end=half, dtype=torch.float32) / half).to(
+        t.device
+    )
+
+    args = t[:, None].float() * freqs[None]
+    embedding = torch.cat([torch.cos(args), torch.sin(args)], dim=-1)
+    if dim % 2:
+        embedding = torch.cat([embedding, torch.zeros_like(embedding[:, :1])], dim=-1)
+    if torch.is_floating_point(t):
+        embedding = embedding.to(t)
+    return embedding
+
+
+class TimestepEmbedder(nn.Module):
+    """用于时间步条件信号嵌入的双层MLP
+
+    Args:
+        in_dim: 输入维度
+        hidden_dim: 隐藏层维度
+    """
+    def __init__(self, in_dim: int=256, hidden_dim: int=1024):
+        super().__init__()
+        self.in_dim = in_dim
+        self.in_layer = nn.Linear(in_dim, hidden_dim, bias=True)
+        self.silu = nn.SiLU()
+        self.out_layer = nn.Linear(hidden_dim, hidden_dim, bias=True)
+
+    def forward(self, t: torch.Tensor,dtype=torch.float32) ->  torch.Tensor:
+        x=timestep_embedding(t, self.in_dim,).to(dtype)
+        return self.out_layer(self.silu(self.in_layer(x)))
+
+
+
+class FourierEmbedder(nn.Module):
+    """
+    ```
+    傅里叶变换(正弦/余弦位置)嵌入模块。给定形状为 [n_batch, ..., c_dim] 的输入张量 `x`，
+    它将 `x[..., i]` 的每个特征维度转换为如下形式：
+
+        [
+            sin(x[..., i]),
+            sin(f_1*x[..., i]),
+            sin(f_2*x[..., i]),
+            ...
+            sin(f_N * x[..., i]),
+            cos(x[..., i]),
+            cos(f_1*x[..., i]),
+            cos(f_2*x[..., i]),
+            ...
+            cos(f_N * x[..., i]),
+            x[..., i]     # 仅当 include_input 为 True 时保留
+        ]
+    其中 f_i 表示频率。
+
+
+
+    频率空间默认为 [0/num_freqs, 1/num_freqs, ..., (num_freqs-1)/num_freqs]。
+    若 `logspace` 为 True，则频率按对数空间排列：f_i = [2^(0/num_freqs), 2^(1/num_freqs), ..., 2^((num_freqs-1)/num_freqs)]；
+    否则，频率在 [1.0, 2^(num_freqs-1)] 范围内线性均匀分布。
+    ```
+    Args:
+        num_freqs (int): 频率数量,默认为6;
+
+        logspace (bool): 是否使用对数空间频率。若为True，频率为 2^(i/num_freqs)；否则线性间隔，默认为True；
+
+        input_dim (int): 输入维度，默认为3；
+        include_input (bool): 是否在输出中包含原始输入，默认为True；
+        include_pi (bool): 是否将频率乘以π，默认为True。
+
+    Attributes:
+        frequencies (torch.Tensor): 频率张量。若 `logspace` 为True，则频率按指数间隔；否则线性间隔。
+        out_dim (int): 嵌入后的维度。若 `include_input` 为True，则为 input_dim * (num_freqs*2 +1)；否则为 input_dim * num_freqs*2。
+    """
+
+    def __init__(self,
+                 num_freqs: int = 6,
+                 logspace: bool = True,
+                 input_dim: int = 3,
+                 include_input: bool = True,
+                 include_pi: bool = True) -> None:
+        """初始化方法"""
+        super().__init__()
+
+        # 生成频率
+        if logspace:
+            frequencies = 2.0 ** torch.arange(
+                num_freqs,
+                dtype=torch.float32
+            )
+        else:
+            frequencies = torch.linspace(
+                1.0,
+                2.0 ** (num_freqs - 1),
+                num_freqs,
+                dtype=torch.float32
+            )
+
+        # 可选：将所有频率乘以π
+        if include_pi:
+            frequencies *= torch.pi
+
+        # 注册为不持久化的缓冲区（不参与模型保存）
+        self.register_buffer("frequencies", frequencies, persistent=False)
+        self.include_input = include_input
+        self.num_freqs = num_freqs
+        self.out_dim = self.get_dims(input_dim)
+
+    def get_dims(self, input_dim: int) -> int:
+        """计算输出维度"""
+        temp = 1 if self.include_input or self.num_freqs == 0 else 0
+        out_dim = input_dim * (self.num_freqs * 2 + temp)
+        return out_dim
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """前向传播
+
+        Args:
+            x: 输入张量，形状为 [..., dim]
+
+        Returns:
+            embedding: 嵌入后的张量，形状为 [..., dim * (num_freqs*2 + temp)]，
+                其中 temp 为1（若包含输入）或0。
+        """
+        if self.num_freqs > 0:
+            # 计算 x 与频率的外积并展平
+            embed = (x[..., None].contiguous() * self.frequencies).view(*x.shape[:-1], -1)
+            # 按需拼接输入、正弦项、余弦项
+            if self.include_input:
+                return torch.cat((x, embed.sin(), embed.cos()), dim=-1)
+            else:
+                return torch.cat((embed.sin(), embed.cos()), dim=-1)
+        else:
+            # 无频率时直接返回原输入
+            return x
+
+
+
+
+
+class LearnedFourierEmbedder(nn.Module):
+    def __init__(self, input_dim, dim):
+        super().__init__()
+        assert (dim % 2) == 0
+        half_dim = dim // 2
+        per_channel_dim = half_dim // input_dim
+        self.weights = nn.Parameter(torch.randn(per_channel_dim))
+
+        self.out_dim = self.get_dims(input_dim)
+
+    def forward(self, x):
+        # [b, t, c, 1] * [1, d] = [b, t, c, d] -> [b, t, c * d]
+        freqs = (x[..., None] * self.weights[None] * 2 * np.pi).view(*x.shape[:-1], -1)
+        fouriered = torch.cat((x, freqs.sin(), freqs.cos()), dim=-1)
+        return fouriered
+
+    def get_dims(self, input_dim):
+        return input_dim * (self.weights.shape[0] * 2 + 1)
+
+
+
+class TriplaneLearnedFourierEmbedder(nn.Module):
+    def __init__(self, in_channels, dim):
+        super().__init__()
+
+        self.yz_plane_embedder = LearnedFourierEmbedder(in_channels, dim)
+        self.xz_plane_embedder = LearnedFourierEmbedder(in_channels, dim)
+        self.xy_plane_embedder = LearnedFourierEmbedder(in_channels, dim)
+
+        self.out_dim = in_channels + dim
+
+    def forward(self, x):
+
+        yz_embed = self.yz_plane_embedder(x)
+        xz_embed = self.xz_plane_embedder(x)
+        xy_embed = self.xy_plane_embedder(x)
+
+        embed = yz_embed + xz_embed + xy_embed
+
+        return embed
+
+class SirenEmbedder(nn.Module):
+    def __init__(
+            self,
+            in_dim,
+            out_dim,
+            w0 = 1.,
+            c = 6.,
+            is_first = False,
+            use_bias = True,
+            activation = None,
+            dropout = 0.
+    ):
+        super().__init__()
+        self.in_dim = in_dim
+        self.out_dim = out_dim
+        self.is_first = is_first
+
+        weight = torch.zeros(out_dim, in_dim)
+        bias = torch.zeros(out_dim) if use_bias else None
+        self.init_(weight, bias, c = c, w0 = w0)
+
+        self.weight = nn.Parameter(weight)
+        self.bias = nn.Parameter(bias) if use_bias else None
+        self.activation = Sine(w0) if activation is None else activation
+        self.dropout = nn.Dropout(dropout)
+
+    def init_(self, weight, bias, c, w0):
+        dim = self.in_dim
+
+        w_std = (1 / dim) if self.is_first else (math.sqrt(c / dim) / w0)
+        weight.uniform_(-w_std, w_std)
+
+        if bias is not None:
+            bias.uniform_(-w_std, w_std)
+
+    def forward(self, x):
+        out =  F.linear(x, self.weight, self.bias)
+        out = self.activation(out)
+        out = self.dropout(out)
+        return out
 
 class LabelEmbedding(nn.Module):
     """

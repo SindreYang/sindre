@@ -13,7 +13,7 @@ try:
     from sklearn.decomposition import PCA
 except ImportError:
     pass
-from sindre.utils3d.algorithm import apply_transform,cut_mesh_point_loop,  subdivide_loop_by_trimesh
+from sindre.utils3d.algorithm import apply_transform,cut_mesh_point_loop
 
 
 def labels2colors_freeze(labels):

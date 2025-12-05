@@ -1,4 +1,5 @@
 # -*- coding: UTF-8 -*-
-import sindre.lmdb.pylmdb  as lmdb 
-from sindre.lmdb.pylmdb import *
-from sindre.lmdb.tools import *
+import sindre.lmdb.lmdb_core  as lmdb
+from sindre.lmdb.lmdb_core import *
+from sindre.lmdb.lmdb_tools import *
+from sindre.lmdb.lmdb_parallel import *

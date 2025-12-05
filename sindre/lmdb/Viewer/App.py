@@ -36,7 +36,7 @@ from PyQt5.QtGui import QPalette, QColor
 from PyQt5.QtWidgets import (QFileDialog, QInputDialog, QMessageBox, QLineEdit, 
                             QDialog, QVBoxLayout, QComboBox, QLabel, QPushButton,
                             QDialogButtonBox, QGroupBox)
-from sindre.lmdb.pylmdb import get_data_value
+from sindre.lmdb import get_data_value
 
 vtk.qt.QVTKRWIBase = "QGLWidget"
 import vtk

@@ -1,6 +1,40 @@
+import json
 import os
 from sindre.general.logs import CustomLogger
 log = CustomLogger(logger_name="general").get_logger()
+
+
+class NpEncoder(json.JSONEncoder):
+    """
+    Notes:
+        将numpy类型编码成json格式
+
+
+    """
+
+    def default(self, obj):
+        if isinstance(obj, np.integer):
+            return int(obj)
+        if isinstance(obj, np.floating):
+            return float(obj)
+        if isinstance(obj, np.ndarray):
+            return obj.tolist()
+        return super(NpEncoder, self).default(obj)
+
+
+def save_json(output_path: str, obj) -> None:
+    """
+    保存np形式的json
+
+    Args:
+        output_path: 保存路径
+        obj: 保存对象
+
+
+    """
+
+    with open(output_path, 'w',encoding="utf-8") as fp:
+        json.dump(obj, fp, cls=NpEncoder,ensure_ascii=False)
 
    
     

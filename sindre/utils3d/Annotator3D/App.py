@@ -12,11 +12,12 @@ import vedo
 from vtkmodules.qt.QVTKRenderWindowInteractor import QVTKRenderWindowInteractor
 from vtkmodules.vtkInteractionStyle import vtkInteractorStyleTrackballCamera
 from pathlib import Path
+
+from sindre.general import save_json
 from sindre.utils3d.Annotator3D.components.KeypointAnnotator import KeypointAnnotator
 from sindre.utils3d.Annotator3D.components.LabelDock import LabelDockWidget
 from sindre.utils3d.Annotator3D.components.SegAnnotator import SplineSegmentAnnotator
 from sindre.utils3d.Annotator3D.components.CutAnnotator import CutAnnotator
-from sindre.utils3d.algorithm import save_np_json
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
@@ -426,7 +427,7 @@ class MainWindow(QMainWindow):
         if data:
             save_path =self.current_path+f'{self.current_annotator_name}.json'
             self.update_status(f"保存标注信息：{save_path}")
-            save_np_json(save_path,data)
+            save_json(save_path,data)
         if self.current_annotator:
             self.current_annotator.disconnect()
             self.current_annotator.clean()

@@ -1,109 +1,98 @@
+"""
+公共层
+
+"""
+from dataclasses import dataclass
+
 import torch
 import torch.nn as nn
 from typing import Tuple, List, Union, Optional
 import torch.nn.functional as F
-
-class FourierEmbedder(nn.Module):
+from einops import rearrange
+def attention(q: torch.Tensor,
+              k: torch.Tensor,
+              v: torch.Tensor,
+              method="SDPA"):
     """
-    ```
-    傅里叶变换(正弦/余弦位置)嵌入模块。给定形状为 [n_batch, ..., c_dim] 的输入张量 `x`，
-    它将 `x[..., i]` 的每个特征维度转换为如下形式：
 
-        [
-            sin(x[..., i]),
-            sin(f_1*x[..., i]),
-            sin(f_2*x[..., i]),
-            ...
-            sin(f_N * x[..., i]),
-            cos(x[..., i]),
-            cos(f_1*x[..., i]),
-            cos(f_2*x[..., i]),
-            ...
-            cos(f_N * x[..., i]),
-            x[..., i]     # 仅当 include_input 为 True 时保留
-        ]
-    其中 f_i 表示频率。
-
-
-
-    频率空间默认为 [0/num_freqs, 1/num_freqs, ..., (num_freqs-1)/num_freqs]。
-    若 `logspace` 为 True，则频率按对数空间排列：f_i = [2^(0/num_freqs), 2^(1/num_freqs), ..., 2^((num_freqs-1)/num_freqs)]；
-    否则，频率在 [1.0, 2^(num_freqs-1)] 范围内线性均匀分布。
-    ```
     Args:
-        num_freqs (int): 频率数量,默认为6;
+        q: 查询张量，形状为 (B, H, L, D)
+            - B: batch size，H: 注意力头数，L: 查询序列长度，D: 每个头的维度
+        k: 键张量，形状为 (B, H, S, D)
+            - S: 键/值序列长度（自注意力时S=L，交叉注意力时S≠L）
+        v: 值张量，形状为 (B, H, S, D)
+        method: 注意力实现方法：
+            - SDPA: torch内置scaled_dot_product_attention（推荐，高效）
+            - SAGE: sageattention实现
+            - FLASH: flash_attn变长序列实现（需安装flash-attn）
 
-        logspace (bool): 是否使用对数空间频率。若为True，频率为 2^(i/num_freqs)；否则线性间隔，默认为True；
-
-        input_dim (int): 输入维度，默认为3；
-        include_input (bool): 是否在输出中包含原始输入，默认为True；
-        include_pi (bool): 是否将频率乘以π，默认为True。
-
-    Attributes:
-        frequencies (torch.Tensor): 频率张量。若 `logspace` 为True，则频率按指数间隔；否则线性间隔。
-        out_dim (int): 嵌入后的维度。若 `include_input` 为True，则为 input_dim * (num_freqs*2 +1)；否则为 input_dim * num_freqs*2。
+    Returns:
+         注意力输出张量，形状为 (B, L, H*D)
     """
+    if method == "SDPA":
+        x=F.scaled_dot_product_attention(q, k, v)
+        x = rearrange(x, "B H L D -> B L (H D)")
+        return x
+    elif method == "SAGE":
+        from sageattention import sageattn
+        x= F.scaled_dot_product_attention(q, k, v)
+        x = rearrange(x, "B H L D -> B L (H D)")
+        return x
+    elif method == "FLASH":
+        from flash_attn import flash_attn_func
+        if q.size(-1) > 256:
+            raise ValueError("FlashAttention only supports head dimension up to 256.")
+        x=flash_attn_func(q,k,v,causal=False)
+        x = rearrange(x, "B H L D -> B L (H D)")
+        return x
+    else:
+        RuntimeError("只支持SDPA(torch内置),SAGE(sageattention),FLASH(flash_attn)")
 
-    def __init__(self,
-                 num_freqs: int = 6,
-                 logspace: bool = True,
-                 input_dim: int = 3,
-                 include_input: bool = True,
-                 include_pi: bool = True) -> None:
-        """初始化方法"""
+
+class RMSNorm(torch.nn.Module):
+    """均方根层归一化
+
+    Args:
+        dim: 归一化维度
+    """
+    def __init__(self, dim: int):
         super().__init__()
+        self.scale = nn.Parameter(torch.ones(dim))
 
-        # 生成频率
-        if logspace:
-            frequencies = 2.0 ** torch.arange(
-                num_freqs,
-                dtype=torch.float32
-            )
+    def forward(self, x: torch.Tensor):
+        x_dtype = x.dtype
+        x = x.float()
+        rrms = torch.rsqrt(torch.mean(x ** 2, dim=-1, keepdim=True) + 1e-6)
+        return (x * rrms).to(dtype=x_dtype) * self.scale
+
+
+class QKNorm(torch.nn.Module):
+    """注意力机制中查询和键的归一化
+
+    Args:
+        dim: 查询/键的向量维度
+        method: ”RMSNorm"(均方根层归一化)/"LayerNorm"(层归一化）/"Identity"(单位化(
+    """
+    def __init__(self, dim: int,method="LayerNorm"):
+        super().__init__()
+        if method == "RMSNorm":
+            self.query_norm = RMSNorm(dim)
+            self.key_norm = RMSNorm(dim)
+
+        elif method == "LayerNorm":
+            self.query_norm = nn.LayerNorm(dim, elementwise_affine=True, eps=1e-6)
+            self.key_norm = nn.LayerNorm(dim, elementwise_affine=True, eps=1e-6)
+        elif method == "Identity":
+            self.query_norm =nn.Identity()
+            self.key_norm =nn.Identity()
         else:
-            frequencies = torch.linspace(
-                1.0,
-                2.0 ** (num_freqs - 1),
-                num_freqs,
-                dtype=torch.float32
-            )
+            raise ValueError(f"不支持归一化方法")
 
-        # 可选：将所有频率乘以π
-        if include_pi:
-            frequencies *= torch.pi
 
-        # 注册为不持久化的缓冲区（不参与模型保存）
-        self.register_buffer("frequencies", frequencies, persistent=False)
-        self.include_input = include_input
-        self.num_freqs = num_freqs
-        self.out_dim = self.get_dims(input_dim)
-
-    def get_dims(self, input_dim: int) -> int:
-        """计算输出维度"""
-        temp = 1 if self.include_input or self.num_freqs == 0 else 0
-        out_dim = input_dim * (self.num_freqs * 2 + temp)
-        return out_dim
-
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        """前向传播
-
-        Args:
-            x: 输入张量，形状为 [..., dim]
-
-        Returns:
-            embedding: 嵌入后的张量，形状为 [..., dim * (num_freqs*2 + temp)]，
-                其中 temp 为1（若包含输入）或0。
-        """
-        if self.num_freqs > 0:
-            # 计算 x 与频率的外积并展平
-            embed = (x[..., None].contiguous() * self.frequencies).view(*x.shape[:-1], -1)
-            # 按需拼接输入、正弦项、余弦项
-            if self.include_input:
-                return torch.cat((x, embed.sin(), embed.cos()), dim=-1)
-            else:
-                return torch.cat((embed.sin(), embed.cos()), dim=-1)
-        else:
-            # 无频率时直接返回原输入
-            return x
+    def forward(self, q: torch.Tensor, k:  torch.Tensor) -> Tuple[ torch.Tensor,  torch.Tensor]:
+        q = self.query_norm(q)
+        k = self.key_norm(k)
+        return q,k
 
 
 
@@ -212,392 +201,6 @@ class MLP(nn.Module):
         x = self.drop_path(x) # 应用 DropPath（训练时随机丢弃路径）
         return x
 
-class QKVMultiheadCrossAttention(nn.Module):
-    """基于查询（Query）、键值对（Key-Value）的多头交叉注意力计算模块。
-
-    通过将输入的 `q` 和 `kv` 分割为多头，应用缩放点积注意力（Scaled Dot-Product Attention），
-    并可选对 Q/K 进行归一化处理。
-
-    Args:
-        heads (int): 注意力头的数量。
-        n_data (int, optional): 键值对数据的数量（上下文长度），默认为 None。
-        width (int, optional): 输入特征的维度，默认为 None。
-        qk_norm (bool): 是否对 Q/K 进行层归一化，默认为 False。
-        norm_layer (nn.Module): 归一化层类型，默认为 `nn.LayerNorm`。
-
-    Attributes:
-        heads (int): 继承自 Args 的注意力头数量。
-        q_norm (nn.Module): 查询向量的归一化层（若启用 qk_norm）。
-        k_norm (nn.Module): 键向量的归一化层（若启用 qk_norm）。
-
-    Shape:
-        - 输入 q: (bs, n_ctx, width)
-        - 输入 kv: (bs, n_data, width * 2)  # 包含键和值拼接后的张量
-        - 输出: (bs, n_ctx, width)
-    """
-
-    def __init__(self, *, heads: int, n_data: Optional[int] = None, width=None, qk_norm=False, norm_layer=nn.LayerNorm):
-        super().__init__()
-        self.heads = heads
-        self.n_data = n_data
-        # 初始化 Q/K 归一化层（若启用）
-        self.q_norm = norm_layer(width // heads, elementwise_affine=True, eps=1e-6) if qk_norm else nn.Identity()
-        self.k_norm = norm_layer(width // heads, elementwise_affine=True, eps=1e-6) if qk_norm else nn.Identity()
-
-        # 特殊层
-        self.processor = None
-    def forward(self, q, kv):
-        # 分割多头并计算注意力
-        bs, n_ctx, _ = q.shape
-        bs, n_data, width = kv.shape
-        attn_ch = width // self.heads // 2  # 计算每个注意力头的通道数
-        q = q.view(bs, n_ctx, self.heads, -1)
-        kv = kv.view(bs, n_data, self.heads, -1)
-        k, v = torch.split(kv, attn_ch, dim=-1)  # 分割键和值
-
-        # 归一化处理
-        q = self.q_norm(q)
-        k = self.k_norm(k)
-
-        # 重排维度并计算注意力
-        from einops import rearrange
-        q, k, v = map(lambda t: rearrange(t, 'b n h d -> b h n d', h=self.heads), (q, k, v))
-        if self.processor is not None:
-            out = self.processor(self,q, k, v)
-        else:
-            out =F.scaled_dot_product_attention(q, k, v)
-        out =out .transpose(1, 2).reshape(bs, n_ctx, -1)
-        return out
-
-
-class MultiheadCrossAttention(nn.Module):
-    """多头交叉注意力模块，包含线性投影和注意力计算。
-
-    将输入 `x` 和 `data` 分别投影为 Q 和 K/V，并通过 `QKVMultiheadCrossAttention` 计算交叉注意力。
-
-    Args:
-        width (int): 输入/输出特征维度。
-        heads (int): 注意力头的数量。
-        qkv_bias (bool): 是否在 Q/K/V 投影中添加偏置项，默认为 True。
-        n_data (int, optional): 键值对数据的数量，默认为 None。
-        data_width (int, optional): 输入数据 `data` 的特征维度，默认为 None（同 width）。
-        norm_layer (nn.Module): 归一化层类型，默认为 `nn.LayerNorm`。
-        qk_norm (bool): 是否对 Q/K 进行归一化，默认为 False。
-
-    Shape:
-        - 输入 x: (bs, n_ctx, width)
-        - 输入 data: (bs, n_data, data_width)
-        - 输出: (bs, n_ctx, width)
-    """
-
-    def __init__(self, *, width: int, heads: int, qkv_bias: bool = True, n_data: Optional[int] = None,
-                 data_width: Optional[int] = None, norm_layer=nn.LayerNorm, qk_norm: bool = False):
-        super().__init__()
-        self.n_data = n_data
-        self.width = width
-        self.heads = heads
-        self.data_width = width if data_width is None else data_width
-
-        # 初始化 Q/K/V 投影层
-        self.c_q = nn.Linear(width, width, bias=qkv_bias)  # 查询投影
-        self.c_kv = nn.Linear(self.data_width, width * 2, bias=qkv_bias)  # 键值投影
-        self.c_proj = nn.Linear(width, width)  # 输出投影
-
-        # 注意力计算模块
-        self.attention = QKVMultiheadCrossAttention(
-            heads=heads, n_data=n_data, width=width, norm_layer=norm_layer, qk_norm=qk_norm
-        )
-
-    def forward(self, x, data):
-        x = self.c_q(x)  # 投影查询向量
-        data = self.c_kv(data)  # 投影键值对
-        x = self.attention(x, data)  # 计算交叉注意力
-        x = self.c_proj(x)  # 投影回原始维度
-        return x
-
-
-class ResidualCrossAttentionBlock(nn.Module):
-    """残差交叉注意力块，包含多头交叉注意力和 MLP 子模块。
-
-    结构：LN -> Cross-Attention -> Add -> LN -> MLP -> Add
-
-    Args:
-        n_data (int, optional): 键值对数据的数量，默认为 None。
-        width (int): 输入特征维度。
-        heads (int): 注意力头的数量。
-        data_width (int, optional): 输入数据 `data` 的特征维度，默认为 None（同 width）。
-        qkv_bias (bool): 是否在 Q/K/V 投影中添加偏置项，默认为 True。
-        norm_layer (nn.Module): 归一化层类型，默认为 `nn.LayerNorm`。
-        qk_norm (bool): 是否对 Q/K 进行归一化，默认为 False。
-
-    Shape:
-        - 输入 x: (bs, n_ctx, width)
-        - 输入 data: (bs, n_data, data_width)
-        - 输出: (bs, n_ctx, width)
-    """
-
-    def __init__(self, *, n_data: Optional[int] = None, width: int, heads: int, data_width: Optional[int] = None,
-                 qkv_bias: bool = True, norm_layer=nn.LayerNorm, qk_norm: bool = False):
-        super().__init__()
-        if data_width is None:
-            data_width = width
-
-        # 初始化子模块
-        self.attn = MultiheadCrossAttention(
-            n_data=n_data, width=width, heads=heads, data_width=data_width,
-            qkv_bias=qkv_bias, norm_layer=norm_layer, qk_norm=qk_norm
-        )
-        self.ln_1 = norm_layer(width, eps=1e-6)  # 输入归一化
-        self.ln_2 = norm_layer(data_width, eps=1e-6)  # 数据归一化
-        self.ln_3 = norm_layer(width, eps=1e-6)  # MLP 前归一化
-        self.mlp = MLP(width=width)  # 多层感知机
-
-    def forward(self, x: torch.Tensor, data: torch.Tensor):
-        # 残差连接：交叉注意力
-        x = x + self.attn(self.ln_1(x), self.ln_2(data))
-        # 残差连接：MLP
-        x = x + self.mlp(self.ln_3(x))
-        return x
-
-
-class QKVMultiheadAttention(nn.Module):
-    """基于 QKV 拼接的多头自注意力计算模块。
-
-    将输入的拼接 QKV 张量分割为独立的 Q/K/V，并应用缩放点积注意力。
-
-    Args:
-        heads (int): 注意力头数量。
-        n_ctx (int): 上下文长度（序列长度）。
-        width (int, optional): 输入特征维度，默认为 None。
-        qk_norm (bool): 是否对 Q/K 进行归一化，默认为 False。
-        norm_layer (nn.Module): 归一化层类型，默认为 `nn.LayerNorm`。
-
-    Shape:
-        - 输入 qkv: (bs, n_ctx, width * 3)  # Q/K/V 拼接后的张量
-        - 输出: (bs, n_ctx, width)
-    """
-
-    def __init__(self, *, heads: int, n_ctx: int, width=None, qk_norm=False, norm_layer=nn.LayerNorm):
-        super().__init__()
-        self.heads = heads
-        self.n_ctx = n_ctx
-        self.q_norm = norm_layer(width // heads, eps=1e-6) if qk_norm else nn.Identity()
-        self.k_norm = norm_layer(width // heads, eps=1e-6) if qk_norm else nn.Identity()
-
-    def forward(self, qkv):
-        bs, n_ctx, width = qkv.shape
-        attn_ch = width // self.heads // 3  # 计算每个注意力头的通道数
-        qkv = qkv.view(bs, n_ctx, self.heads, -1)
-        q, k, v = torch.split(qkv, attn_ch, dim=-1)  # 分割 Q/K/V
-
-        # 归一化处理
-        q = self.q_norm(q)
-        k = self.k_norm(k)
-
-        # 重排维度并计算注意力
-        from einops import rearrange
-        q, k, v = map(lambda t: rearrange(t, 'b n h d -> b h n d', h=self.heads), (q, k, v))
-        out = F.scaled_dot_product_attention(q, k, v).transpose(1, 2).reshape(bs, n_ctx, -1)
-        return out
-
-
-class MultiheadAttention(nn.Module):
-    """多头自注意力模块，包含 QKV 投影和注意力计算。
-
-    Args:
-        n_ctx (int): 上下文长度（序列长度）。
-        width (int): 输入/输出特征维度。
-        heads (int): 注意力头数量。
-        qkv_bias (bool): 是否在 QKV 投影中添加偏置项，默认为 True。
-        norm_layer (nn.Module): 归一化层类型，默认为 `nn.LayerNorm`。
-        qk_norm (bool): 是否对 Q/K 进行归一化，默认为 False。
-        drop_path_rate (float): DropPath 的丢弃概率，默认为 0.0（不启用）。
-
-    Shape:
-        - 输入 x: (bs, n_ctx, width)
-        - 输出: (bs, n_ctx, width)
-    """
-
-    def __init__(self, *, n_ctx: int, width: int, heads: int, qkv_bias: bool,
-                 norm_layer=nn.LayerNorm, qk_norm: bool = False, drop_path_rate: float = 0.0):
-        super().__init__()
-        self.n_ctx = n_ctx
-        self.width = width
-        self.heads = heads
-
-        # 初始化投影层
-        self.c_qkv = nn.Linear(width, width * 3, bias=qkv_bias)  # QKV 拼接投影
-        self.c_proj = nn.Linear(width, width)  # 输出投影
-        self.attention = QKVMultiheadAttention(  # 注意力计算模块
-            heads=heads, n_ctx=n_ctx, width=width, norm_layer=norm_layer, qk_norm=qk_norm
-        )
-        self.drop_path = DropPath(drop_path_rate) if drop_path_rate > 0. else nn.Identity()
-
-    def forward(self, x):
-        x = self.c_qkv(x)  # 投影 QKV
-        x = self.attention(x)  # 计算自注意力
-        x = self.drop_path(self.c_proj(x))  # 输出投影 + DropPath
-        return x
-
-
-class ResidualAttentionBlock(nn.Module):
-    """残差自注意力块，包含多头自注意力和 MLP 子模块。
-
-    结构：LN -> Self-Attention -> Add -> LN -> MLP -> Add
-
-    Args:
-        n_ctx (int): 上下文长度（序列长度）。
-        width (int): 输入特征维度。
-        heads (int): 注意力头数量。
-        qkv_bias (bool): 是否在 QKV 投影中添加偏置项，默认为 True。
-        norm_layer (nn.Module): 归一化层类型，默认为 `nn.LayerNorm`。
-        qk_norm (bool): 是否对 Q/K 进行归一化，默认为 False。
-        drop_path_rate (float): DropPath 的丢弃概率，默认为 0.0。
-
-    Shape:
-        - 输入 x: (bs, n_ctx, width)
-        - 输出: (bs, n_ctx, width)
-    """
-
-    def __init__(self, *, n_ctx: int, width: int, heads: int, qkv_bias: bool = True,
-                 norm_layer=nn.LayerNorm, qk_norm: bool = False, drop_path_rate: float = 0.0):
-        super().__init__()
-        self.attn = MultiheadAttention(  # 自注意力模块
-            n_ctx=n_ctx, width=width, heads=heads, qkv_bias=qkv_bias,
-            norm_layer=norm_layer, qk_norm=qk_norm, drop_path_rate=drop_path_rate
-        )
-        self.ln_1 = norm_layer(width, eps=1e-6)  # 自注意力前归一化
-        self.mlp = MLP(width=width, drop_path_rate=drop_path_rate)  # MLP 模块
-        self.ln_2 = norm_layer(width, eps=1e-6)  # MLP 前归一化
-
-    def forward(self, x: torch.Tensor):
-        x = x + self.attn(self.ln_1(x))  # 残差连接：自注意力
-        x = x + self.mlp(self.ln_2(x))    # 残差连接：MLP
-        return x
-
-
-class Transformer(nn.Module):
-    """Transformer 模型，由多层 `ResidualAttentionBlock` 堆叠而成。
-
-    Args:
-        n_ctx (int): 上下文长度（序列长度）。
-        width (int): 输入特征维度。
-        layers (int): 残差注意力块的层数。
-        heads (int): 注意力头数量。
-        qkv_bias (bool): 是否在 QKV 投影中添加偏置项，默认为 True。
-        norm_layer (nn.Module): 归一化层类型，默认为 `nn.LayerNorm`。
-        qk_norm (bool): 是否对 Q/K 进行归一化，默认为 False。
-        drop_path_rate (float): DropPath 的丢弃概率，默认为 0.0。
-
-    Shape:
-        - 输入 x: (bs, n_ctx, width)
-        - 输出: (bs, n_ctx, width)
-    """
-
-    def __init__(self, *, n_ctx: int, width: int, layers: int, heads: int, qkv_bias: bool = True,
-                 norm_layer=nn.LayerNorm, qk_norm: bool = False, drop_path_rate: float = 0.0):
-        super().__init__()
-        self.n_ctx = n_ctx
-        self.width = width
-        self.layers = layers
-        # 初始化多层残差块
-        self.resblocks = nn.ModuleList([
-            ResidualAttentionBlock(
-                n_ctx=n_ctx, width=width, heads=heads, qkv_bias=qkv_bias,
-                norm_layer=norm_layer, qk_norm=qk_norm, drop_path_rate=drop_path_rate
-            )
-            for _ in range(layers)
-        ])
-
-    def forward(self, x: torch.Tensor):
-        for block in self.resblocks:
-            x = block(x)  # 逐层计算
-        return x
-
-
-
-class CrossAttentionDecoder(nn.Module):
-    """交叉注意力解码器模块，用于通过潜在变量（Latents）增强查询（Queries）的特征表示。
-
-    该模块将输入查询通过傅里叶嵌入编码后，与潜在变量进行交叉注意力交互，最终生成目标输出（如分类概率）。
-
-    Args:
-        num_latents (int): 潜在变量的数量（即每个样本的上下文标记数）。
-        out_channels (int): 输出通道数（如分类类别数）。
-        fourier_embedder (FourierEmbedder): 傅里叶特征嵌入器，用于编码输入查询。
-        width (int): 特征投影后的维度（注意力模块的隐藏层宽度）。
-        heads (int): 注意力头的数量。
-        qkv_bias (bool): 是否在 Q/K/V 投影中添加偏置项，默认为 True。
-        qk_norm (bool): 是否对 Q/K 进行层归一化，默认为 False。
-
-    Attributes:
-        query_proj (nn.Linear): 将傅里叶嵌入后的查询投影到指定宽度的线性层。
-        cross_attn_decoder (ResidualCrossAttentionBlock): 残差交叉注意力块。
-        ln_post (nn.LayerNorm): 输出前的层归一化。
-        output_proj (nn.Linear): 最终输出投影层。
-
-    Shape:
-        - 输入 queries: (bs, num_queries, query_dim)
-        - 输入 latents: (bs, num_latents, latent_dim)
-        - 输出 occ: (bs, num_queries, out_channels)
-    """
-
-    def __init__(
-            self,
-            *,
-            num_latents: int,
-            out_channels: int,
-            fourier_embedder: FourierEmbedder,
-            width: int,
-            heads: int,
-            qkv_bias: bool = True,
-            qk_norm: bool = False,
-    ):
-        super().__init__()
-        self.fourier_embedder = fourier_embedder
-
-        # 将傅里叶嵌入后的查询投影到指定维度（width）
-        self.query_proj = nn.Linear(self.fourier_embedder.out_dim, width)
-
-        # 残差交叉注意力模块（处理查询与潜在变量的交互）
-        self.cross_attn_decoder = ResidualCrossAttentionBlock(
-            n_data=num_latents,
-            width=width,
-            heads=heads,
-            qkv_bias=qkv_bias,
-            qk_norm=qk_norm
-        )
-
-        # 后处理层
-        self.ln_post = nn.LayerNorm(width)  # 输出归一化
-        self.output_proj = nn.Linear(width, out_channels)  # 输出投影
-
-    def forward(self, queries: torch.FloatTensor, latents: torch.FloatTensor) -> torch.FloatTensor:
-        """前向传播流程：傅里叶嵌入 -> 投影 -> 交叉注意力 -> 归一化 -> 输出投影。
-
-        Args:
-            queries (torch.FloatTensor): 输入查询张量，形状 (bs, num_queries, query_dim)
-            latents (torch.FloatTensor): 潜在变量张量，形状 (bs, num_latents, latent_dim)
-
-        Returns:
-            torch.FloatTensor: 输出张量，形状 (bs, num_queries, out_channels)
-        """
-        # 傅里叶嵌入 + 投影（保持与潜在变量相同的数据类型）
-        queries = self.query_proj(self.fourier_embedder(queries).to(latents.dtype))
-
-        # 残差交叉注意力交互
-        x = self.cross_attn_decoder(queries, latents)
-
-        # 后处理与输出
-        x = self.ln_post(x)
-        occ = self.output_proj(x)  # 输出如占据概率、分类logits等
-
-        return occ
-
-
-
-
-
 
 
 
@@ -617,6 +220,60 @@ class GEGLU(nn.Module):
 
     def __repr__(self):
         return f"GEGLU()"
+
+
+@dataclass
+class ModulationOut:
+    """调制参数输出容器"""
+    shift: torch.Tensor
+    scale: torch.Tensor
+    gate: torch.Tensor
+
+
+class Modulation(nn.Module):
+    """基于条件向量的动态特征调制
+
+    Args:
+        dim: 调制参数的维度
+        double: 是否生成两组调制参数
+    """
+    def __init__(self, dim: int, double: bool):
+        super().__init__()
+        self.is_double = double
+        self.multiplier = 6 if double else 3
+        self.lin = nn.Linear(dim, self.multiplier * dim, bias=True)
+
+    def forward(self, vec: torch.Tensor) -> Tuple[ModulationOut, Optional[ModulationOut]]:
+        out = self.lin(nn.functional.silu(vec))[:, None, :]
+        out = out.chunk(self.multiplier, dim=-1)
+
+        return (
+            ModulationOut(*out[:3]),
+            ModulationOut(*out[3:]) if self.is_double else None,
+        )
+
+class LastProjectLayer(nn.Module):
+    """带自适应调制的最终投影层
+
+    Args:
+        hidden_size: 输入维度
+        out_channels: 输出通道维度
+    """
+    def __init__(self, hidden_size: int, out_channels: int):
+        super().__init__()
+        self.norm_final = nn.LayerNorm(hidden_size, elementwise_affine=False, eps=1e-6)
+        self.linear = nn.Linear(hidden_size, out_channels, bias=True)
+        self.adaLN_modulation = nn.Sequential(
+            nn.SiLU(),
+            nn.Linear(hidden_size, 2 * hidden_size, bias=True)
+        )
+
+    def forward(self, x: torch.Tensor, vec: torch.Tensor) -> torch.Tensor:
+        shift, scale = self.adaLN_modulation(vec).chunk(2, dim=1)
+        x = (1 + scale[:, None, :]) * self.norm_final(x) + shift[:, None, :]
+        return self.linear(x)
+
+
 
 
 class AdaIN(nn.Module):
@@ -692,3 +349,10 @@ class binarize(torch.autograd.Function):
             grad_inputs = grad_output.clone()
 
         return grad_inputs
+
+class Sine(nn.Module):
+    def __init__(self, w0 = 1.):
+        super().__init__()
+        self.w0 = w0
+    def forward(self, x):
+        return torch.sin(self.w0 * x)
