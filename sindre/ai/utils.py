@@ -3,9 +3,20 @@ import torch.nn as nn
 import torch.nn.functional as F
 import numpy as np
 import os
-from typing import Tuple, Optional, Dict
+from typing import List, Mapping, Tuple, Optional, Dict, Union
 from sindre.general.logs import CustomLogger
 from sindre.deploy.check_tools import check_gpu_info,timeit
+import os
+import torch
+import numpy as np
+from torch.utils.tensorboard import SummaryWriter
+from typing import Optional, Union, List, Tuple
+
+import datetime
+import builtins
+import torch
+import torch.distributed as dist
+
 log= CustomLogger(logger_name="ai_utils").get_logger()
 
 def set_global_seeds(seed: int = 1024,cudnn_enable: bool = False) -> None:
@@ -84,7 +95,7 @@ def save_checkpoint(
         # 创建保存字典
         save_dict = {
             "state_dict": net_dict,
-            "optimizer": optimizer.state_dict(),
+            "optimizer": optimizer.state_dict() if optimizer else None,
             "curr_iter": curr_iter,
             "loss": loss,
         }
@@ -116,9 +127,9 @@ def load_checkpoint(
     加载模型状态，可以支持部分参数加载
 
     加载策略:\n
-    - strict==True: 只有名称和形状完全一致的参数才会被加载；
-    - strict==False且check_shape==True: 仅加载名称存在且形状匹配的参数；
-    - strict==False且check_shape==False: 加载所有名称匹配的参数，不检查形状；
+    - strict==True: 仅加载修正后名称和形状完全一致的参数，不匹配则抛出异常；
+    - strict==False,check_shape=True: 仅加载修正后名称存在且形状匹配的参数，其余跳过；(修改网络结构迁移预训练模型参数)
+    - strict==False,check_shape=False: 加载所有修正后名称匹配的参数（加载同结构模型，ckpt 包含多余键值）；
 
     Args:
         path: 模型文件路径
@@ -177,9 +188,12 @@ def load_checkpoint(
 
         # 加载优化器状态
         if optimizer is not None:
-            if "optimizer" in checkpoint:
+            if "optimizer" in checkpoint and checkpoint["optimizer"] is not None:
                 optimizer.load_state_dict(checkpoint["optimizer"])
-                log.info("优化器状态已加载")
+                lr = optimizer.param_groups[0]['lr']  # 获取第一个参数组的学习率
+                log.info(
+                    f"优化器状态已加载,优化器类型：{type(optimizer).__name__}, 学习率：{lr:.6f}"
+                )
         # 获取额外信息
         curr_iter = checkpoint.get("curr_iter", 0)
         loss = checkpoint.get("loss", float("inf"))
@@ -263,8 +277,355 @@ def disable_ssl():
     requests.Session = lambda: session  # 全局覆盖 Session
 
 
+def disable_huggingface_ssl():
+    """
+    禁用huggingface的ssl验证
+    """
+    from huggingface_hub import configure_http_backend
+    import requests
+    # # 2. 配置requests不验证SSL
+    def custom_requests_session():
+        session = requests.Session()
+        session.verify = False  # 禁用SSL验证
+        return session
+    configure_http_backend(custom_requests_session)
+    
 
 
+
+
+
+class MultiGPUManager:
+    """
+    通用分布式训练工具类（适配torchrun，补充dist.barrier的device_ids）
+    默认单GPU运行（无GPU则回退到CPU），cuda_visible_devices仅支持None/逗号分隔字符串
+
+    NOTE: 核心使用场景与参数/命令说明
+    =====================================
+    场景1：默认单GPU（非分布式）
+    - 参数配置：无需额外参数
+    - 代码调用：manager = MultiGPUManager()
+    - 启动命令：python your_train_script.py
+
+    场景2：单节点3卡分布式（适配你的原有命令）
+    - 参数配置：
+      manager = MultiGPUManager(
+          distributed=True,
+          cuda_visible_devices="1,2,3"  # 指定GPU 1,2,3
+      )
+    - 启动命令：CUDA_VISIBLE_DEVICES=1,2,3 torchrun --nproc_per_node=3 your_train_script.py
+
+    场景3：单节点4卡分布式（手动传参）
+    - 参数配置：
+      manager = MultiGPUManager(
+          distributed=True,
+          rank=0,
+          local_rank=0,
+          world_size=4,
+          master_addr="127.0.0.1",
+          master_port="29500",
+          cuda_visible_devices="0,1,2,3"
+      )
+    - 启动命令：torchrun --nproc_per_node=4 your_train_script.py
+
+    种子逻辑说明：
+    - 非分布式：固定种子（默认1024）；
+    - 分布式：种子=1024+local_rank（确保每个GPU随机数不同）。
+    """
+    def __init__(
+        self,
+        distributed: bool = False,
+        rank: int = 0,
+        local_rank: int = 0,
+        world_size: int = 1,
+        master_addr: str = "127.0.0.1",
+        master_port: str = "29500",
+        seed: int = 1024,
+        cuda_visible_devices: Optional[str] = None  # 仅支持None/逗号分隔字符串
+    ):
+        """
+        初始化分布式环境（补充dist.barrier的device_ids参数）
+        Args:
+            distributed: 是否开启分布式（默认False）
+            rank: 全局进程编号（优先读环境变量，默认0）
+            local_rank: 本地GPU编号（优先读环境变量，默认0）
+            world_size: 总进程数（优先读环境变量，默认1）
+            master_addr: 主节点IP（默认本地回环）
+            master_port: 主节点端口（默认29500）
+            seed: 基础随机种子（分布式下+local_rank）
+            cuda_visible_devices: 指定可见GPU：
+                - None: 分布式默认全部GPU，非分布式默认GPU 0；
+                - str: 逗号分隔字符串（如"1,2,3"）。
+        """
+        # 1. 处理CUDA_VISIBLE_DEVICES（仅None/str）
+        self._setup_cuda_visible_devices(cuda_visible_devices, distributed)
+
+        # 2. 优先读环境变量（适配torchrun），未读取则用传入参数
+        self.rank = int(os.environ.get("RANK", rank))
+        self.local_rank = int(os.environ.get("LOCAL_RANK", local_rank))
+        self.world_size = int(os.environ.get("WORLD_SIZE", world_size))
+        self.distributed = distributed if distributed else (self.world_size > 1)
+        self.master_addr = master_addr
+        self.master_port = master_port
+        self.seed = seed
+
+        # 3. 设备初始化（适配指定的GPU）
+        self._setup_device()
+
+        # 4. 非分布式模式
+        if not self.distributed:
+            set_global_seeds(self.seed)
+            self._setup_distributed_print()
+            return
+
+        # 5. 分布式模式：参数校验 + 环境初始化 + 种子设置
+        self._validate_dist_params()
+        self._init_distributed_env()
+        self._setup_distributed_print()
+        set_global_seeds(self.seed + self.local_rank)  # 分布式种子+local_rank
+        
+
+    def _setup_cuda_visible_devices(self, cuda_visible_devices: Optional[str], distributed: bool):
+        """设置CUDA_VISIBLE_DEVICES（仅None/str，校验合法性）"""
+        total_gpus = torch.cuda.device_count() if torch.cuda.is_available() else 0
+        if total_gpus == 0:
+            os.environ["CUDA_VISIBLE_DEVICES"] = ""
+            return
+
+        # 默认逻辑：分布式用全部GPU，非分布式用GPU 0
+        if cuda_visible_devices is None:
+            visible_str = ",".join(map(str, range(total_gpus))) if distributed else "0"
+        # 字符串类型：校验每个GPU ID合法性
+        elif isinstance(cuda_visible_devices, str):
+            visible_list = [int(g) for g in cuda_visible_devices.split(",")]
+            for gpu_id in visible_list:
+                if gpu_id < 0 or gpu_id >= total_gpus:
+                    raise ValueError(f"GPU {gpu_id} 超出可用范围（0~{total_gpus-1}）")
+            visible_str = cuda_visible_devices
+        else:
+            raise TypeError("cuda_visible_devices仅支持None/逗号分隔字符串")
+
+        os.environ["CUDA_VISIBLE_DEVICES"] = visible_str
+        print(f"已设置CUDA_VISIBLE_DEVICES: {visible_str}")
+
+    def _setup_device(self):
+        """初始化设备（适配指定的GPU）"""
+        if not torch.cuda.is_available():
+            self.device = torch.device("cpu")
+        elif self.distributed:
+            self.device = torch.device("cuda", self.local_rank)
+        else:
+            # 非分布式：用指定的第一个GPU（如cuda_visible_devices="2"则用cuda:0，对应物理2）
+            self.device = torch.device("cuda:0")
+
+    def _validate_dist_params(self):
+        """校验分布式参数合法性"""
+        if self.world_size < 2:
+            raise ValueError(f"分布式world_size需≥2，当前{self.world_size}")
+        if not (0 <= self.rank < self.world_size):
+            raise ValueError(f"rank={self.rank} 超出范围[0, {self.world_size-1}]")
+        if self.local_rank < 0:
+            raise ValueError(f"local_rank不能为负，当前{self.local_rank}")
+        if not torch.cuda.is_available():
+            raise RuntimeError("分布式模式需要CUDA支持，但未检测到GPU")
+
+    def _init_distributed_env(self):
+        """初始化分布式环境（补充device_ids）"""
+        # 绑定GPU并初始化进程组
+        torch.cuda.set_device(self.local_rank)
+        dist.init_process_group(
+            backend="nccl",
+            # 优先用env://（适配torchrun），未读取则用tcp://
+            init_method=os.environ.get("DIST_INIT_METHOD", f"tcp://{self.master_addr}:{self.master_port}"),
+            world_size=self.world_size,
+            rank=self.rank
+        )
+        # 关键：dist.barrier加入device_ids
+        dist.barrier(device_ids=[self.local_rank])
+
+    def _setup_distributed_print(self):
+        """控制日志仅主进程打印（带时间戳）"""
+        builtin_print = builtins.print
+        def print(*args, **kwargs):
+            force = kwargs.pop('force', False)
+            if self.rank == 0 or force:
+                now = datetime.datetime.now().time()
+                builtin_print(f'[{now}] ', end='')
+                builtin_print(*args, **kwargs)
+        builtins.print = print
+
+    def all_reduce_mean(self, tensor: torch.Tensor) -> torch.Tensor:
+        """多进程张量均值聚合（补充device_ids）"""
+        if not self.distributed:
+            return tensor.to(self.device)
+
+        tensor = tensor.to(self.device)
+        dist.barrier(device_ids=[self.local_rank])  # 加入device_ids
+        dist.all_reduce(tensor, op=dist.ReduceOp.SUM)
+        tensor /= self.world_size
+        return tensor
+
+    def wrap_model(self, model: torch.nn.Module) -> torch.nn.Module:
+        """封装DDP模型（补充device_ids）"""
+        model = model.to(self.device)
+        if not self.distributed:
+            return model
+
+        from torch.nn.parallel import DistributedDataParallel as DDP
+        ddp_model = DDP(model, device_ids=[self.local_rank])
+        dist.barrier(device_ids=[self.local_rank])  # 加入device_ids
+        # 同步主进程参数到所有进程
+        for param in ddp_model.parameters():
+            dist.broadcast(param.data, src=0, device_ids=[self.local_rank])
+        return ddp_model
+    
+
+    
+
+    def cleanup(self):
+        """清理分布式环境（补充device_ids）"""
+        if self.distributed and dist.is_initialized():
+            dist.barrier(device_ids=[self.local_rank])  # 加入device_ids
+            dist.destroy_process_group()
+            
+            
+            
+
+
+
+
+class TensorBoardSummary(SummaryWriter):
+
+    def __init__(self, *args, **kwargs):
+        """无需额外配置"""
+        super().__init__(*args, **kwargs)
+        
+        from sindre.utils3d.algorithm import labels2colors
+        self._color_map=torch.from_numpy( labels2colors(np.array([i for i in range(1000)]))[...,:3],dtype=torch.int)# 返回RGB,[0-255]
+
+    def add_mesh_by_vertexlabels(
+        self,
+        tag: str,
+        verts: torch.Tensor,
+        faces:torch.Tensor,
+        labels:torch.Tensor,
+        global_step: Optional[int] = None,
+        walltime: Optional[float] = None
+    ):
+        """
+        根据顶点labels渲染颜色
+        
+        Args:
+            tag: Mesh在TensorBoard中的标签名（如 "3d_mesh/train_sample"）
+            verts: 顶点坐标，shape=(batch_size, num_vertices, 3) 或 (num_vertices, 3)
+            faces: 面片索引， (batch_size, num_faces, 3)或 shape=(num_faces, 3) 
+            labels: 顶点标签（用于颜色映射），shape与verts前两维一致
+            global_step: 训练步骤/epoch
+            walltime: 事件时间戳（默认当前时间）
+        """
+        device = verts.device
+        if labels.dim() != 2 :
+            raise ValueError(f"labels维度错误！必须是 (B, N) \n")
+        colors = self._color_map[labels].to(device=device)
+        super().add_mesh(
+            tag=tag,
+            vertices=verts,
+            faces=faces,
+            colors=colors,
+            global_step=global_step,
+            walltime=walltime
+        )
+
+
+    def add_pointcloud_by_vertexlabels(
+            self,
+            tag: str,
+            points: torch.Tensor,
+            labels: torch.Tensor,
+            global_step: Optional[int] = None,
+            walltime: Optional[float] = None
+        ):
+        device = points.device
+        if labels.dim() != 2 :
+            raise ValueError(f"labels维度错误！必须是 (B, N) \n")
+        colors = self._color_map[labels].to(device=device)
+        super().add_mesh(
+            tag=tag,
+            vertices=points,
+            colors=colors,
+            global_step=global_step,
+            walltime=walltime
+        )
+        
+    def add_pointcloud(
+            self,
+            tag: str,
+            points: torch.Tensor,
+            global_step: Optional[int] = None,
+            walltime: Optional[float] = None
+        ):
+        batch_size, num_vertices = points.shape[:2]
+        labels = torch.zeros((batch_size, num_vertices), dtype=torch.long)
+        device = points.device
+        colors = self._color_map[labels].to(device=device)
+        super().add_mesh(
+            tag=tag,
+            vertices=points,
+            colors=colors,
+            global_step=global_step,
+            walltime=walltime
+        )
+    
+    
+    def add_3d_mesh(
+        self,
+        tag: str,
+        verts: torch.Tensor,
+        faces:torch.Tensor,
+        global_step: Optional[int] = None,
+        walltime: Optional[float] = None
+    ):
+        """
+        根据顶点labels渲染颜色
+        
+        Args:
+            tag: Mesh在TensorBoard中的标签名（如 "3d_mesh/train_sample"）
+            verts: 顶点坐标，shape=(batch_size, num_vertices, 3) 或 (num_vertices, 3)
+            faces: 面片索引， (batch_size, num_faces, 3)或 shape=(num_faces, 3) 
+            labels: 顶点标签（用于颜色映射），shape与verts前两维一致
+            global_step: 训练步骤/epoch
+            walltime: 事件时间戳（默认当前时间）
+        """
+        batch_size, num_vertices = verts.shape[:2]
+        labels = torch.zeros((batch_size, num_vertices), dtype=torch.long)
+        device = verts.device
+        colors = self._color_map[labels].to(device=device)
+        super().add_mesh(
+            tag=tag,
+            vertices=verts,
+            faces=faces,
+            colors=colors,
+            global_step=global_step,
+            walltime=walltime
+        )
+        
+    def log_metrics(self, metrics: Mapping[str, float], step: Optional[int] = None) -> None:
+        for k, v in metrics.items():
+            if isinstance(v, torch.Tensor):
+                v = v.item()
+
+            if isinstance(v, dict):
+                super().add_scalars(k, v, step)
+            else:
+                try:
+                    super().add_scalar(k, v, step)
+                except Exception as ex:
+                    m = f"\n you tried to log {v} which is currently not supported. Try a dict or a scalar/tensor."
+                    raise ValueError(m) from ex
+                
+    
+                
+            
 
 
 

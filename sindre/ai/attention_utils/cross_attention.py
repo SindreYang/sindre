@@ -9,6 +9,7 @@ from sindre.ai.layers import MLP,attention,QKNorm
 
 
 
+
 class QKVMultiheadCrossAttention(nn.Module):
     """基于查询（Query）、键值对（Key-Value）的多头交叉注意力计算模块。
 

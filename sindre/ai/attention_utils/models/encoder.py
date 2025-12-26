@@ -12,29 +12,23 @@ from sindre.ai.embedder import FourierEmbedder
 class CrossAttentionEncoder(nn.Module):
 
     def __init__(self, *,
-                 device: Optional[torch.device],
-                 dtype: Optional[torch.dtype],
                  num_latents: int,
                  fourier_embedder: FourierEmbedder,
                  point_feats: int,
                  width: int,
                  heads: int,
                  layers: int,
-                 init_scale: float = 0.25,
                  qkv_bias: bool = True,
-                 flash: bool = False,
                  use_ln_post: bool = False,
-                 use_checkpoint: bool = False):
+                 ):
 
         super().__init__()
-
-        self.use_checkpoint = use_checkpoint
         self.num_latents = num_latents
 
-        self.query = nn.Parameter(torch.randn((num_latents, width), device=device, dtype=dtype) * 0.02)
+        self.query = nn.Parameter(torch.randn(num_latents, width) * 0.02)
 
         self.fourier_embedder = fourier_embedder
-        self.input_proj = nn.Linear(self.fourier_embedder.out_dim + point_feats, width, device=device, dtype=dtype)
+        self.input_proj = nn.Linear(self.fourier_embedder.out_dim + point_feats, width)
         self.cross_attn = ResidualCrossAttentionBlock(
             width=width,
             heads=heads,
@@ -50,7 +44,7 @@ class CrossAttentionEncoder(nn.Module):
         )
 
         if use_ln_post:
-            self.ln_post = nn.LayerNorm(width, dtype=dtype, device=device)
+            self.ln_post = nn.LayerNorm(width)
         else:
             self.ln_post = None
 

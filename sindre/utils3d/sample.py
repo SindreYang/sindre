@@ -32,7 +32,7 @@ def sample_mesh_sharp_edges(vertices, faces, num=20000, angle_threshold=10.0):
     # 参数校验：确保角度阈值在合理范围
     if not (0 <= angle_threshold <= 180):
         raise ValueError(f"角度阈值angle_threshold必须在0~180度之间，当前值为{angle_threshold}")
-    mesh =trimesh.Trimesh(vertices=vertices, faces=faces)
+    mesh =trimesh.Trimesh(vertices=vertices, faces=faces,process=True,validate=True)
 
     # 将角度阈值转换为余弦值（顶点法线与面法线的点积阈值）
     cos_threshold = np.cos(np.radians(angle_threshold))
@@ -91,8 +91,6 @@ def sample_mesh_sharp_edges(vertices, faces, num=20000, angle_threshold=10.0):
     samples = w * sharp_verts_a[random_indices] + (1 - w) * sharp_verts_b[random_indices]
     normals = w * sharp_verts_an[random_indices] + (1 - w) * sharp_verts_bn[random_indices]
 
-    # 归一化法线（确保单位长度）
-    normals = normals / np.linalg.norm(normals, axis=-1, keepdims=True)
 
     return samples, normals
 

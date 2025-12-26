@@ -5,11 +5,12 @@ from einops import repeat
 from tqdm import tqdm
 
 
+
 class Latents2Meshes:
     def __init__(self,
                  bounds: Union[Tuple[float], List[float], float] = 1.1,
-                 octree_depth: int = 7,
-                 num_chunks: int = 10000,
+                 octree_depth: int = 8,
+                 num_chunks: int = 20000,
                  mc_level: float = -1 / 512,
                  method="mc"):
         self.mc_algo = method
@@ -58,6 +59,7 @@ class Latents2Meshes:
         vert_max = vertices.max(dim=0)[0]
         vert_center = 0.5 * (vert_min + vert_max)
         return vertices - vert_center
+    
     def run(self,latents,fun_callback):
         batch_logits = []
         batch_size = latents.shape[0]
@@ -66,7 +68,7 @@ class Latents2Meshes:
             queries = self.xyz_samples[start: start + self.num_chunks, :].to(device)
             queries = queries.half()
             batch_queries = repeat(queries, "p c -> b p c", b=batch_size)
-            logits = fun_callback(batch_queries.to(latents.dtype), latents)
+            logits = fun_callback(batch_queries.to(latents.dtype), latents=latents)
             if self.mc_level == 0:
                 logits = torch.sigmoid(logits) * 2 - 1
             batch_logits.append(logits)
@@ -289,7 +291,7 @@ class MarchingCubes:
         meshes = cubify(sdf, isovalue=isovalue,** kwargs)
         return meshes
 
-    def apply_pymc(self, sdf: np.ndarray, isovalue=0):
+    def apply_pymc(self, sdf: np.ndarray, isovalue=0,smooth=False):
         """基于 marching_cubes 库（pymc）的经典移动立方体实现，仅支持 NumPy 数组输入。
 
         适用于非可微分的离线 3D 网格重建场景，计算速度快，兼容性好。
@@ -298,6 +300,7 @@ class MarchingCubes:
             sdf (np.ndarray): SDF 数组（或转换后的占据场），形状为 (D, H, W)，
                 D/H/W 为 3D 网格的深度/高度/宽度。
             isovalue (float, optional): 等值面值，对应 SDF 表面的阈值，默认为 0。
+            smooth: 是否对输入进行自动平滑,默认False
 
         Returns:
             tuple[np.ndarray, np.ndarray]:
@@ -309,6 +312,8 @@ class MarchingCubes:
             - marching_cubes 库需提前安装（pip install marching-cubes）。
         """
         import marching_cubes as mcubes
+        if smooth:
+            sdf = mcubes.smooth(sdf)
         vertices, triangles = mcubes.marching_cubes(sdf, isovalue=isovalue)
         return vertices, triangles
 
@@ -339,6 +344,265 @@ class MarchingCubes:
         return verts, faces
 
 
+
+class DiagonalGaussianDistribution(object):
+    """
+    对对角高斯分布（各维度独立的多元高斯分布）的封装，主要用于变分自编码器（VAE）、扩散模型等生成模型中，处理分布的采样、KL 散度计算、负对数似然（NLL）计算等核心操作
+    """
+    def __init__(self, parameters: Union[torch.Tensor, List[torch.Tensor]], deterministic=False, feat_dim=1):
+        self.feat_dim = feat_dim
+        self.parameters = parameters
+
+        if isinstance(parameters, list):
+            self.mean = parameters[0]
+            self.logvar = parameters[1]
+        else:
+            self.mean, self.logvar = torch.chunk(parameters, 2, dim=feat_dim)
+
+        self.logvar = torch.clamp(self.logvar, -30.0, 20.0)
+        self.deterministic = deterministic
+        self.std = torch.exp(0.5 * self.logvar)
+        self.var = torch.exp(self.logvar)
+        if self.deterministic:
+            self.var = self.std = torch.zeros_like(self.mean)
+
+    def sample(self):
+        x = self.mean + self.std * torch.randn_like(self.mean)
+        return x
+
+    def kl(self, other=None, dims=(1, 2)):
+        if self.deterministic:
+            return torch.Tensor([0.])
+        else:
+            if other is None:
+                return 0.5 * torch.mean(torch.pow(self.mean, 2)
+                                        + self.var - 1.0 - self.logvar,
+                                        dim=dims)
+            else:
+                return 0.5 * torch.mean(
+                    torch.pow(self.mean - other.mean, 2) / other.var
+                    + self.var / other.var - 1.0 - self.logvar + other.logvar,
+                    dim=dims)
+
+    def nll(self, sample, dims=(1, 2)):
+        if self.deterministic:
+            return torch.Tensor([0.])
+        logtwopi = np.log(2.0 * np.pi)
+        return 0.5 * torch.sum(
+            logtwopi + self.logvar + torch.pow(sample - self.mean, 2) / self.var,
+            dim=dims)
+
+    def mode(self):
+        return self.mean
+
+
+class MeshSharpSDFProcessor:
+    """
+    网格锐边与SDF（有符号距离函数）的采样处理类
+
+    功能说明：
+    1. 对输入网格进行归一化处理，验证网格水密性；
+    2. 实现网格表面、锐边的点采样，以及空间点/近表面点的SDF计算；
+    3. 对采样点执行最远点采样（FPS），生成最终的特征数组。
+    """
+    def __init__(self,vertices,faces):
+        """
+        初始化网格SDF处理器
+
+        Args:
+            vertices (np.ndarray): 网格顶点数组，形状为(N, 3)，N为顶点数
+            faces (np.ndarray): 网格面索引数组，形状为(M, 3)，M为面数
+
+        Raises:
+            AssertionError: 若输入网格非水密（watertight）时触发
+        """
+        # 采样数量配置（语义化变量名）
+        self.fps_sample_count = 10000        # FPS采样点数
+        self.surface_sample_count = 200000   # 表面采样总数
+        self.sharp_sample_count = 200000     # 锐边采样总数
+        self.space_sample_count = 200000     # 空间随机采样总数
+
+
+        # 网格归一化与初始化
+        import trimesh
+        normalized_vertices = self.normalize_vertices(vertices)
+        self.mesh = trimesh.Trimesh(normalized_vertices, faces)
+        assert self.mesh.is_watertight(), "输入网格必须是水密的（watertight）"
+        assert len(self.mesh.vertices)>1000, "顶点必须大于1k"
+
+        # 网格基础属性
+        self.vertices = self.mesh.vertices
+        self.faces = self.mesh.faces
+        self.face_normals = self.mesh.face_normals
+
+        # 初始化CUDA加速的BVH树（用于SDF快速计算）
+        import cubvh #pip install git+https://github.com/ashawkey/cubvh --no-build-isolation
+        self.bvh_tree = cubvh.cuBVH(self.vertices, self.faces)
+
+
+
+    def normalize_vertices(self, vertices: np.ndarray) -> np.ndarray:
+        """
+        将网格顶点归一化到[-1, 1]立方体空间
+
+        Args:
+            vertices (np.ndarray): 输入顶点数组，形状为(N, 3)
+
+        Returns:
+            np.ndarray: 归一化后的顶点数组，形状为(N, 3)
+        """
+        bb_min = vertices.min(axis=0)
+        bb_max = vertices.max(axis=0)
+        center = (bb_min + bb_max) / 2.0
+        scale = 2.0 / (bb_max - bb_min).max()  # 最大轴长缩放到2（对应[-1,1]）
+        normalized_vertices = (vertices - center) * scale
+        return normalized_vertices
+
+    def sample_surface_points(self) -> np.ndarray:
+        """
+        网格表面随机采样点，并拼接法向量生成特征数组
+
+        Returns:
+            np.ndarray: 表面采样特征数组，形状为(采样数, 6)，列顺序为(x,y,z,nx,ny,nz)
+        """
+        surface_points, face_indices = self.mesh.sample(
+            self.surface_sample_count,
+            return_index=True
+        )
+        face_normals = self.face_normals[face_indices]
+        surface_feat = np.concatenate([surface_points, face_normals], axis=1)
+        return surface_feat
+
+    def sample_sharp_edges_points(self) -> np.ndarray:
+        """
+        网格锐边采样点，并拼接法向量生成特征数组
+
+        Returns:
+            np.ndarray: 锐边采样特征数组，形状为(采样数, 6)，列顺序为(x,y,z,nx,ny,nz)
+        """
+        from sindre.utils3d.sample import sample_mesh_sharp_edges
+        sharp_points, sharp_normals = sample_mesh_sharp_edges(
+            self.vertices,
+            self.faces,
+            self.sharp_sample_count
+        )
+        sharp_feat = np.concatenate([sharp_points, sharp_normals], axis=1)
+        return sharp_feat
+
+
+
+    def get_rand_points_sdf(self, surface_points: np.ndarray) -> np.ndarray:
+        """
+        计算空间随机点与表面近点的SDF，并生成特征数组
+
+        Args:
+            surface_points (np.ndarray): 表面采样点数组，形状为(N, 3)
+
+        Returns:
+            np.ndarray: 随机点SDF特征数组，形状为(总点数, 4)，列顺序为(x,y,z,sdf)
+        """
+        # 空间均匀采样点（范围略大于[-1,1]以覆盖边界）
+        space_points = np.random.uniform(-1.05, 1.05, (self.space_sample_count, 3))
+
+        # 表面近点采样（不同高斯噪声尺度）
+        near_surface_points_list = [
+            surface_points + np.random.normal(scale=0.001, size=surface_points.shape),
+            surface_points + np.random.normal(scale=0.005, size=surface_points.shape)
+        ]
+        near_surface_points = np.concatenate(near_surface_points_list, axis=0)
+
+        # 合并所有点并计算SDF
+        all_rand_points = np.concatenate([near_surface_points, space_points], axis=0)
+        rand_sdf = self.bvh_tree.signed_distance(all_rand_points)[0].reshape(-1, 1)
+        rand_sdf_feat = np.concatenate([all_rand_points, rand_sdf], axis=1)
+
+        return rand_sdf_feat
+
+    def get_sharp_points_sdf(self, sharp_points: np.ndarray) -> np.ndarray:
+        """
+        计算锐边近表面点的SDF，并生成特征数组
+
+        Args:
+            sharp_points (np.ndarray): 锐边采样点数组，形状为(N, 3)
+
+        Returns:
+            np.ndarray: 锐边点SDF特征数组，形状为(总点数, 4)，列顺序为(x,y,z,sdf)
+        """
+        # 锐边近点采样（多种高斯噪声尺度）
+        sharp_near_surface_points_list = [
+            sharp_points + np.random.normal(scale=0.001, size=sharp_points.shape),
+            sharp_points + np.random.normal(scale=0.005, size=sharp_points.shape),
+            sharp_points + np.random.normal(scale=0.007, size=sharp_points.shape),
+            sharp_points + np.random.normal(scale=0.01, size=sharp_points.shape)
+        ]
+        sharp_near_surface_points = np.concatenate(sharp_near_surface_points_list, axis=0)
+
+        # 计算SDF并拼接特征
+        sharp_sdf = self.bvh_tree.signed_distance(sharp_near_surface_points)[0].reshape(-1, 1)
+        sharp_sdf_feat = np.concatenate([sharp_near_surface_points, sharp_sdf], axis=1)
+
+        return sharp_sdf_feat
+
+    def apply_farthest_point_sampling(self, points_feat: np.ndarray) -> np.ndarray:
+        """
+        对输入特征数组的点坐标执行最远点采样（FPS）
+
+        Args:
+            points_feat (np.ndarray): 输入特征数组，形状为(N, C)，前3列为点坐标(x,y,z)
+
+        Returns:
+            np.ndarray: FPS采样后的特征数组，形状为(fps_sample_count, C)
+        """
+        from sindre.utils3d.sample import sample_pcd_farthest
+        points = points_feat[..., :3]
+        fps_indices = sample_pcd_farthest(points, self.fps_sample_count)
+        fps_feat = points_feat[fps_indices]
+        return fps_feat
+
+    def __call__(self) -> dict:
+        """
+        执行完整的网格采样与SDF计算流程
+
+        Returns:
+            dict: 包含各类采样特征的字典，键说明：
+                - fps_surface_feat: FPS采样后的表面特征数组（float32）
+                - fps_sharp_feat: FPS采样后的锐边特征数组（float32）
+                - rand_sdf_feat: 随机点SDF特征数组（float32）
+                - sharp_sdf_feat: 锐边近点SDF特征数组（float32）
+
+        Raises:
+            AssertionError: 若任意特征数组包含NaN值时触发（注：原逻辑assert np.isnan().all()为笔误，已修正为np.isnan().any()）
+        """
+        # 表面采样与处理
+        surface_feat = self.sample_surface_points()
+        # 锐边采样与处理
+        sharp_feat = self.sample_sharp_edges_points()
+        # 随机点SDF计算
+        rand_sdf_feat = self.get_rand_points_sdf(surface_feat[..., :3])
+        # 锐边点SDF计算
+        sharp_sdf_feat = self.get_sharp_points_sdf(sharp_feat[..., :3])
+
+        # FPS采样
+        fps_surface_feat = self.apply_farthest_point_sampling(surface_feat)
+        fps_sharp_feat = self.apply_farthest_point_sampling(sharp_feat)
+
+        # 检查NaN值
+        assert not np.isnan(surface_feat).any(), "表面采样特征包含NaN值"
+        assert not np.isnan(sharp_feat).any(), "锐边采样特征包含NaN值"
+        assert not np.isnan(rand_sdf_feat).any(), "随机点SDF特征包含NaN值"
+        assert not np.isnan(sharp_sdf_feat).any(), "锐边点SDF特征包含NaN值"
+        assert not np.isnan(fps_surface_feat).any(), "FPS表面特征包含NaN值"
+        assert not np.isnan(fps_sharp_feat).any(), "FPS锐边特征包含NaN值"
+
+        # 整理输出
+        output_dict = {
+            "fps_surface_feat": fps_surface_feat.astype(np.float32),
+            "fps_sharp_feat": fps_sharp_feat.astype(np.float32),
+            "rand_sdf_feat": rand_sdf_feat.astype(np.float32),
+            "sharp_sdf_feat": sharp_sdf_feat.astype(np.float32)
+        }
+
+        return output_dict
 
 def feat_to_voxel(feat_data, grid_size=None, fill_mode='feature'):
     """
