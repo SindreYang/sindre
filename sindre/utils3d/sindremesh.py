@@ -741,10 +741,12 @@ class SindreMesh:
         areas = np.linalg.norm(self.face_normals, axis=1)/2
         return np.sum(areas < 1e-8)
 
-    def _count_connected_components(self):
+    def _count_connected_components(self,adj_matrix=None):
         """计算连通体数量"""
+        if adj_matrix is None:
+            adj_matrix=self.get_vertex_adj_matrix
         from scipy.sparse.csgraph import connected_components
-        n_components, labels =connected_components(self.get_adj_matrix, directed=False)
+        n_components, labels =connected_components(adj_matrix, directed=False)
         return n_components, labels
 
     def _count_unused_vertices(self):
@@ -758,31 +760,62 @@ class SindreMesh:
         return len(self.get_edges) == 2*len(unique_edges)
 
 
-    def split_component(self,return_largest=True):
-        """
 
-        将网格按照连通分量分割,并返回最大和其余连通分量的顶点索引
+    def split_component_by_vertex(self):
+        """
+        将网格按照顶点连通分量分割，返回按规模从大到小排序的顶点索引（或仅返回最大分量顶点索引）
 
         Returns:
-            tuple: 包含三个数组的元组
-                - 第一个元素: 连通分量数量
-                - 第二个元素: 最大连通分量的节点索引
-                - 第三个元素: 剩余部分的节点索引（即非最大连通分量的所有节点）
+            list[np.ndarray]：按连通分量大小从大到小排序的顶点索引列表
         """
-        # 计算连通分量
-        n_components, labels = self._count_connected_components()
-        # 提取最大连通标签
-        largest_component_label =np.argmax(np.bincount(labels))
-        # 提取最大连通分量的节点索引
-        largest_component_indices = np.where(labels == largest_component_label)[0]
-        if return_largest:
-            new_sm = self.clone()
-            new_sm.update_geometry(self.vertices[largest_component_indices])
-            return new_sm
-        # 通过取反而得到剩余部分的节点索引
-        remaining_indices = np.where(labels != largest_component_label)[0]
-        # 返回最大连通体索引和最小连通索引
-        return n_components,largest_component_indices ,remaining_indices
+        # 1. 计算所有顶点连通分量
+        n_components, labels = self._count_connected_components(self.get_vertex_adj_matrix)
+        if n_components == 1:
+            # 仅有一个连通分量，返回对应顶点索引
+            all_vertex_indices = np.arange(len(self.vertices))
+            return [all_vertex_indices]
+
+        # 统计每个分量顶点数，按从大到小排序标签
+        label_counts = np.bincount(labels)  # 每个标签对应的顶点数
+        sorted_labels = np.argsort(-label_counts)  # 降序排序标签（大分量在前）
+
+        # 提取每个排序后标签对应的顶点索引
+        sorted_vertex_indices_list = []
+        for label in sorted_labels:
+            component_vertex_indices = np.where(labels == label)[0]
+            if len(component_vertex_indices) > 0:  # 过滤无效空分量
+                sorted_vertex_indices_list.append(component_vertex_indices)
+
+        return sorted_vertex_indices_list
+
+
+
+    def split_component_by_faces(self):
+        """
+        将网格按照面连通分量分割，返回按规模从大到小排序的面片（面）索引（或仅返回最大分量面索引）
+
+        Returns:
+            list[np.ndarray]：按连通分量大小从大到小排序的面索引列表
+        """
+        # 计算所有面连通分量
+        n_components, face_labels = self._count_connected_components(self.get_face_adj_matrix)
+        if n_components == 1:
+            # 仅有一个连通分量，返回对应面索引
+            all_face_indices = np.arange(self.nfaces)
+            return [all_face_indices]
+
+        # 统计每个分量面数，按从大到小排序标签
+        face_label_counts = np.bincount(face_labels)  # 每个标签对应的面数
+        sorted_face_labels = np.argsort(-face_label_counts)  # 降序排序标签（大分量在前）
+
+        # 提取每个排序后标签对应的面索引
+        sorted_face_indices_list = []
+        for face_label in sorted_face_labels:
+            component_face_indices = np.where(face_labels == face_label)[0]
+            if len(component_face_indices) > 0:  # 过滤无效空分量
+                sorted_face_indices_list.append(component_face_indices)
+
+        return sorted_face_indices_list
 
     def get_vertex_labels(self):
         return self.vertex_labels
@@ -1621,8 +1654,8 @@ class SindreMesh:
 
 
     @cached_property
-    def get_adj_matrix(self):
-        """基于去重边构建邻接矩阵"""
+    def get_vertex_adj_matrix(self):
+        """基于去重边构建顶点邻接矩阵"""
         from scipy.sparse import csr_matrix
         n = len(self.vertices)
         edges = np.unique(self.get_edges, axis=0)
@@ -1631,8 +1664,46 @@ class SindreMesh:
         cols = np.concatenate([edges[:,1], edges[:,0]])
         return csr_matrix((data, (rows, cols)), shape=(n, n))
 
+
     @cached_property
-    def get_adj_list(self):
+    def get_face_adj_matrix(self):
+        """构建面邻接矩阵"""
+        from scipy.sparse import csr_matrix
+        edges = self.get_edges
+        edges_face = self.edges_face
+        n = self.nfaces
+
+        # 快速分组找到共享边
+        edge_ids = edges[:, 0] * (self.npoints + 1) + edges[:, 1]
+        unique_edge_ids, counts, inv_indices = np.unique(
+            edge_ids, return_counts=True, return_inverse=True
+        )
+        valid_edge_mask = counts == 2
+        valid_unique_ids = unique_edge_ids[valid_edge_mask]
+        if len(valid_unique_ids) == 0:
+            return csr_matrix((n, n), dtype=np.int8)
+
+        # 获取邻接面
+        adjacency = []
+        for uid in valid_unique_ids:
+            face_indices = edges_face[inv_indices == np.where(unique_edge_ids == uid)[0][0]]
+            adjacency.append(face_indices)
+        adjacency = np.array(adjacency)
+
+        # 过滤退化面
+        nondegenerate = adjacency[:, 0] != adjacency[:, 1]
+        adjacency = adjacency[nondegenerate]
+
+        # 构建稀疏矩阵
+        row = adjacency[:, 0]
+        col = adjacency[:, 1]
+        row = np.concatenate([row, col])
+        col = np.concatenate([col, row])
+        data = np.ones_like(row, dtype=np.int8)
+        return csr_matrix((data, (row, col)), shape=(n, n))
+
+    @cached_property
+    def get_vertex_adj_list(self):
         """邻接表属性"""
         edges = np.unique(self.get_edges, axis=0)  # 去重
         adj = [[] for _ in range(len(self.vertices))]
@@ -1642,11 +1713,34 @@ class SindreMesh:
         return adj
 
     @cached_property
+    def faces_to_edges(self,return_face_index=False):
+        """
+        面片转换成边
+        Args:
+            return_face_index: 是否返回面片索引(n, 3)
+
+        Returns:
+            (n*3, 2) 表示边的顶点索引
+
+        """
+        edges = self.faces[:, [0, 1, 1, 2, 2, 0]].reshape((-1, 2))
+        if return_face_index:
+            face_index = np.tile(np.arange(len(self.faces)), (3, 1)).T.reshape(-1)
+            return edges, face_index
+        return edges
+
+
+    @cached_property
+    def edges_face(self):
+        """每条边对应的所属面索引"""
+        _, face_index = self.faces_to_edges(self.faces, return_face_index=True)
+        return face_index
+
+
+    @cached_property
     def get_edges(self):
         """未去重边缘属性 """
-        edges = np.concatenate([self.faces[:, [0,1]],
-                                self.faces[:, [1,2]],
-                                self.faces[:, [2,0]]], axis=0)
+        edges = self.faces_to_edges(self.faces, return_face_index=False)
         edges = np.sort(edges, axis=1)  # 确保边无序性
         return edges
 

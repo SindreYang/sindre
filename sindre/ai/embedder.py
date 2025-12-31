@@ -4,11 +4,203 @@
 # --------------------------------------------------------
 
 import math
+from turtle import forward
 import torch
 import torch.nn as nn
 from typing import Union, Optional, Tuple
 
 from sindre.ai.layers import Sine
+
+class ModalityEmbedding(nn.Module):
+    """
+    专属模态嵌入模块（Modality-Specific Embedding）
+    实现 "标识分配→维度投影→信号增强→特征融合" 四步流程，支持 Pose/Box/Voxel/Point 四种模态
+    https://github.com/Tencent-Hunyuan/Hunyuan3D-Omni/blob/4d47c0cc2bd0c4281963a7314ab330a5af36bfa8/hy3dshape/models/conditioners/omni_encoder.py#L313
+    """
+    # 模态ID映射（内部固定使用）
+    MODALITY_ID_MAP = {
+        "pose": 0,
+        "box": 1,
+        "voxel": 2,
+        "point": 3
+    }
+
+    def __init__(
+        self,
+        width: int = 1024,  # 最终投影维度
+        num_freqs: int = 8,  # Fourier嵌入的频率数
+        include_pi: bool = True,  # Fourier嵌入是否乘以π
+        voxel_resolution: int = 16  # Voxel量化分辨率
+    ):
+        super().__init__()
+        # 1. 模态标识嵌入（标识分配）
+        self.cond_signal_embedding = nn.Embedding(4, 8)  # 4种模态 → 8维嵌入向量
+        # 2. 模态标识投影层（维度投影）
+        self.cond_signal_linear = nn.Linear(8, width)
+        
+        # 3. Fourier位置嵌入器（增强几何特征的空间表征）
+        self.pe = FourierEmbedder(num_freqs=num_freqs, include_pi=include_pi)
+        # 4. 几何特征投影层（维度投影 + 信号增强）
+        self.linear = nn.Sequential(
+            nn.Linear(self.pe.get_dims(6), width),  # 6维输入→Fourier嵌入→width维
+            nn.RMSNorm(width),  # 归一化稳定训练
+            nn.GELU()  # 非线性激活增强表达
+        )
+
+        # Voxel相关参数
+        self.voxel_resolution = voxel_resolution
+        self.width = width  # 保存width参数，方便内部使用
+
+    def bbox_to_corners(self, bbox: torch.Tensor) -> torch.Tensor:
+        """
+        辅助方法：将Box的长宽高 [B,1,3] 转换为8个角点坐标（范围[-1,1]）
+        Args:
+            bbox: 形状 (B,1,3)，值范围 [0,1]，对应 [length, height, width]
+        Returns:
+            corners: 形状 (B,8,3)，每个Box的8个角点xyz坐标
+        """
+        B = bbox.shape[0]
+        half_dims = bbox / 2  # 半长/半高/半宽
+        # 8个角点的符号组合
+        signs = torch.tensor([
+            [1, 1, 1], [1, 1, -1], [1, -1, 1], [1, -1, -1],
+            [-1, 1, 1], [-1, 1, -1], [-1, -1, 1], [-1, -1, -1]
+        ], dtype=bbox.dtype, device=bbox.device)
+        
+        corners = half_dims * signs.unsqueeze(0)  # (B,8,3)
+        return corners
+
+    def generate_voxel(self, pc: torch.Tensor) -> torch.Tensor:
+        """
+        辅助方法：将点云量化为固定分辨率的Voxel网格（中心坐标）
+        Args:
+            pc: 形状 (B,N,3)，点云坐标范围 [-1,1]
+        Returns:
+            sampled_voxels: 形状 (B, M, 3)，Voxel中心坐标（M为单batch最大Voxel数）
+        """
+        device, dtype = pc.device, pc.dtype
+        B, N, D = pc.shape
+        assert D == 3, "点云维度必须为3（xyz）"
+
+        resolution = self.voxel_resolution
+        # 归一化到 [0,1] 范围
+        points_norm = (pc + 1) / 2
+        # 量化到Voxel网格索引 [0, resolution-1]
+        voxels = (points_norm * resolution).floor().long()
+        voxels = torch.clamp(voxels, 0, resolution - 1)
+
+        sampled_voxels_batch = []
+        for b in range(B):
+            vox_b = voxels[b]
+            # 转换为线性索引去重
+            linear_idx = vox_b[:, 0] + vox_b[:, 1] * resolution + vox_b[:, 2] * resolution * resolution
+            unique_idx = torch.unique(linear_idx)
+            # 转回三维索引
+            z = unique_idx // (resolution * resolution)
+            y = (unique_idx % (resolution * resolution)) // resolution
+            x = unique_idx % resolution
+            unique_voxels = torch.stack([x, y, z], dim=1).float()
+            # Voxel中心坐标映射回 [-1,1]
+            voxel_size = 2.0 / resolution
+            voxel_centers = unique_voxels * voxel_size + voxel_size / 2 - 1
+            sampled_voxels_batch.append(voxel_centers)
+
+        # Batch内padding到相同长度
+        max_voxels = max([v.shape[0] for v in sampled_voxels_batch])
+        padded_voxels = []
+        for v in sampled_voxels_batch:
+            pad_len = max_voxels - v.shape[0]
+            if pad_len > 0:
+                pad = torch.zeros(pad_len, 3, device=device, dtype=dtype)
+                v = torch.cat([v, pad], dim=0)
+            padded_voxels.append(v.unsqueeze(0))
+
+        sampled_voxels = torch.cat(padded_voxels, dim=0)
+        return sampled_voxels
+
+    def forward(
+        self,
+        pose: Optional[torch.Tensor] = None,
+        bbox: Optional[torch.Tensor] = None,
+        voxel: Optional[torch.Tensor] = None,
+        point: Optional[torch.Tensor] = None
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
+        """
+        前向传播：完成模态嵌入全流程
+        通过判断传入的几何特征自动识别模态，完成嵌入与融合
+        Args:
+            pose: 骨架特征，形状 (B, N, 3)
+            bbox: 边界框特征，形状 (B, 1, 3)
+            voxel: 体素原始点云，形状 (B, N, 3)
+            point: 点云特征，形状 (B, N, 3)
+        Returns:
+            cond: 融合后的模态特征（几何特征 + 模态标识特征），形状 (B, N + 10, width)
+            sampled_point: 模态对应的几何采样点，用于后续空间约束
+        """
+        # 统计非None的几何特征数量，确保仅传入一种模态的特征
+        non_none_feats = [f for f in [pose, bbox, voxel, point] if f is not None]
+        assert len(non_none_feats) == 1, "仅支持传入pose/bbox/voxel/point中的一种几何特征"
+        
+        # 从非空几何特征中获取设备和Batch大小
+        geom_feat = non_none_feats[0]
+        device = geom_feat.device
+        B = geom_feat.shape[0]
+        cond_signal = None
+        cond = None
+        sampled_point = None
+
+        # ---------------------- 第一步：自动识别模态 + 标识分配 + 维度投影（模态标识） ----------------------
+        if pose is not None:
+            # Pose模态处理
+            modality_id = torch.tensor([self.MODALITY_ID_MAP["pose"]], device=device)
+            # 模态标识嵌入（8维）→ 投影到width维
+            cond_signal = self.cond_signal_embedding(modality_id)
+            cond_signal = self.cond_signal_linear(cond_signal)
+            # 几何特征处理（维度投影 + 信号增强）
+            cond = self.linear(self.pe(pose))
+            sampled_point = pose[..., :3]
+
+        elif bbox is not None:
+            # Box模态处理
+            modality_id = torch.tensor([self.MODALITY_ID_MAP["box"]], device=device)
+            # 模态标识嵌入（8维）→ 投影到width维
+            cond_signal = self.cond_signal_embedding(modality_id)
+            cond_signal = self.cond_signal_linear(cond_signal)
+            # 几何特征处理（维度投影 + 信号增强）
+            cond = self.linear(self.pe(bbox.repeat(1, 1, 2)))
+            sampled_point = self.bbox_to_corners(bbox)
+
+        elif voxel is not None:
+            # Voxel模态处理
+            modality_id = torch.tensor([self.MODALITY_ID_MAP["voxel"]], device=device)
+            # 模态标识嵌入（8维）→ 投影到width维
+            cond_signal = self.cond_signal_embedding(modality_id)
+            cond_signal = self.cond_signal_linear(cond_signal)
+            # 几何特征处理（维度投影 + 信号增强）
+            voxel_centers = self.generate_voxel(voxel[..., :3])
+            cond = self.linear(self.pe(voxel_centers.repeat(1, 1, 2)))
+            sampled_point = voxel_centers[..., :3]
+
+        elif point is not None:
+            # Point模态处理
+            modality_id = torch.tensor([self.MODALITY_ID_MAP["point"]], device=device)
+            # 模态标识嵌入（8维）→ 投影到width维
+            cond_signal = self.cond_signal_embedding(modality_id)
+            cond_signal = self.cond_signal_linear(cond_signal)
+            # 几何特征处理（维度投影 + 信号增强）
+            cond = self.linear(self.pe(point.repeat(1, 1, 2)))
+            sampled_point = point[..., :3]
+
+        # ---------------------- 第二步：信号增强（广播模态标识特征） ----------------------
+        # 广播匹配Batch大小和固定序列长度（10），避免模态标识信号被淹没
+        cond_signal = cond_signal.unsqueeze(0).repeat(B, 10, 1)
+
+        # ---------------------- 第三步：特征融合（几何特征 + 模态标识特征） ----------------------
+        cond = torch.cat([cond, cond_signal], dim=1)
+
+        return cond, sampled_point
+
+
 
 
 def timestep_embedding(t: torch.Tensor,

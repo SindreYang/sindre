@@ -12,12 +12,14 @@ class Latents2Meshes:
                  octree_depth: int = 8,
                  num_chunks: int = 20000,
                  mc_level: float = -1 / 512,
-                 method="mc"):
+                 method="mc",
+                 enable_half=True):
         self.mc_algo = method
         self.num_chunks = num_chunks #分割单位
         self.mc_level = mc_level
         self.mc=MarchingCubes()
         self.octree_depth=octree_depth
+        self.enable_half = enable_half
         if self.mc_level ==0:
             print(f'使用软标签进行训练，使用sigmoid进行推理，使用0级行进立方体进行推理.')
 
@@ -33,7 +35,11 @@ class Latents2Meshes:
             bbox_max=self.bbox_max,
             octree_depth=self.octree_depth,
         )
-        self.xyz_samples = torch.FloatTensor(xyz_samples)
+
+        self.xyz_samples = torch.Tensor(xyz_samples).to(dtype=torch.float32)
+        if self.enable_half:
+            self.xyz_samples=self.xyz_samples.half()
+
 
     @staticmethod
     def generate_dense_grid_points(bbox_min: np.ndarray,
@@ -52,6 +58,8 @@ class Latents2Meshes:
 
         return xyz, grid_size, length
 
+
+
     @staticmethod
     def center_vertices(vertices):
         """Translate the vertices so that bounding box is centered at zero."""
@@ -60,15 +68,14 @@ class Latents2Meshes:
         vert_center = 0.5 * (vert_min + vert_max)
         return vertices - vert_center
     
-    def run(self,latents,fun_callback):
+    def run(self,latents,fun_callback,**kwargs):
         batch_logits = []
         batch_size = latents.shape[0]
         device = latents.device
-        for start in tqdm(range(0, self.xyz_samples.shape[0], self.num_chunks),desc=f"MC Level { self.mc_level}:"):
+        for start in tqdm(range(0, self.xyz_samples.shape[0], self.num_chunks),desc=f"{self.mc_algo} Level { self.mc_level}:"):
             queries = self.xyz_samples[start: start + self.num_chunks, :].to(device)
-            queries = queries.half()
             batch_queries = repeat(queries, "p c -> b p c", b=batch_size)
-            logits = fun_callback(batch_queries.to(latents.dtype), latents=latents)
+            logits = fun_callback(batch_queries.to(latents.dtype), latents=latents,**kwargs)
             if self.mc_level == 0:
                 logits = torch.sigmoid(logits) * 2 - 1
             batch_logits.append(logits)
@@ -80,7 +87,7 @@ class Latents2Meshes:
         for i in range(batch_size):
             if self.mc_algo == 'mc':
                 vertices,faces=self.mc.apply_skimage( grid_logits[i].detach().cpu().numpy(),self.mc_level)
-                vertices = vertices / self.grid_size * self.bbox_size +self. bbox_min
+                vertices = vertices / (np.array(self.grid_size)-1) * self.bbox_size +self.bbox_min
             elif self.mc_algo == 'dmc':
                 octree_resolution = 2 ** self.octree_depth
                 sdf = -grid_logits[i] / octree_resolution

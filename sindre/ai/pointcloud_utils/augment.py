@@ -496,7 +496,10 @@ class Jitter_np(object):
         self.clip = clip
         self.jittered_data =None  # 存储各点云组的抖动数据
 
-    def get_jitter(self):
+    def get_jitter(self,feat):
+        N, C = feat.shape
+        if C % 3 != 0:
+            raise AssertionError(f"输入列数{C}需为3的倍数，当前输入形状：{feat.shape}")
         # 生成高斯抖动并裁剪
         jitter = np.random.normal(loc=0.0, scale=self.std, size=(N, 3))
         jitter_clipped = np.clip(jitter, -self.clip, self.clip)
@@ -532,7 +535,7 @@ class Jitter_np(object):
         Raises:
             AssertionError: 输入维度非二维/列数非3的倍数时触发；
         """
-        jitter= self.get_jitter()
+        jitter= self.get_jitter(feat)
         return self.apply_jitter(feat, jitter)
     def get_info(self):
         """
