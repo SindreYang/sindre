@@ -1712,7 +1712,7 @@ class SindreMesh:
             adj[v].append(u)
         return adj
 
-    @cached_property
+    @lru_cache(maxsize=None)
     def faces_to_edges(self,return_face_index=False):
         """
         面片转换成边
@@ -1733,14 +1733,14 @@ class SindreMesh:
     @cached_property
     def edges_face(self):
         """每条边对应的所属面索引"""
-        _, face_index = self.faces_to_edges(self.faces, return_face_index=True)
+        _, face_index = self.faces_to_edges( return_face_index=True)
         return face_index
 
 
     @cached_property
     def get_edges(self):
         """未去重边缘属性 """
-        edges = self.faces_to_edges(self.faces, return_face_index=False)
+        edges = self.faces_to_edges( return_face_index=False)
         edges = np.sort(edges, axis=1)  # 确保边无序性
         return edges
 
