@@ -1553,4 +1553,4 @@ if __name__ == "__main__":
     x = torch.randn(2, 1000, 6).cuda()  # 批次x点数x特征
     p = torch.randn(2, 1000, 3).cuda()  # 坐标
     output = model(x, p)
-    print(f"输出形状: {output.feat.shape},{output.batch.shape},{output.coord.shape}, {output.keys()}")  
+    print(f"输出形状: {output.feat.shape},{output.batch.shape},{output.coord.shape},{output.sparse_conv_feat.features.shape},{output.sparse_conv_feat.spatial_shape} ,{output.keys()}")

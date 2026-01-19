@@ -299,7 +299,7 @@ class FourierEmbedder(nn.Module):
                  logspace: bool = True,
                  input_dim: int = 3,
                  include_input: bool = True,
-                 include_pi: bool = True) -> None:
+                 include_pi: bool = False) -> None:
         """初始化方法"""
         super().__init__()
 
