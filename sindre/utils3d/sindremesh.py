@@ -269,7 +269,7 @@ class SindreMesh:
             self.any_mesh=None
         # 给定默认颜色
         if self.vertex_colors is None:
-            self.vertex_colors = np.ones_like(self.vertices)*np.array([255,0,0]).astype(np.uint8)
+            self.vertex_colors = (np.ones_like(self.vertices)*np.array([255,0,0])).astype(np.uint8)
         # 给定默认标签
         if self.vertex_labels is None:
             self.vertex_labels = np.ones(len(self.vertices))
