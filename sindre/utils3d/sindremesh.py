@@ -895,7 +895,7 @@ class SindreMesh:
 
         assert len(face_mask)==len(self.faces),"face_mask长度不匹配:要求每个面片均有对应索引"
         import pymeshlab
-        if int(face_mask).max()!=1:
+        if np.max(face_mask)!=1:
             # # 索引值转bool值
             face_mask = np.any(np.isin(self.faces, face_mask), axis=1)
         ms = pymeshlab.MeshSet()
