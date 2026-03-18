@@ -891,7 +891,14 @@ class SindreMesh:
 
 
     def subdivison(self,face_mask,iterations=3,method="mid"):
-        """局部细分"""
+        """局部细分,根据face_mask索引细分指定面片，支持midpoint和loop两种细分算法
+        Args:
+            face_mask (np.ndarray): 面片索引掩码，长度与面片数相同，1表示需要细分的面片，0表示不需要细分的面片
+            iterations (int): 细分迭代次数，默认为3
+            method (str): 细分算法，"mid"表示Midpoint细分，"loop"表示Loop细分，默认为"mid"
+        Returns:
+            self: 细分后的sindremesh对象
+        """
 
         assert len(face_mask)==len(self.faces),"face_mask长度不匹配:要求每个面片均有对应索引"
         import pymeshlab
@@ -915,7 +922,15 @@ class SindreMesh:
                 selected=True
             )
         self.any_mesh=ms
-        self._convert()
+        self.vertices = None
+        self.vertex_colors = None
+        self.vertex_normals = None
+        self.vertex_curvature =None
+        self.vertex_labels = None
+        self.vertex_kdtree=None
+        self.face_normals = None
+        self.faces = None
+        self._update()
         return  self
 
 
